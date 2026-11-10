@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Workspaces",
+  "version": "0.1.0",
+  "description": "Arbeitsbereiche wie in Opera: mehrere Tab-Sätze im selben Fenster, ohne Neuladen.",
+  "permissions": ["tabs", "tabGroups", "storage", "contextMenus"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Workspaces" },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+W" },
+      "description": "Workspace-Liste öffnen"
+    },
+    "next-workspace": {
+      "suggested_key": { "default": "Alt+Shift+Right" },
+      "description": "Nächster Workspace"
+    },
+    "prev-workspace": {
+      "suggested_key": { "default": "Alt+Shift+Left" },
+      "description": "Vorheriger Workspace"
+    }
+  }
+}
