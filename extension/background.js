@@ -60,14 +60,21 @@ function serial(fn) {
   return p;
 }
 
+// Zusammenfassen von Ereignissen, aber spätestens nach maxMs ausführen.
 const timers = {};
-function debounce(name, ms, fn) {
+const firstCall = {};
+function debounce(name, ms, fn, maxMs = Infinity) {
+  firstCall[name] ??= Date.now();
   clearTimeout(timers[name]);
-  timers[name] = setTimeout(() => serial(fn), ms);
+  const wait = Math.max(0, Math.min(ms, firstCall[name] + maxMs - Date.now()));
+  timers[name] = setTimeout(() => {
+    delete firstCall[name];
+    serial(fn);
+  }, wait);
 }
 
 const scheduleReconcile = () => debounce('reconcile', 800, reconcile);
-const scheduleSnapshot = () => debounce('snapshot', 1000, snapshot);
+const scheduleSnapshot = () => debounce('snapshot', 300, snapshot, 2000);
 
 // ---------------------------------------------------------------- Fenster erkennen
 
@@ -190,13 +197,8 @@ async function switchTo(windowId, targetWs) {
   const cur = s.windowWs[windowId] || cfg.lastWs;
   if (cur === targetWs) return;
 
-  // Schon in einem anderen Fenster offen → dorthin springen.
-  const other = mains.find((w) => w.id !== windowId && s.windowWs[w.id] === targetWs);
-  if (other) {
-    await chrome.windows.update(other.id, { focused: true });
-    return;
-  }
-
+  // Mehrere Fenster dürfen denselben Workspace zeigen (z. B. nach Strg+N).
+  // Die Ablage eines Workspace landet immer im Fenster, das zu ihm wechselt.
   switching++;
   try {
     const oldTabs = movableTabsOf(main);
@@ -208,7 +210,8 @@ async function switchTo(windowId, targetWs) {
     const tStash = stash.get(targetWs);
     if (tStash) {
       brought = await moveOrdered(stashTabsOf(tStash), windowId);
-    } else {
+    } else if (!mains.some((w) => w.id !== windowId && s.windowWs[w.id] === targetWs)) {
+      // Nur wiederherstellen, wenn die Tabs nicht schon lebend in einem anderen Fenster sind
       const { backup } = await getBackup();
       const b = backup[targetWs];
       if (b) brought = await recreate([...(b.shown || []), ...(b.stash || [])], windowId);
@@ -265,7 +268,7 @@ async function moveTabToWs(tabId, wsId) {
   switching++;
   try {
     // Fenster darf nicht leer werden
-    if (!tab.pinned && movableTabsOf(main).length <= 1) {
+    if (main.tabs.length === 1 || (!tab.pinned && movableTabsOf(main).length <= 1)) {
       await chrome.tabs.create({ windowId: tab.windowId, active: true });
     }
     if (tab.pinned) await chrome.tabs.update(tabId, { pinned: false });
@@ -370,6 +373,9 @@ async function snapshot() {
   const cfg = await getConfig();
   const s = await sess();
   const { stash, mains } = await scan();
+  // Ohne (zugeordnete) Hauptfenster ist der Zustand im Übergang (Start, Beenden,
+  // neues Fenster): alte Sicherung behalten, reconcile sichert danach.
+  if (!mains.length || mains.some((w) => !s.windowWs[w.id])) return;
   const { backup } = await getBackup();
   const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
 
@@ -391,33 +397,43 @@ async function snapshot() {
   for (const [ws, w] of stash) stashWins[w.id] = { ws, tabs: stashTabsOf(w).map((t) => t.id) };
   for (const w of mains) if (prev[w.id] && !s.windowWs[w.id]) stashWins[w.id] = prev[w.id];
 
-  const data = { backup, stashWins };
+  const backupWindows = mains.map((w) => ({
+    ws: s.windowWs[w.id],
+    urls: movableTabsOf(w).map((t) => t.url || t.pendingUrl),
+  }));
+
+  const data = { backup, stashWins, backupWindows };
   if (mains.length) data.backupPinned = mains[0].tabs.filter((t) => t.pinned).map((t) => serTab(t, groups));
   await chrome.storage.local.set(data);
 }
 
 // ---------------------------------------------------------------- Abgleich
 
-function guessWs(win, s, cfg, backup, taken) {
+function guessWs(win, s, cfg, entries) {
   const ids = cfg.workspaces.map((w) => w.id);
   // 1. Tab wurde aus einem anderen Fenster herausgezogen
   for (const t of win.tabs) {
     const o = s.tabOrigin[t.id];
     if (o && ids.includes(o)) return o;
   }
-  // 2. Fenster aus der Sitzungswiederherstellung: über URLs zuordnen
-  const urls = new Set(movableTabsOf(win).map((t) => t.url || t.pendingUrl));
-  let best = null;
+  // 2. Beim Browserstart wiederhergestelltes Fenster: über die gesicherten URLs
+  //    pro Fenster zuordnen, jeder Eintrag nur einmal.
+  const urls = new Set(
+    movableTabsOf(win)
+      .map((t) => t.url || t.pendingUrl)
+      .filter((u) => u && !u.startsWith('chrome://newtab')),
+  );
+  let best = -1;
   let bestScore = 0;
-  for (const id of ids) {
-    const shown = backup[id]?.shown || [];
-    const score = shown.filter((e) => urls.has(e.url)).length - (taken.has(id) ? 0.5 : 0);
+  entries.forEach((e, i) => {
+    if (!ids.includes(e.ws)) return;
+    const score = e.urls.filter((u) => urls.has(u)).length;
     if (score > bestScore) {
-      best = id;
+      best = i;
       bestScore = score;
     }
-  }
-  if (best) return best;
+  });
+  if (best >= 0) return entries.splice(best, 1)[0].ws;
   // 3. Neues Fenster (Strg+N): Workspace des zuletzt benutzten Fensters
   return cfg.lastWs;
 }
@@ -463,9 +479,14 @@ async function reconcile() {
     }
   }
 
-  // Ablage-Fenster: minimiert, Ablage-Tab angeheftet und aktiv (wichtig für den Titel)
+  // Ablage-Fenster: minimiert, Ablage-Tab angeheftet und aktiv (wichtig für den Titel).
+  // Ohne Hauptfenster kann Chromium einen beim Start übergebenen Link in eine
+  // wiederhergestellte Ablage gelegt haben – diesen merken und gleich sichtbar machen.
+  const foreign = [];
   for (const w of stash.values()) {
     const st = w.tabs.find(isStashTab);
+    const act = w.tabs.find((t) => t.active);
+    if (!mains.length && act && !isStashTab(act)) foreign.push(act);
     if (!st.pinned) await chrome.tabs.update(st.id, { pinned: true });
     if (!st.active) await chrome.tabs.update(st.id, { active: true });
     if (w.state !== 'minimized') await chrome.windows.update(w.id, { state: 'minimized' }).catch(() => {});
@@ -487,6 +508,7 @@ async function reconcile() {
       let ids = await recreate(backup[target]?.shown || [], win.id);
       const st = stash.get(target);
       if (st) ids = ids.concat(await moveOrdered(stashTabsOf(st), win.id));
+      if (foreign.length) ids = (await moveOrdered(foreign, win.id)).concat(ids);
       if (ids.length) {
         await chrome.tabs.update(ids[0], { active: true });
         await chrome.tabs.remove(blank);
@@ -502,14 +524,21 @@ async function reconcile() {
   for (const id of Object.keys(s.windowWs)) {
     if (!mains.some((w) => String(w.id) === id)) delete s.windowWs[id];
   }
-  const taken = new Set(Object.values(s.windowWs));
+  // Nach Browserstart oder Neuladen der Erweiterung ist storage.session leer: dann die
+  // gesicherten Fenster-Einträge für 20 s zur Zuordnung wiederhergestellter Fenster nutzen.
+  let { entries, entriesUntil } = await chrome.storage.session.get(['entries', 'entriesUntil']);
+  if (entriesUntil === undefined) {
+    entries = (await chrome.storage.local.get('backupWindows')).backupWindows || [];
+    entriesUntil = Date.now() + 20000;
+  }
+  if (Date.now() > entriesUntil) entries = [];
   for (const w of mains) {
     if (!s.windowWs[w.id]) {
-      s.windowWs[w.id] = guessWs(w, s, cfg, backup, taken);
-      taken.add(s.windowWs[w.id]);
+      s.windowWs[w.id] = guessWs(w, s, cfg, entries);
       changed = true;
     }
   }
+  await chrome.storage.session.set({ entries, entriesUntil });
   s.tabOrigin = {};
   await saveSess(s);
 
@@ -625,22 +654,26 @@ chrome.windows.onFocusChanged.addListener(async (winId) => {
   if (ws) await chrome.storage.local.set({ lastWs: ws });
 });
 
-chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
+chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
   if (switching) return;
-  const s = await sess();
-  const ws = s.windowWs[windowId];
-  if (!ws) return;
-  s.lastTab[ws] = tabId;
-  await saveSess(s);
+  serial(async () => {
+    const s = await sess();
+    const ws = s.windowWs[windowId];
+    if (!ws) return;
+    s.lastTab[ws] = tabId;
+    await saveSess(s);
+  });
 });
 
-chrome.tabs.onDetached.addListener(async (tabId, { oldWindowId }) => {
+chrome.tabs.onDetached.addListener((tabId, { oldWindowId }) => {
   if (switching) return;
-  const s = await sess();
-  if (s.windowWs[oldWindowId]) {
-    s.tabOrigin[tabId] = s.windowWs[oldWindowId];
-    await saveSess(s);
-  }
+  serial(async () => {
+    const s = await sess();
+    if (s.windowWs[oldWindowId]) {
+      s.tabOrigin[tabId] = s.windowWs[oldWindowId];
+      await saveSess(s);
+    }
+  });
   scheduleSnapshot();
 });
 
@@ -717,10 +750,6 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return serial(() => deleteWs(msg.wsId));
       case 'moveTab':
         return serial(() => moveTabToWs(msg.tabId, msg.wsId));
-      case 'wsName': {
-        const cfg = await getConfig();
-        return cfg.workspaces.find((w) => w.id === msg.wsId)?.name || '?';
-      }
     }
   };
   run().then(
@@ -733,5 +762,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 // ---------------------------------------------------------------- Start
 
 chrome.runtime.onInstalled.addListener(() => serial(buildMenus));
-chrome.runtime.onStartup.addListener(() => serial(buildMenus));
+chrome.runtime.onStartup.addListener(() =>
+  serial(async () => {
+    // Fenster- und Tab-IDs gelten nur innerhalb einer Browsersitzung.
+    await chrome.storage.local.remove('stashWins');
+    await buildMenus();
+  }),
+);
 scheduleReconcile();
