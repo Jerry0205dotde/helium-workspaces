@@ -83,6 +83,8 @@ function isStashTab(t) {
   return u.startsWith(STASH_PAGE);
 }
 
+const isNewTab = (t) => /^chrome:\/\/(newtab|new-tab-page)\//.test(t.url || t.pendingUrl || '');
+
 function stashWsOf(win) {
   for (const t of win.tabs || []) {
     if (isStashTab(t)) return (t.url || t.pendingUrl).split('#')[1] || null;
@@ -493,7 +495,8 @@ async function snapshot() {
 
 // Ordnet neue Hauptfenster einem Workspace zu. entries sind die beim letzten Mal
 // gesicherten Fenster (Workspace + URLs); jeder Eintrag wird höchstens einmal vergeben.
-function assignWindows(wins, s, cfg, entries) {
+// Fenster, die nur geraten zugeordnet wurden (Schritt 3), landen in guessed.
+function assignWindows(wins, s, cfg, entries, guessed = new Set()) {
   const ids = cfg.workspaces.map((w) => w.id);
   const result = new Map();
   const rest = [];
@@ -540,7 +543,11 @@ function assignWindows(wins, s, cfg, entries) {
   }
   for (const i of [...used].sort((a, b) => b - a)) entries.splice(i, 1);
   // 3. Neues Fenster (Strg+N): Workspace des zuletzt benutzten Fensters
-  for (const win of rest) if (!result.has(win.id)) result.set(win.id, cfg.lastWs);
+  for (const win of rest) {
+    if (result.has(win.id)) continue;
+    result.set(win.id, cfg.lastWs);
+    guessed.add(win.id);
+  }
   return result;
 }
 
@@ -732,6 +739,8 @@ async function reconcile() {
   // Ablage-Fenster: minimiert, Ablage-Tab angeheftet und aktiv (wichtig für den Titel).
   // Ohne Hauptfenster kann Chromium einen beim Start übergebenen Link in eine
   // wiederhergestellte Ablage gelegt haben – diesen merken und gleich sichtbar machen.
+  // Eine neue Tab-Seite dort stammt von der Starteinstellung „Neuer-Tab-Seite“ und wird
+  // geschlossen, sonst sammelt sich bei jedem Start eine weitere im Workspace an.
   const foreign = [];
   for (const w of stash.values()) {
     const st = w.tabs.find(isStashTab);
@@ -758,11 +767,13 @@ async function reconcile() {
       let ids = await recreate(backup[target]?.shown || [], win.id);
       const st = stash.get(target);
       if (st) ids = ids.concat(await moveOrdered(stashTabsOf(st), win.id));
-      if (foreign.length) ids = (await moveOrdered(foreign, win.id)).concat(ids);
+      const links = foreign.filter((t) => !isNewTab(t));
+      if (links.length) ids = (await moveOrdered(links, win.id)).concat(ids);
       if (ids.length) {
         await chrome.tabs.update(ids[0], { active: true });
         await chrome.tabs.remove(blank);
       }
+      for (const t of foreign) if (isNewTab(t)) await chrome.tabs.remove(t.id).catch(() => {});
     } finally {
       switching--;
     }
@@ -786,11 +797,28 @@ async function reconcile() {
   const starting = Date.now() <= entriesUntil;
   if (!starting) entries = [];
   const fresh = mains.filter((w) => !s.windowWs[w.id]);
+  const guessed = new Set();
   if (fresh.length) {
-    for (const [id, ws] of assignWindows(fresh, s, cfg, entries)) s.windowWs[id] = ws;
+    for (const [id, ws] of assignWindows(fresh, s, cfg, entries, guessed)) s.windowWs[id] = ws;
     changed = true;
   }
   await chrome.storage.session.set({ entries, entriesUntil });
+
+  // Start ohne wiederhergestellte Fenster (Starteinstellung „Neuer-Tab-Seite“): Chromium
+  // öffnet nur ein neues Fenster, höchstens mit den angehefteten Tabs. Den zuletzt aktiven
+  // Workspace darin aus der Sicherung aufbauen, bevor ein Snapshot die Sicherung durch die
+  // neue Tab-Seite ersetzt. Die anderen Workspaces kommen beim Wechseln aus der Sicherung.
+  // Nur beim ersten Abgleich mit Fenstern, nachdem storage.session leer war.
+  const { startChecked } = await chrome.storage.session.get('startChecked');
+  if (!startChecked && mains.length) {
+    await chrome.storage.session.set({ startChecked: true });
+    if (!stash.size && mains.every((w) => guessed.has(w.id))) {
+      if (await restoreStart(mains, s.windowWs[mains[0].id])) {
+        ({ stash, mains } = await scan());
+        changed = true;
+      }
+    }
+  }
   if (starting) {
     switching++;
     try {
@@ -804,6 +832,52 @@ async function reconcile() {
 
   await updateAllIcons();
   if (changed) await snapshot();
+}
+
+// Legt die gesicherten Tabs von wsId und die angehefteten Tabs im ersten Fenster an,
+// soweit sie nicht schon offen sind (z. B. von Chromium wiederhergestellte angeheftete
+// Tabs). Ein beim Start übergebener Link bleibt aktiv; eine einzelne neue Tab-Seite wird
+// ersetzt.
+async function restoreStart(wins, wsId) {
+  const win = wins[0];
+  const { backup, backupPinned } = await getBackup();
+  const b = backup[wsId];
+  const open = (pinned) => {
+    const n = new Map();
+    for (const w of wins) {
+      for (const t of w.tabs) {
+        const u = t.url || t.pendingUrl;
+        if (!!t.pinned === pinned) n.set(u, (n.get(u) || 0) + 1);
+      }
+    }
+    return n;
+  };
+  const missing = (list, have) =>
+    list.filter((e) => {
+      if (!e.url) return false;
+      const n = have.get(e.url) || 0;
+      have.set(e.url, n - 1);
+      return n <= 0;
+    });
+  const saved = [...(b?.shown || []), ...(b?.stash || [])];
+  const pinned = missing(backupPinned, open(true));
+  const tabs = missing(saved, open(false));
+  if (!pinned.length && !tabs.length) return false;
+  switching++;
+  try {
+    await recreate(pinned, win.id, true);
+    const ids = await recreate(tabs, win.id);
+    const own = movableTabsOf(win);
+    const blank = own.length === 1 && isNewTab(own[0]) ? own[0] : null;
+    if (blank && ids.length && !saved.some((e) => e.url === (blank.url || blank.pendingUrl))) {
+      await chrome.tabs.update(ids[0], { active: true });
+      await chrome.tabs.remove(blank.id);
+    }
+  } finally {
+    switching--;
+  }
+  console.info('[workspaces] Workspace nach dem Start aus der Sicherung aufgebaut');
+  return true;
 }
 
 async function onWindowRemoved(winId) {
