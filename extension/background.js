@@ -982,7 +982,9 @@ async function reconcile() {
     for (const [id, ws] of assignWindows(fresh, s, cfg, entries, guessed)) s.windowWs[id] = ws;
     changed = true;
   }
-  await chrome.storage.session.set({ entries, entriesUntil });
+  // Ein neues Fenster (Strg+N) hat den Fokus bekommen, bevor es zugeordnet war
+  const focused = fresh.find((w) => w.focused);
+  await chrome.storage.session.set({ entries, entriesUntil, ...(focused ? { lastMain: focused.id } : {}) });
 
   // Start ohne wiederhergestellte Fenster (Starteinstellung „Neuer-Tab-Seite“): Chromium
   // öffnet nur ein neues Fenster, höchstens mit den angehefteten Tabs. Den zuletzt aktiven
