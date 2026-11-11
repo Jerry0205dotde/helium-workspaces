@@ -187,7 +187,30 @@ async function ensureStash(wsId, restoreBackup) {
 
 // ---------------------------------------------------------------- Wechseln
 
+// Ein begonnener Wechsel steht in storage.session ('pendingSwitch': Fenster, alter und
+// neuer Workspace, IDs der alten Tabs). Solange er dort steht, ist der Tab-Bestand im
+// Übergang: snapshot() sichert dann nichts, und finishSwitch() schließt ihn ab – nach
+// einem Fehler, beim nächsten Wechsel oder nach einem Neustart des Service Workers.
+async function getPending() {
+  return (await chrome.storage.session.get('pendingSwitch')).pendingSwitch || null;
+}
+
+async function setPending(p) {
+  if (p) await chrome.storage.session.set({ pendingSwitch: p });
+  else await chrome.storage.session.remove('pendingSwitch');
+}
+
+// Setzt einen unterbrochenen Wechsel fort, bevor etwas anderes die Zuordnung liest.
+async function resumeSwitch() {
+  const p = await getPending();
+  if (!p) return false;
+  console.info('[workspaces] setze unterbrochenen Wechsel fort:', p.from, '→', p.to);
+  console.info('[workspaces] Ergebnis:', await finishSwitch());
+  return true;
+}
+
 async function switchTo(windowId, targetWs) {
+  await resumeSwitch();
   const cfg = await getConfig();
   if (!cfg.workspaces.some((w) => w.id === targetWs)) return;
   const s = await sess();
@@ -199,13 +222,17 @@ async function switchTo(windowId, targetWs) {
 
   // Mehrere Fenster dürfen denselben Workspace zeigen (z. B. nach Strg+N).
   // Die Ablage eines Workspace landet immer im Fenster, das zu ihm wechselt.
+  const oldTabs = movableTabsOf(main);
+  const active = main.tabs.find((t) => t.active);
+  if (active && !active.pinned) s.lastTab[cur] = active.id;
+  await saveSess(s);
+  const p = { windowId, from: cur, to: targetWs, oldTabs: oldTabs.map((t) => t.id) };
+  await setPending(p);
+
+  // 1. Tabs des Ziel-Workspace holen (zuerst, damit das Fenster nie leer wird)
+  let failed = null;
   switching++;
   try {
-    const oldTabs = movableTabsOf(main);
-    const active = main.tabs.find((t) => t.active);
-    if (active && !active.pinned) s.lastTab[cur] = active.id;
-
-    // 1. Tabs des Ziel-Workspace holen (zuerst, damit das Fenster nie leer wird)
     let brought = [];
     const tStash = stash.get(targetWs);
     if (tStash) {
@@ -214,7 +241,11 @@ async function switchTo(windowId, targetWs) {
       // Nur wiederherstellen, wenn die Tabs nicht schon lebend in einem anderen Fenster sind
       const { backup } = await getBackup();
       const b = backup[targetWs];
-      if (b) brought = await recreate([...(b.shown || []), ...(b.stash || [])], windowId);
+      if (b) {
+        await setPending({ ...p, restoring: true });
+        brought = await recreate([...(b.shown || []), ...(b.stash || [])], windowId);
+        await setPending(p);
+      }
     }
     if (!brought.length) {
       const t = await chrome.tabs.create({ windowId, active: true });
@@ -222,27 +253,75 @@ async function switchTo(windowId, targetWs) {
     }
     const want = s.lastTab[targetWs];
     await chrome.tabs.update(brought.includes(want) ? want : brought[0], { active: true });
-
-    // 2. Alte Tabs in die Ablage des alten Workspace
-    let refocus = false;
-    if (oldTabs.length) {
-      const st = await ensureStash(cur, false);
-      refocus = !!st.created;
-      await moveOrdered(oldTabs, st.windowId);
-      await chrome.tabs.update(st.tabId, { active: true });
-    } else {
-      await clearBackup(cur);
-    }
-
-    s.windowWs[windowId] = targetWs;
-    await saveSess(s);
-    await chrome.storage.local.set({ lastWs: targetWs });
-    if (refocus) await chrome.windows.update(windowId, { focused: true }).catch(() => {});
+  } catch (err) {
+    console.warn('[workspaces] Wechsel unterbrochen, schließe ihn anhand der Fenster ab:', err);
+    failed = err;
   } finally {
     switching--;
   }
-  await updateIcons(windowId);
+
+  // 2. Alte Tabs in die Ablage des alten Workspace (nach einem Fehler nur, was davon übrig ist)
+  let done;
+  try {
+    done = await finishSwitch();
+  } catch (err) {
+    scheduleReconcile(); // erneut versuchen, bis dahin keine Snapshots
+    throw err;
+  } finally {
+    await updateIcons(windowId);
+  }
   await snapshot();
+  if (failed && done !== 'forward') throw failed;
+}
+
+// Schließt einen begonnenen Wechsel anhand der tatsächlich vorhandenen Tabs ab. Sind schon
+// Tabs des Ziels im Fenster, wird er zu Ende geführt: restliche Ziel-Tabs holen, übrige alte
+// Tabs in die Ablage. Sonst gilt er als nicht begonnen. Wirft bei einem Fehler; der Wechsel
+// bleibt dann vermerkt und wird beim nächsten Versuch fortgesetzt.
+async function finishSwitch() {
+  const p = await getPending();
+  if (!p) return null;
+  switching++;
+  try {
+    const s = await sess();
+    const { stash, mains } = await scan();
+    const main = mains.find((w) => w.id === p.windowId);
+    const old = new Set(p.oldTabs);
+    const tabs = main ? movableTabsOf(main) : [];
+    const arrived = tabs.filter((t) => !old.has(t.id));
+    if (!main || !arrived.length) {
+      await setPending(null);
+      return main ? 'back' : 'gone';
+    }
+
+    const tStash = stash.get(p.to);
+    if (tStash) {
+      await moveOrdered(stashTabsOf(tStash), p.windowId);
+    } else if (p.restoring) {
+      // Service Worker endete beim Neuanlegen aus der Sicherung: den Rest ergänzen
+      const b = (await getBackup()).backup[p.to];
+      const list = [...(b?.shown || []), ...(b?.stash || [])].filter((e) => e.url);
+      await recreate(list.slice(arrived.length), p.windowId);
+    }
+
+    const oldLeft = tabs.filter((t) => old.has(t.id));
+    if (oldLeft.length) {
+      const st = await ensureStash(p.from, false);
+      await moveOrdered(oldLeft, st.windowId);
+      await chrome.tabs.update(st.tabId, { active: true });
+      if (st.created) await chrome.windows.update(p.windowId, { focused: true }).catch(() => {});
+    } else if (!p.oldTabs.length) {
+      await clearBackup(p.from);
+    }
+
+    s.windowWs[p.windowId] = p.to;
+    await saveSess(s);
+    await chrome.storage.local.set({ lastWs: p.to });
+    await setPending(null);
+    return 'forward';
+  } finally {
+    switching--;
+  }
 }
 
 async function switchRelative(windowId, step) {
@@ -258,6 +337,7 @@ async function switchRelative(windowId, step) {
 // ---------------------------------------------------------------- Tab verschieben
 
 async function moveTabToWs(tabId, wsId) {
+  await resumeSwitch();
   const tab = await chrome.tabs.get(tabId);
   const s = await sess();
   if (s.windowWs[tab.windowId] === wsId) return;
@@ -324,6 +404,7 @@ async function reorderWs(ids) {
 }
 
 async function deleteWs(id) {
+  await resumeSwitch();
   const cfg = await getConfig();
   if (cfg.workspaces.length < 2) return;
   const idx = cfg.workspaces.findIndex((w) => w.id === id);
@@ -370,6 +451,7 @@ function serTab(t, groups) {
 // Sichert den Inhalt aller Workspaces, falls ein Fenster verloren geht
 // (z. B. wenn das Hauptfenster per X geschlossen wird).
 async function snapshot() {
+  if (await getPending()) return; // Wechsel noch nicht abgeschlossen
   const cfg = await getConfig();
   const s = await sess();
   const { stash, mains } = await scan();
@@ -596,11 +678,21 @@ async function repairFromBackup(cfg, s, stash, mains) {
   return changed;
 }
 
+let resumeTries = 0;
+
 async function reconcile() {
+  let changed = false;
+  try {
+    changed = await resumeSwitch();
+    resumeTries = 0;
+  } catch (err) {
+    console.warn('[workspaces] Wechsel noch nicht abschließbar:', err);
+    if (++resumeTries < 20) scheduleReconcile();
+    return; // Zuordnung stimmt noch nicht, z. B. würde repairFromBackup sonst Tabs doppelt anlegen
+  }
   const cfg = await getConfig();
   const s = await sess();
   let { stash, mains, dups } = await scan();
-  let changed = false;
 
   // Ablage-Fenster, deren Ablage-Seite fehlt (z. B. weil die Erweiterung neu geladen
   // wurde und Chromium dabei ihre Seiten schließt), wieder zu Ablagen machen.
@@ -717,6 +809,7 @@ async function reconcile() {
 async function onWindowRemoved(winId) {
   const s = await sess();
   const ws = s.windowWs[winId];
+  if ((await getPending())?.windowId === winId) scheduleReconcile();
   if (ws === undefined) {
     scheduleReconcile();
     return;
