@@ -9,6 +9,8 @@
 //
 // Angeheftete Tabs bleiben im Hauptfenster und gelten für alle Workspaces.
 
+importScripts('exchange.js');
+
 const STASH_PAGE = chrome.runtime.getURL('stash.html');
 const COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#64748b'];
 
@@ -1009,6 +1011,231 @@ async function onWindowRemoved(winId) {
   await snapshot();
 }
 
+// ---------------------------------------------------------------- Export und Import
+
+// Einträge aus list, deren URL in have nicht (oft genug) vorkommt
+function missingIn(list, have) {
+  const n = new Map();
+  for (const e of have) n.set(e.url, (n.get(e.url) || 0) + 1);
+  return list.filter((e) => {
+    const k = n.get(e.url) || 0;
+    n.set(e.url, k - 1);
+    return k <= 0;
+  });
+}
+
+// Inhalt aller Workspaces im Sicherungsformat: die lebenden Tabs, für Workspaces ohne
+// Fenster die Sicherung, dahinter die nicht wiederhergestellten Einträge. Die
+// Gruppenschlüssel werden je Herkunft getrennt, damit sich alte und neue Gruppen-IDs
+// nicht vermischen.
+async function collectAll() {
+  const cfg = await getConfig();
+  const s = await sess();
+  const { stash, mains } = await scan();
+  const { backup, backupPinned } = await getBackup();
+  const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
+  const tag = (list, p) => list.filter((e) => e.url).map((e) => (e.g ? { ...e, g: p + e.g } : e));
+  const list = cfg.workspaces.map((ws) => {
+    const sw = stash.get(ws.id);
+    const showing = mains.filter((w) => s.windowWs[w.id] === ws.id);
+    const b = backup[ws.id] || {};
+    const live = !!sw || showing.length > 0;
+    const open = live
+      ? [...showing.flatMap(movableTabsOf), ...(sw ? stashTabsOf(sw) : [])].map((t) => serTab(t, groups))
+      : [...(b.shown || []), ...(b.stash || [])];
+    const failed = b.failed || [];
+    return {
+      ws,
+      live,
+      window: showing[0]?.id ?? sw?.id,
+      open: tag(open, 'a').length,
+      failed: failed.length,
+      entries: [...tag(open, 'a'), ...tag(failed.filter((e) => !e.p), 'f')],
+      pinnedFailed: failed.filter((e) => e.p),
+    };
+  });
+  const pinned = mains.length ? mains[0].tabs.filter((t) => t.pinned).map((t) => serTab(t, groups)) : backupPinned;
+  return { cfg, mains, list, pinned: [...pinned, ...list.flatMap((x) => x.pinnedFailed)].filter((e) => e.url) };
+}
+
+async function exportAll() {
+  await resumeSwitch();
+  const { list, pinned } = await collectAll();
+  return buildExchange(list, pinned);
+}
+
+// Ordnet beim Zusammenführen jedem importierten Workspace einen vorhandenen zu: zuerst
+// über die ID (derselbe Workspace, etwa bei einem erneuten Import), sonst über den
+// gleichen Namen. Jeder vorhandene Workspace wird höchstens einmal vergeben. Ergänzt
+// werden nur Tabs, deren URL dort noch nicht (so oft) vorkommt.
+function planImport(data, all) {
+  const byId = new Map(all.list.map((x) => [x.ws.id, x]));
+  const used = new Set();
+  const match = data.workspaces.map((imp) => {
+    const t = imp.id && byId.get(imp.id);
+    if (!t) return null;
+    used.add(t.ws.id);
+    return { target: t, by: 'id' };
+  });
+  data.workspaces.forEach((imp, i) => {
+    if (match[i]) return;
+    const t = all.list.find((x) => !used.has(x.ws.id) && x.ws.name.trim() === imp.name);
+    if (!t) return;
+    used.add(t.ws.id);
+    match[i] = { target: t, by: 'name' };
+  });
+  return {
+    merge: data.workspaces.map((imp, i) => ({
+      imp,
+      target: match[i]?.target || null,
+      by: match[i]?.by || null,
+      add: match[i] ? missingIn(imp.tabs, match[i].target.entries) : imp.tabs,
+    })),
+    pinnedAdd: missingIn(data.pinned, all.pinned),
+  };
+}
+
+// Prüft die Datei und beschreibt, was Zusammenführen bzw. Ersetzen ändern würde.
+async function previewImport(text) {
+  const data = parseExchange(text, STASH_PAGE);
+  await resumeSwitch();
+  const all = await collectAll();
+  const plan = planImport(data, all);
+  return {
+    exported: data.exported,
+    pinned: data.pinned.length,
+    pinnedAdd: plan.pinnedAdd.length,
+    workspaces: plan.merge.map(({ imp, target, by, add }) => ({
+      name: imp.name,
+      color: imp.color,
+      emoji: imp.emoji,
+      tabs: imp.tabs.length,
+      groups: imp.groups,
+      target: target && { name: target.ws.name, by },
+      add: add.length,
+    })),
+    current: all.list.map((x) => ({ name: x.ws.name, open: x.open, failed: x.failed })),
+  };
+}
+
+// Macht die Gruppenschlüssel eines Imports eindeutig. Mit gs merken sich Gruppenmitglieder
+// die URLs ihrer Geschwister, damit recreate(…, join) sie einer schon offenen Gruppe mit
+// gleichem Namen und gleicher Farbe hinzufügt.
+function importEntries(tabs, stamp, withSiblings = false) {
+  const gs = new Map();
+  for (const e of tabs) if (e.g) gs.set(e.g, [...(gs.get(e.g) || []), e.url]);
+  return tabs.map((e) => {
+    if (!e.g) return e;
+    const r = { ...e, g: `${stamp}:${e.g}` };
+    if (withSiblings) r.gs = gs.get(e.g);
+    return r;
+  });
+}
+
+// Angeheftete Tabs werden nur ergänzt, nie geschlossen.
+async function addPinned(list) {
+  if (!list.length) return { added: 0, failed: 0 };
+  const { mains } = await scan();
+  if (!mains.length) {
+    const { backupPinned } = await getBackup();
+    await chrome.storage.local.set({ backupPinned: [...backupPinned, ...list] });
+    return { added: list.length, failed: 0 };
+  }
+  let r;
+  switching++;
+  try {
+    r = await recreate(list, mains[0].id, true);
+  } finally {
+    switching--;
+  }
+  const ws = (await sess()).windowWs[mains[0].id] || (await getConfig()).lastWs;
+  await keepFailed(ws, r.failed.map((e) => ({ ...e, p: true })));
+  return { added: r.ids.length, failed: r.failed.length };
+}
+
+// Übernimmt eine Export-Datei. Die Datei wird vorher vollständig geprüft; ist sie
+// ungültig, ändert sich nichts. 'merge' legt fehlende Workspaces an und ergänzt
+// vorhandene, ohne etwas zu schließen. 'replace' legt alle Workspaces der Datei neu an
+// und löscht danach die bisherigen samt ihren Tabs, deshalb nur mit Bestätigung.
+async function importExchange(text, mode, confirmed) {
+  const data = parseExchange(text, STASH_PAGE);
+  if (mode !== 'merge' && mode !== 'replace') throw new Error('Unbekannte Import-Art.');
+  if (mode === 'replace' && !confirmed) throw new Error('Ersetzen schließt Tabs und muss bestätigt werden.');
+  await resumeSwitch();
+  const all = await collectAll();
+  const plan = planImport(data, all);
+  const stamp = `i${Date.now().toString(36)}`;
+  const cfg = await getConfig();
+  const { backup } = await getBackup();
+  const taken = new Set(cfg.workspaces.map((w) => w.id));
+  const res = { created: 0, merged: 0, added: 0, skipped: 0, failed: 0, removed: 0, closed: 0 };
+
+  // Neuer Workspace, Tabs zunächst nur in der Sicherung. Die ID aus der Datei bleibt,
+  // solange sie hier frei ist, damit ein späterer Import ihn wiedererkennt.
+  const addWs = (imp) => {
+    let id = imp.id && !taken.has(imp.id) ? imp.id : newId();
+    while (taken.has(id)) id = newId();
+    taken.add(id);
+    cfg.workspaces.push({ id, name: imp.name, color: imp.color, emoji: imp.emoji });
+    backup[id] = { stash: importEntries(imp.tabs, stamp), shown: [] };
+    res.created++;
+    res.added += imp.tabs.length;
+    return id;
+  };
+
+  if (mode === 'replace') {
+    const oldIds = cfg.workspaces.map((w) => w.id);
+    const ids = data.workspaces.map(addWs);
+    await chrome.storage.local.set({ backup });
+    await saveWorkspaces(cfg.workspaces);
+    // Erst alle Fenster zum ersten neuen Workspace wechseln, dann die alten löschen
+    for (const w of all.mains) await switchTo(w.id, ids[0]);
+    for (const id of oldIds) await deleteWs(id);
+    await chrome.storage.local.set({ lastWs: ids[0] });
+    res.removed = oldIds.length;
+    res.closed = all.list.reduce((n, x) => n + x.open, 0);
+  } else {
+    for (const m of plan.merge) {
+      if (!m.target) {
+        addWs(m.imp);
+        continue;
+      }
+      res.skipped += m.imp.tabs.length - m.add.length;
+      if (!m.add.length) continue;
+      res.merged++;
+      if (!m.target.live) {
+        const b = (backup[m.target.ws.id] ??= { stash: [], shown: [] });
+        b.stash = [...(b.stash || []), ...importEntries(m.add, stamp)];
+        res.added += m.add.length;
+      }
+    }
+    await chrome.storage.local.set({ backup });
+    await saveWorkspaces(cfg.workspaces);
+    // Workspaces mit Fenster: Tabs gleich dort anlegen, sonst ersetzt der nächste
+    // Snapshot die Sicherung wieder durch die lebenden Tabs.
+    for (const m of plan.merge) {
+      if (!m.target?.live || !m.add.length) continue;
+      let r;
+      switching++;
+      try {
+        r = await recreate(importEntries(m.add, stamp, true), m.target.window, false, true);
+      } finally {
+        switching--;
+      }
+      await keepFailed(m.target.ws.id, r.failed);
+      res.added += r.ids.length;
+      res.failed += r.failed.length;
+    }
+  }
+  const p = await addPinned(plan.pinnedAdd);
+  res.pinned = p.added;
+  res.failed += p.failed;
+  res.pinnedSkipped = data.pinned.length - plan.pinnedAdd.length;
+  await updateAllIcons();
+  await snapshot();
+  return res;
+}
+
 // ---------------------------------------------------------------- Symbole
 
 const iconCache = new Map();
@@ -1207,6 +1434,12 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return serial(() => retryFailed(msg.windowId, msg.wsId));
       case 'dismiss':
         return serial(() => dismissFailed(msg.wsId));
+      case 'export':
+        return serial(exportAll);
+      case 'importPreview':
+        return serial(() => previewImport(msg.text));
+      case 'import':
+        return serial(() => importExchange(msg.text, msg.mode, msg.confirmed));
     }
   };
   run().then(

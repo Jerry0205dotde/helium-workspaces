@@ -263,6 +263,15 @@ addBtn.addEventListener('click', (e) => {
   });
 });
 
+// Export und Import laufen in einem eigenen Popup-Fenster, das zu keinem Workspace gehört
+document.getElementById('transfer').addEventListener('click', () =>
+  run('Wird geöffnet …', 'Export und Import konnten nicht geöffnet werden.', async () => {
+    const url = chrome.runtime.getURL('transfer.html');
+    const [tab] = await chrome.tabs.query({ url });
+    if (tab) await chrome.windows.update(tab.windowId, { focused: true });
+    else await chrome.windows.create({ url, type: 'popup', width: 600, height: 720 });
+  }, { close: true }));
+
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || !state) return;
   const n = Number(e.key);

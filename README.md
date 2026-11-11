@@ -51,6 +51,7 @@ Nach Änderungen am Code die Erweiterung dort neu laden oder Helium neu starten.
 | Workspace anlegen, umbenennen, Farbe oder Emoji ändern, löschen | in der Liste |
 | Reihenfolge ändern | in der Liste ziehen |
 | Tab in einen anderen Workspace schieben | Rechtsklick auf die Seite → **Tab in Workspace verschieben** |
+| Workspaces exportieren oder importieren | in der Liste → **Exportieren / Importieren** |
 
 Gut zu wissen:
 
@@ -58,6 +59,7 @@ Gut zu wissen:
 - Tab-Gruppen bleiben beim Wechseln erhalten.
 - Mehrere Fenster dürfen denselben Workspace zeigen, etwa nach <kbd>Strg</kbd>+<kbd>N</kbd>.
 - Wird das Fenster per X geschlossen, baut die Erweiterung beim nächsten Start alle Workspaces aus ihrer Sicherung wieder auf.
+- Der Export ist eine JSON-Datei mit allen Workspaces samt Reihenfolge, Farben, Emoji, Tabs, Tab-Gruppen und angehefteten Tabs, etwa für ein anderes Gerät oder ein neues Profil. Beim Import wird die Datei erst geprüft und zusammengefasst. **Zusammenführen** ergänzt nur, was fehlt: Ein Workspace mit derselben ID oder demselben Namen bekommt die Tabs dazu, die er noch nicht hat. **Ersetzen** löscht die bisherigen Workspaces samt Tabs und fragt deshalb nach.
 
 ## Einige Hinweise
 
@@ -72,6 +74,7 @@ Nach dem Neuladen der Erweiterung schließt Chromium ihre Seiten, also auch die 
 - [`extension/`](./extension): die Erweiterung (Manifest V3)
   - [`background.js`](./extension/background.js): Wechseln, Sicherung, Abgleich nach Neustart
   - [`popup.html`](./extension/popup.html) / [`popup.js`](./extension/popup.js): die Workspace-Liste
+  - [`transfer.html`](./extension/transfer.html) / [`transfer.js`](./extension/transfer.js): Export und Import, [`exchange.js`](./extension/exchange.js): das Dateiformat und seine Prüfung
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): die Seite, die ein Fenster als Ablage markiert
 - [`kwin/`](./kwin): KWin-Skript, das die Ablage-Fenster versteckt
 - [`install.sh`](./install.sh): Schlüssel erzeugen und KWin-Skript einrichten
