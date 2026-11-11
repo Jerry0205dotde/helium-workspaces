@@ -157,3 +157,54 @@ test('Neustart nur des Service Workers ändert nichts', async () => {
   check(env, ALL);
   await cycle(env);
 });
+
+test('Tastenkürzel direkt nach dem Neuladen nutzt den Workspace des Fensters, nicht den zuletzt benutzten', async () => {
+  const env = await setup(SPEC);
+  const { b, ids } = env;
+  const win2 = (await b.chrome.windows.create({ url: url('x0'), focused: true })).id;
+  await env.w.settle();
+  await ok(env.w.request({ type: 'switch', windowId: win2, wsId: ids.B }));
+  // Fenster 1 zeigt A, zuletzt benutzt wurde B
+  assert.equal(shows(env, env.win), 'A');
+  assert.equal(b.local.data.lastWs, ids.B);
+  const expected = { ...ALL, A: [...SPEC.workspaces.A, 'x0'] };
+  check(env, expected);
+
+  const w = b.reloadExtension();
+  b.fire('commands.onCommand', 'prev-workspace', { windowId: env.win }); // vor dem ersten Abgleich
+  await w.settle();
+  assert.equal(shows(env, env.win), 'C');
+  assert.equal(shows(env, win2), 'B');
+  assert.equal(where(env, 'a1').ws, ids.A);
+  check(env, expected);
+});
+
+test('Neuladen der Erweiterung: Fenster nur mit neuem Tab behält seinen Workspace', async () => {
+  const env = await setup({ ...SPEC, workspaces: { ...SPEC.workspaces, D: [] } });
+  const { b, ids } = env;
+  const expected = { ...ALL, D: [] };
+  const win2 = (await b.chrome.windows.create({ url: NEWTAB, focused: true })).id;
+  await env.w.settle();
+  await ok(env.w.request({ type: 'switch', windowId: win2, wsId: ids.D }));
+  await ok(env.w.request({ type: 'switch', windowId: env.win, wsId: ids.B }));
+  assert.equal(shows(env, win2), 'D');
+  assert.equal(b.local.data.lastWs, ids.B);
+
+  const w = b.reloadExtension();
+  await w.settle();
+  assert.equal(shows(env, env.win), 'B');
+  assert.equal(shows(env, win2), 'D');
+  check(env, expected);
+});
+
+test('Nach einem Browserstart werden gespeicherte Fenster-IDs nicht mehr genutzt', async () => {
+  const env = await setup(SPEC);
+  await env.w.settle();
+  assert.ok(env.b.local.data.backupWindows.every((e) => typeof e.id === 'number'));
+  env.b.restart();
+  const w = env.b.startWorker('startup');
+  await w.advance(0);
+  assert.ok(env.b.local.data.backupWindows.every((e) => e.id === undefined || env.b.mains().some((m) => m.id === e.id)));
+  await w.settle();
+  check(env, ALL);
+});

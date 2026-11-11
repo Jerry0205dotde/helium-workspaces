@@ -62,6 +62,18 @@ function serial(fn) {
   return p;
 }
 
+// Für Aktionen (Popup, Tastenkürzel, Menü): Nach Browserstart oder Neuladen der
+// Erweiterung ist storage.session leer, bis der erste Abgleich gelaufen ist. Bis dahin
+// gälte jedes Fenster als lastWs, deshalb den Abgleich vorziehen. Er läuft nicht schon
+// beim Laden des Skripts, damit onStartup vorher die veralteten Fenster-IDs verwirft.
+function userAction(fn) {
+  return serial(async () => {
+    const { entriesUntil } = await chrome.storage.session.get('entriesUntil');
+    if (entriesUntil === undefined) await reconcile();
+    return fn();
+  });
+}
+
 // Zusammenfassen von Ereignissen, aber spätestens nach maxMs ausführen.
 const timers = {};
 const firstCall = {};
@@ -601,6 +613,7 @@ async function snapshot() {
   for (const w of mains) if (prev[w.id] && !s.windowWs[w.id]) stashWins[w.id] = prev[w.id];
 
   const backupWindows = mains.map((w) => ({
+    id: w.id,
     ws: s.windowWs[w.id],
     urls: movableTabsOf(w).map((t) => t.url || t.pendingUrl),
   }));
@@ -613,8 +626,8 @@ async function snapshot() {
 // ---------------------------------------------------------------- Abgleich
 
 // Ordnet neue Hauptfenster einem Workspace zu. entries sind die beim letzten Mal
-// gesicherten Fenster (Workspace + URLs); jeder Eintrag wird höchstens einmal vergeben.
-// Fenster, die nur geraten zugeordnet wurden (Schritt 3), landen in guessed.
+// gesicherten Fenster (ID, Workspace und URLs); jeder Eintrag wird höchstens einmal vergeben.
+// Fenster, die nur geraten zugeordnet wurden (Schritt 4), landen in guessed.
 function assignWindows(wins, s, cfg, entries, guessed = new Set()) {
   const ids = cfg.workspaces.map((w) => w.id);
   const result = new Map();
@@ -625,12 +638,21 @@ function assignWindows(wins, s, cfg, entries, guessed = new Set()) {
     if (o) result.set(win.id, o);
     else rest.push(win);
   }
-  // 2. Beim Browserstart wiederhergestellte Fenster: über die gesicherten URLs.
+  // 2. Nach Neuladen der Erweiterung: über die gesicherte Fenster-ID. Sie gilt nur
+  //    innerhalb einer Browsersitzung, onStartup entfernt sie deshalb.
+  const used = new Set();
+  for (const win of rest) {
+    const i = entries.findIndex((e, j) => e.id === win.id && !used.has(j) && ids.includes(e.ws));
+    if (i < 0) continue;
+    result.set(win.id, entries[i].ws);
+    used.add(i);
+  }
+  // 3. Beim Browserstart wiederhergestellte Fenster: über die gesicherten URLs.
   //    Seiten, die in mehreren Einträgen vorkommen (z. B. ChatGPT in jedem Workspace),
   //    zählen entsprechend weniger. Vergeben wird nach dem besten Paar über alle
   //    Fenster, nicht der Reihe nach, damit ein Fenster nicht einem anderen den
   //    passenderen Eintrag wegnimmt.
-  const valid = entries.map((e, i) => ({ ...e, i })).filter((e) => ids.includes(e.ws));
+  const valid = entries.map((e, i) => ({ ...e, i })).filter((e) => ids.includes(e.ws) && !used.has(e.i));
   const df = new Map();
   for (const e of valid) for (const u of new Set(e.urls)) df.set(u, (df.get(u) || 0) + 1);
   const urlsOf = (win) =>
@@ -639,6 +661,7 @@ function assignWindows(wins, s, cfg, entries, guessed = new Set()) {
       .filter((u) => u && !u.startsWith('chrome://newtab'));
   const pairs = [];
   for (const win of rest) {
+    if (result.has(win.id)) continue;
     const urls = urlsOf(win);
     for (const e of valid) {
       const left = new Map();
@@ -654,14 +677,13 @@ function assignWindows(wins, s, cfg, entries, guessed = new Set()) {
     }
   }
   pairs.sort((a, b) => b.score - a.score || a.diff - b.diff);
-  const used = new Set();
   for (const p of pairs) {
     if (result.has(p.win) || used.has(p.e.i)) continue;
     result.set(p.win, p.e.ws);
     used.add(p.e.i);
   }
   for (const i of [...used].sort((a, b) => b - a)) entries.splice(i, 1);
-  // 3. Neues Fenster (Strg+N): Workspace des zuletzt benutzten Fensters
+  // 4. Neues Fenster (Strg+N): Workspace des zuletzt benutzten Fensters
   for (const win of rest) {
     if (result.has(win.id)) continue;
     result.set(win.id, cfg.lastWs);
@@ -1353,7 +1375,7 @@ async function buildMenus() {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (!tab || !String(info.menuItemId).startsWith('move:')) return;
   const wsId = String(info.menuItemId).slice(5);
-  serial(() => moveTabToWs(tab.id, wsId));
+  userAction(() => moveTabToWs(tab.id, wsId));
 });
 
 // ---------------------------------------------------------------- Ereignisse
@@ -1424,8 +1446,8 @@ chrome.tabGroups.onUpdated.addListener(() => scheduleSnapshot());
 chrome.commands.onCommand.addListener(async (cmd, tab) => {
   let windowId = tab?.windowId;
   if (!windowId) windowId = (await chrome.windows.getLastFocused({ windowTypes: ['normal'] })).id;
-  if (cmd === 'next-workspace') serial(() => switchRelative(windowId, 1));
-  if (cmd === 'prev-workspace') serial(() => switchRelative(windowId, -1));
+  if (cmd === 'next-workspace') userAction(() => switchRelative(windowId, 1));
+  if (cmd === 'prev-workspace') userAction(() => switchRelative(windowId, -1));
 });
 
 // ---------------------------------------------------------------- Nachrichten (Popup, Ablage-Seite)
@@ -1457,29 +1479,29 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       case 'state':
         return stateFor(msg.windowId);
       case 'switch':
-        return serial(() => switchTo(msg.windowId, msg.wsId));
+        return userAction(() => switchTo(msg.windowId, msg.wsId));
       case 'create': {
-        const ws = await serial(() => createWs(msg.name));
+        const ws = await userAction(() => createWs(msg.name));
         return ws;
       }
       case 'update':
-        return serial(() => updateWs(msg.wsId, msg.patch));
+        return userAction(() => updateWs(msg.wsId, msg.patch));
       case 'reorder':
-        return serial(() => reorderWs(msg.ids));
+        return userAction(() => reorderWs(msg.ids));
       case 'delete':
-        return serial(() => deleteWs(msg.wsId));
+        return userAction(() => deleteWs(msg.wsId));
       case 'moveTab':
-        return serial(() => moveTabToWs(msg.tabId, msg.wsId));
+        return userAction(() => moveTabToWs(msg.tabId, msg.wsId));
       case 'retry':
-        return serial(() => retryFailed(msg.windowId, msg.wsId));
+        return userAction(() => retryFailed(msg.windowId, msg.wsId));
       case 'dismiss':
-        return serial(() => dismissFailed(msg.wsId));
+        return userAction(() => dismissFailed(msg.wsId));
       case 'export':
-        return serial(exportAll);
+        return userAction(exportAll);
       case 'importPreview':
-        return serial(() => previewImport(msg.text));
+        return userAction(() => previewImport(msg.text));
       case 'import':
-        return serial(() => importExchange(msg.text, msg.mode, msg.confirmed));
+        return userAction(() => importExchange(msg.text, msg.mode, msg.confirmed));
     }
   };
   run().then(
@@ -1496,6 +1518,8 @@ chrome.runtime.onStartup.addListener(() =>
   serial(async () => {
     // Fenster- und Tab-IDs gelten nur innerhalb einer Browsersitzung.
     await chrome.storage.local.remove('stashWins');
+    const { backupWindows } = await chrome.storage.local.get('backupWindows');
+    if (backupWindows) await chrome.storage.local.set({ backupWindows: backupWindows.map(({ id, ...e }) => e) });
     await buildMenus();
   }),
 );
