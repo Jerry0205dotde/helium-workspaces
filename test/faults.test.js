@@ -216,12 +216,15 @@ test('Eine Gruppe lässt sich nicht anlegen: Tabs werden aufbewahrt und als Grup
   check(env, ALL);
 });
 
-// Endet der Worker, nachdem b1 angelegt ist, legt der nächste b2 und b3 an
-async function killedWhileRestoring() {
+// Endet der Worker, nachdem b1 angelegt ist, legt der nächste b2 und b3 an. Mit
+// api = 'tabGroups.update' endet er erst, wenn alle Tabs da sind und die Gruppe noch
+// ohne Titel und Farbe ist.
+async function killedWhileRestoring(api = 'tabs.create') {
   const env = await fromBackup();
   const { b } = env;
   const main = b.mains()[0].id;
-  b.fail('tabs.create', { hang: true, after: 1, when: (o) => o.windowId === main });
+  if (api === 'tabs.create') b.fail(api, { hang: true, after: 1, when: (o) => o.windowId === main });
+  else b.fail(api, { hang: true });
   env.w.send({ type: 'switch', windowId: main, wsId: env.ids.B });
   await env.w.settle();
   assert.equal(b.session.data.pendingSwitch?.restoring, true);
@@ -238,9 +241,13 @@ test('Service Worker endet beim Anlegen aus der Sicherung: der Rest wird ohne Do
   check(env, ALL, { groups: false });
 });
 
-test('Service Worker endet beim Anlegen aus der Sicherung: die Gruppe bleibt ganz', { todo: 'Gruppe wird beim Fortsetzen geteilt (#23)' }, async () => {
-  const { env } = await killedWhileRestoring();
-  check(env, ALL);
+test('Service Worker endet beim Anlegen aus der Sicherung: die Gruppe bleibt ganz', async () => {
+  for (const api of ['tabs.create', 'tabGroups.update']) {
+    const { env, main, w } = await killedWhileRestoring(api);
+    check(env, ALL);
+    await ok(w.request({ type: 'switch', windowId: main, wsId: env.ids.A }));
+    check(env, ALL);
+  }
 });
 
 test('Scheiternder Speicherzugriff beim Sichern hinterlässt keine halbe Sicherung', async () => {
