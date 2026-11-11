@@ -133,6 +133,22 @@ li.editing .icon-btn.placeholder { visibility: hidden; pointer-events: none; }
   font: inherit;
 }
 .add:hover { background: var(--hover); color: var(--fg); }
+fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+body.busy .row, body.busy .add { cursor: progress; }
+fieldset:disabled .row:hover, fieldset:disabled .add:hover { background: transparent; }
+fieldset:disabled .add:hover { color: var(--muted); }
+.error {
+  margin: 0 0 6px;
+  padding: 8px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  color: var(--fg);
+}
+.error p { margin: 0 0 6px; }
+.error .msg { color: var(--danger); font-weight: 600; }
+.error .detail { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.error p:last-child { margin-bottom: 0; }
+body.busy footer .hint { display: none; }
 footer {
   margin-top: 4px;
   padding: 6px 8px 2px;
