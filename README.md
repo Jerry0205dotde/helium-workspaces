@@ -1,46 +1,48 @@
 # Helium Workspaces
 
-Helium Workspaces bringt Arbeitsbereiche wie in Opera in den [Helium-Browser](https://github.com/imputnet/helium-linux): mehrere Tab-Sätze im selben Fenster, umschaltbar per Klick oder Tastenkürzel. Beim Wechseln wird nichts neu geladen, Videos und Logins laufen einfach weiter.
+**English** · [Deutsch](./README.de.md)
 
-Besteht aus einer Browser-Erweiterung und einem kleinen KWin-Skript für KDE Plasma.
+Helium Workspaces brings Opera-style workspaces to the [Helium browser](https://github.com/imputnet/helium-linux): several sets of tabs in the same window, switchable by click or keyboard shortcut. Nothing reloads when you switch, so videos and logins simply keep going.
 
-## „Warum nicht einfach Profile?“
+It consists of a browser extension and a small KWin script for KDE Plasma.
 
-Profile trennen alles: Logins, Verlauf, Erweiterungen, und jedes Profil braucht ein eigenes Fenster. Ich wollte nur die Tabs trennen, zum Beispiel „Ich“ und „Uni“, und trotzdem überall eingeloggt bleiben.
+## "Why not just use profiles?"
 
-Helium hat das nicht eingebaut, also habe ich es gebaut.
+Profiles separate everything: logins, history, extensions, and every profile needs its own window. I only wanted to separate the tabs, for example "Me" and "Uni", and still stay logged in everywhere.
 
-## So funktioniert's
+Helium doesn't have that built in, so I built it.
 
-Jedes normale Fenster zeigt genau einen Workspace. Die Tabs der gerade nicht gezeigten Workspaces liegen in versteckten **Ablage-Fenstern**, eins pro Workspace. Beim Wechseln werden die Tabs zwischen den Fenstern verschoben, nicht geschlossen. Deshalb bleiben sie geladen.
+## How it works
 
-Drei Teile arbeiten zusammen:
+Every normal window shows exactly one workspace. The tabs of the workspaces that are not shown live in hidden **stash windows**, one per workspace. Switching moves the tabs between the windows instead of closing them. That is why they stay loaded.
 
-- **Die Erweiterung** (Ordner `extension/`) verschiebt die Tabs und legt die Ablage-Fenster an. Der erste, angeheftete Tab jeder Ablage ist eine Seite der Erweiterung. Sie setzt den Fenstertitel auf `HWS-Ablage <Schlüssel> · <Workspace-Name>`.
-- **Der Schlüssel** steht in `extension/token.js`. `install.sh` erzeugt ihn einmal pro Gerät und trägt ihn auch in die KWin-Einstellungen (`kwinrc`) ein.
-- **Das KWin-Skript** (Ordner `kwin/`) sucht Helium-Fenster, deren Titel mit diesem Schlüssel beginnt. Es nimmt sie aus Taskleiste, Alt+Tab, Übersicht und Pager und hält sie minimiert. Eine Webseite kann sich deshalb nicht als Ablage ausgeben, denn sie kennt den Schlüssel nicht.
+Three parts work together:
 
-### Grenzen
+- **The extension** (folder `extension/`) moves the tabs and creates the stash windows. The first, pinned tab of every stash is a page of the extension. It sets the window title to `HWS-Ablage <key> · <workspace name>`.
+- **The key** is stored in `extension/token.js`. `install.sh` generates it once per device and also writes it to the KWin settings (`kwinrc`).
+- **The KWin script** (folder `kwin/`) looks for Helium windows whose title starts with this key. It removes them from the taskbar, Alt+Tab, the overview and the pager and keeps them minimized. A website therefore cannot pose as a stash, because it does not know the key.
 
-- Tabs in Ablagen bleiben geladen. Sie brauchen weiter Arbeitsspeicher, und Videos oder Musik laufen im Hintergrund weiter.
-- Angeheftete Tabs gehören zu allen Workspaces und bleiben immer im Hauptfenster.
-- Mehrere Fenster können denselben Workspace zeigen, etwa nach <kbd>Strg</kbd>+<kbd>N</kbd>.
-- Inkognito-Fenster werden nicht berücksichtigt.
-- Ohne das KWin-Skript funktioniert die Erweiterung auch, die Ablage-Fenster sind dann aber als minimierte Fenster sichtbar.
+### Limitations
 
-## Voraussetzungen
+- Tabs in stashes stay loaded. They keep using memory, and videos or music keep playing in the background.
+- Pinned tabs belong to all workspaces and always stay in the main window.
+- Several windows can show the same workspace, for example after <kbd>Ctrl</kbd>+<kbd>N</kbd>.
+- Incognito windows are not handled.
+- The extension also works without the KWin script, but the stash windows are then visible as minimized windows.
 
-- [Helium](https://github.com/imputnet/helium-linux) unter Linux. Getestet mit Helium 0.21.
-- KDE Plasma 6 mit KWin 6, unter Wayland oder X11. Andere Desktops verstecken die Ablage-Fenster nicht.
-- Für `install.sh`: `bash`, `od` und `sed` sowie `kpackagetool6`, `kwriteconfig6` und `qdbus6`. Bei Arch heißen die Pakete `coreutils`, `sed`, `kpackage`, `kconfig` und `qt6-tools`.
-- Eine laufende Plasma-Sitzung. `install.sh` lädt das Skript über den D-Bus dieser Sitzung direkt in KWin. Am sichersten in einem Terminal innerhalb der Sitzung starten.
-- In Helium unter *Einstellungen → Beim Start* die Option **„Dort weitermachen, wo ich aufgehört habe“**. Mit einer anderen Starteinstellung stellt Helium die Ablage-Fenster beim Start nicht wieder her. Die Erweiterung baut die Workspaces dann aus ihrer Sicherung neu auf, die Tabs laden dabei aber neu und verlieren ihren Verlauf (siehe [Was erhalten bleibt](#was-erhalten-bleibt)).
+## Requirements
+
+- [Helium](https://github.com/imputnet/helium-linux) on Linux. Tested with Helium 0.21.
+- KDE Plasma 6 with KWin 6, on Wayland or X11. Other desktops do not hide the stash windows.
+- For `install.sh`: `bash`, `od` and `sed` as well as `kpackagetool6`, `kwriteconfig6` and `qdbus6`. On Arch the packages are called `coreutils`, `sed`, `kpackage`, `kconfig` and `qt6-tools`.
+- A running Plasma session. `install.sh` loads the script straight into KWin over the D-Bus of that session. The safest way is to run it in a terminal inside the session.
+- In Helium, under *Settings → On startup*, the option **"Continue where you left off"**. With any other startup setting Helium does not restore the stash windows on startup. The extension then rebuilds the workspaces from its backup, but the tabs reload and lose their history (see [What is preserved](#what-is-preserved)).
 
 ## Installation
 
-### Erstinstallation
+### First installation
 
-1. Repository klonen und darin den Schlüssel erzeugen und das KWin-Skript einrichten:
+1. Clone the repository, then generate the key and set up the KWin script inside it:
 
    ```bash
    git clone https://github.com/Jerry0205dotde/helium-workspaces.git
@@ -48,17 +50,17 @@ Drei Teile arbeiten zusammen:
    ./install.sh
    ```
 
-   Am Ende steht `Fertig.`. Danach gibt es `extension/token.js`, und das KWin-Skript ist installiert, aktiviert und geladen.
-2. In Helium `chrome://extensions` öffnen und oben rechts den **Entwicklermodus** einschalten.
-3. **Entpackte Erweiterung laden** wählen und den Ordner `extension/` aus dem Repository auswählen.
-4. Den Workspace-Button in der Symbolleiste anheften.
-5. Zum Prüfen einen zweiten Workspace anlegen und hin- und herwechseln. In der Taskleiste darf kein zusätzliches Helium-Fenster auftauchen.
+   The last line of output starts with `Fertig.` ("Done."). After that `extension/token.js` exists, and the KWin script is installed, enabled and loaded.
+2. Open `chrome://extensions` in Helium and turn on **Developer mode** in the top right.
+3. Choose **Load unpacked** and select the folder `extension/` from the repository.
+4. Pin the workspace button to the toolbar.
+5. To check, create a second workspace and switch back and forth. No additional Helium window may appear in the taskbar.
 
-Den Ordner nach dem Laden nicht verschieben. Helium lädt die Erweiterung bei jedem Start aus genau diesem Ordner. Den Entwicklermodus eingeschaltet lassen. Ohne ihn deaktiviert Helium entpackte Erweiterungen.
+Do not move the folder after loading it. Helium loads the extension from exactly this folder on every start. Leave developer mode turned on. Without it Helium disables unpacked extensions.
 
-### Aktualisieren
+### Updating
 
-1. Neuen Stand holen und das Skript erneut ausführen:
+1. Fetch the new version and run the script again:
 
    ```bash
    cd helium-workspaces
@@ -66,104 +68,108 @@ Den Ordner nach dem Laden nicht verschieben. Helium lädt die Erweiterung bei je
    ./install.sh
    ```
 
-   `install.sh` behält den vorhandenen Schlüssel und aktualisiert nur das KWin-Skript.
-2. In `chrome://extensions` bei „Workspaces“ auf **Neu laden** (Kreispfeil) klicken. Alternativ Helium neu starten.
+   `install.sh` keeps the existing key and only updates the KWin script.
+2. In `chrome://extensions`, click **Reload** (the circular arrow) on "Workspaces". Alternatively, restart Helium.
 
-Beim Neuladen schließt Chromium alle Seiten der Erweiterung, auch die Ablage-Markierungen. Die Ablage-Fenster tauchen dann kurz in der Taskleiste auf, bis die Erweiterung sie nach ein bis zwei Sekunden wieder markiert. Die Tabs bleiben dabei, wo sie sind.
+When reloading, Chromium closes all pages of the extension, including the stash markers. The stash windows then show up in the taskbar briefly until the extension marks them again after one or two seconds. The tabs stay where they are.
 
-Die Erweiterung zum Aktualisieren nicht entfernen und neu hinzufügen. Beim Entfernen löscht Helium alle Workspaces und die Sicherung.
+Do not remove and re-add the extension to update it. When it is removed, Helium deletes all workspaces and the backup.
 
-### Der Schlüssel `token.js`
+### The key `token.js`
 
-`extension/token.js` entsteht beim ersten Lauf von `install.sh` auf dem jeweiligen Gerät und steht in `.gitignore`. Die Datei nicht committen und nicht auf andere Geräte kopieren. Jedes Gerät bekommt seinen eigenen Schlüssel, indem dort `install.sh` läuft. Passt der Schlüssel in `token.js` nicht zu dem in `kwinrc`, bleiben die Ablage-Fenster sichtbar.
+`extension/token.js` is created on the first run of `install.sh` on each device and is listed in `.gitignore`. Do not commit the file and do not copy it to other devices. Every device gets its own key by running `install.sh` there. If the key in `token.js` does not match the one in `kwinrc`, the stash windows stay visible.
 
-Workspaces auf ein anderes Gerät bringt der Export (siehe unten). Er enthält den Schlüssel nicht.
+To bring workspaces to another device, use the export (see below). It does not contain the key.
 
-## Benutzung
+## Usage
 
-| Aktion | So geht's |
+The extension's interface is in German. This README quotes its labels as they appear on screen, followed by a translation.
+
+| Action | How |
 | --- | --- |
-| Workspace-Liste öffnen | Button in der Symbolleiste oder <kbd>Alt</kbd>+<kbd>W</kbd> |
-| Nächster / vorheriger Workspace | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>→</kbd> / <kbd>←</kbd> |
-| Workspace anlegen, umbenennen, Farbe oder Emoji ändern, löschen | in der Liste |
-| Reihenfolge ändern | in der Liste ziehen |
-| Tab in einen anderen Workspace schieben | Rechtsklick auf die Seite → **Tab in Workspace verschieben** |
-| Workspaces exportieren oder importieren | in der Liste → **Exportieren / Importieren** |
+| Open the workspace list | Toolbar button or <kbd>Alt</kbd>+<kbd>W</kbd> |
+| Next / previous workspace | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>→</kbd> / <kbd>←</kbd> |
+| Create a workspace, rename it, change its color or emoji, delete it | in the list |
+| Change the order | drag in the list |
+| Move a tab to another workspace | Right-click the page → **Tab in Workspace verschieben** ("Move tab to workspace") |
+| Export or import workspaces | in the list → **Exportieren / Importieren** ("Export / Import") |
 
-Gut zu wissen:
+Good to know:
 
-- Die Liste lässt sich komplett per Tastatur bedienen: <kbd>Tab</kbd> zum Springen, <kbd>Enter</kbd> zum Auswählen, <kbd>1</kbd>–<kbd>9</kbd> wechselt direkt, <kbd>Esc</kbd> schließt den Editor. Umsortieren geht im Editor mit ↑ / ↓.
-- Angeheftete Tabs gehören zu allen Workspaces und bleiben immer im Fenster.
-- Tab-Gruppen bleiben beim Wechseln erhalten.
-- Mehrere Fenster dürfen denselben Workspace zeigen, etwa nach <kbd>Strg</kbd>+<kbd>N</kbd>.
-- Wird das Fenster per X geschlossen, baut die Erweiterung beim nächsten Start alle Workspaces aus ihrer Sicherung wieder auf.
-- Der Export ist eine JSON-Datei mit allen Workspaces samt Reihenfolge, Farben, Emoji, Tabs, Tab-Gruppen und angehefteten Tabs, etwa für ein anderes Gerät oder ein neues Profil. Beim Import wird die Datei erst geprüft und zusammengefasst. **Zusammenführen** ergänzt nur, was fehlt: Ein Workspace mit derselben ID oder demselben Namen bekommt die Tabs dazu, die er noch nicht hat. **Ersetzen** löscht die bisherigen Workspaces samt Tabs und fragt deshalb nach.
+- The list can be used entirely by keyboard: <kbd>Tab</kbd> to move, <kbd>Enter</kbd> to select, <kbd>1</kbd>–<kbd>9</kbd> switches directly, <kbd>Esc</kbd> closes the editor. Reordering works in the editor with ↑ / ↓.
+- Pinned tabs belong to all workspaces and always stay in the window.
+- Tab groups survive switching.
+- Several windows may show the same workspace, for example after <kbd>Ctrl</kbd>+<kbd>N</kbd>.
+- If the window is closed with the X button, the extension rebuilds all workspaces from its backup on the next start.
+- The export is a JSON file with all workspaces including order, colors, emoji, tabs, tab groups and pinned tabs, for example for another device or a new profile. On import the file is first checked and summarized. **Zusammenführen** ("Merge") only adds what is missing: a workspace with the same ID or the same name gets the tabs it does not have yet. **Ersetzen** ("Replace") deletes the existing workspaces including their tabs and therefore asks for confirmation.
 
-## Was erhalten bleibt
+## What is preserved
 
-Die Erweiterung speichert dauerhaft im Profil:
+The extension stores permanently in the profile:
 
-- die Workspaces mit Name, Farbe, Emoji und Reihenfolge sowie den zuletzt benutzten Workspace,
-- eine Sicherung aller Tabs mit Adresse, Titel und Tab-Gruppe sowie der angehefteten Tabs.
+- the workspaces with name, color, emoji and order as well as the workspace used last,
+- a backup of all tabs with address, title and tab group, plus the pinned tabs.
 
-Nur innerhalb der laufenden Browsersitzung gibt es:
+Only within the running browser session:
 
-- welches Fenster welchen Workspace zeigt und welcher Tab in jedem Workspace zuletzt aktiv war,
-- den Zustand der geladenen Seiten: laufende Videos, Scrollposition, Formulareingaben und der Zurück-Verlauf jedes Tabs, solange er nicht neu angelegt wird.
+- which window shows which workspace and which tab was last active in each workspace,
+- the state of the loaded pages: playing videos, scroll position, form input and the back history of every tab, as long as it is not created anew.
 
-Nach einem Neustart mit „Dort weitermachen, wo ich aufgehört habe“ stellt Helium alle Fenster samt Ablagen selbst wieder her, mit Verlauf. Die Erweiterung ordnet die Fenster in den ersten 20 Sekunden anhand ihrer Adressen wieder den Workspaces zu. Die Seiten laden dabei wie nach jedem Browser-Neustart neu.
+After a restart with "Continue where you left off", Helium itself restores all windows including the stashes, with history. During the first 20 seconds the extension assigns the windows back to the workspaces based on their addresses. The pages reload as they do after any browser restart.
 
-Aus der Sicherung neu aufgebaut wird ein Workspace, wenn sein Fenster fehlt: nach einem Start mit einer anderen Starteinstellung, nach dem Schließen des letzten Fensters per X oder beim Import. Dann kommen nur Adresse, Titel, Gruppe und angeheftete Tabs zurück. Die Seiten laden neu, haben keinen Zurück-Verlauf, und ungespeicherte Eingaben sind weg. Logins bleiben, weil Cookies zum Profil gehören.
+A workspace is rebuilt from the backup when its window is missing: after a start with a different startup setting, after closing the last window with the X button, or on import. Then only address, title, group and pinned tabs come back. The pages reload, have no back history, and unsaved input is gone. Logins stay, because cookies belong to the profile.
 
-Helium (bzw. Chromium) verliert beim Neustart gelegentlich einen Tab, wenn er genau beim Neuschreiben der Sitzungsdatei zwischen zwei Fenstern verschoben wurde. Die Erweiterung erkennt das beim Start und legt fehlende Tabs an derselben Stelle neu an. Solche Tabs laden dann neu und haben keinen Zurück-Verlauf mehr.
+Helium (or rather Chromium) occasionally loses a tab on restart if it was being moved between two windows at the very moment the session file was rewritten. The extension detects this on startup and recreates missing tabs in the same position. Such tabs then reload and no longer have a back history.
 
-## Probleme beheben
+## Troubleshooting
 
-### Ablage-Fenster sind in Taskleiste oder Alt+Tab zu sehen
+### Stash windows are visible in the taskbar or Alt+Tab
 
-Ein sichtbares Ablage-Fenster hat einen Titel wie `HWS-Ablage 3f9c… · Uni` und als ersten Tab die Seite „Workspace-Ablage“. Nicht schließen, sonst sind die Tabs dieses Workspace zu. Der Reihe nach prüfen:
+A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its first tab is the page "Workspace-Ablage" ("workspace stash"). Do not close it, or the tabs of that workspace are closed. Check in this order:
 
-1. Läuft das KWin-Skript?
+1. Is the KWin script running?
 
    ```bash
    qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces
    ```
 
-   Steht dort nicht `true`, `./install.sh` erneut ausführen. Es installiert, aktiviert und lädt das Skript.
-2. Stimmen die Schlüssel überein?
+   If the output is not `true`, run `./install.sh` again. It installs, enables and loads the script.
+2. Do the keys match?
 
    ```bash
    cat extension/token.js
    kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token
    ```
 
-   Beide Ausgaben müssen denselben Schlüssel enthalten, und der Fenstertitel muss ihn nach `HWS-Ablage` zeigen. Steht im Titel kein Schlüssel (`HWS-Ablage · Uni`), fehlt `token.js` oder die Erweiterung wurde ohne sie geladen.
-3. Zum Reparieren `./install.sh` ausführen und danach die Erweiterung in `chrome://extensions` neu laden. Erst durch das Neuladen übernehmen die Ablagen einen neuen Schlüssel. Nach ein bis zwei Sekunden verschwinden sie aus der Taskleiste.
+   Both outputs must contain the same key, and the window title must show it after `HWS-Ablage`. If the title contains no key (`HWS-Ablage · Uni`), `token.js` is missing or the extension was loaded without it.
+3. To repair, run `./install.sh` and then reload the extension in `chrome://extensions`. Only the reload makes the stashes pick up a new key. After one or two seconds they disappear from the taskbar.
 
-### `install.sh` bricht ab
+### `install.sh` aborts
 
-- **`Kommando nicht gefunden`** bzw. **`command not found`**: Ein Programm aus den [Voraussetzungen](#voraussetzungen) fehlt.
-- **`Ungültige …/token.js`**: Die Datei ist beschädigt oder wurde von Hand geändert. Sie löschen und `./install.sh` erneut ausführen. Das erzeugt einen neuen Schlüssel. Danach die Erweiterung neu laden.
-- **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** oder **`KWin-Skript wurde nicht geladen`**: `install.sh` erreicht KWin nicht, etwa über SSH oder in einer Textkonsole. Das Skript ist dann schon installiert, aber nicht geladen. In einem Terminal in der Plasma-Sitzung erneut starten.
+The messages of `install.sh` itself are in German.
 
-### Tabs fehlen nach einem Neustart
+- **`command not found`** or **`Kommando nicht gefunden`**: a program from the [requirements](#requirements) is missing.
+- **`Ungültige …/token.js`** ("invalid …/token.js"): the file is damaged or was edited by hand. Delete it and run `./install.sh` again. That generates a new key. Then reload the extension.
+- **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** or **`KWin-Skript wurde nicht geladen`** ("KWin script was not loaded"): `install.sh` cannot reach KWin, for example over SSH or in a text console. The script is then already installed but not loaded. Run it again in a terminal inside the Plasma session.
 
-Zeigt die Workspace-Liste „… Tabs nicht wiederhergestellt“, konnte Helium diese Tabs nicht neu anlegen. **Erneut versuchen** wechselt in den Workspace und legt sie noch einmal an. Fehlen Tabs ohne diesen Hinweis, kurz warten. Die Zuordnung nach dem Start dauert bis zu 20 Sekunden.
+### Tabs are missing after a restart
 
-### Die Erweiterung ist deaktiviert oder reagiert nicht
+If the workspace list shows "… Tabs nicht wiederhergestellt" ("… tabs not restored"), Helium could not recreate these tabs. **Erneut versuchen** ("Try again") switches to the workspace and creates them once more. If tabs are missing without this notice, wait a moment. The assignment after startup takes up to 20 seconds.
 
-Ist die Erweiterung in `chrome://extensions` ausgeschaltet, war meist der Entwicklermodus aus. Die Ablage-Fenster stehen dann in der Taskleiste. Den Entwicklermodus wieder einschalten, dann ist die Erweiterung wieder aktiv und markiert die Ablagen neu.
+### The extension is disabled or does not respond
 
-Sonst bei „Workspaces“ auf **Fehler** oder auf **Service Worker** klicken. Meldungen der Erweiterung beginnen mit `[workspaces]`. Oft hilft **Neu laden**, die Tabs bleiben dabei erhalten.
+If the extension is switched off in `chrome://extensions`, developer mode was usually off. The stash windows are then in the taskbar. Turn developer mode back on; the extension is then active again and marks the stashes anew.
 
-## Deinstallieren
+Otherwise click **Errors** or **service worker** on "Workspaces". Messages of the extension start with `[workspaces]`. **Reload** often helps, and the tabs are kept.
 
-Ohne die Erweiterung verlieren die Ablage-Fenster ihre Markierung, ihre Tabs bleiben aber in den Fenstern. Nur das laufende KWin-Skript holt diese Fenster zurück in die Taskleiste. Damit keine Tabs unsichtbar weiterlaufen, die Reihenfolge einhalten:
+## Uninstalling
 
-1. **Sichern.** In der Workspace-Liste **Exportieren / Importieren** öffnen und den Export speichern.
-2. **Alle Workspaces einmal anzeigen.** Einmal durch alle Workspaces wechseln, damit jeder als Fenster existiert. Workspaces, die nur in der Sicherung stehen (zum Beispiel nach einem Start mit neuer Tab-Seite), werden dabei angelegt. Hinweise „Tabs nicht wiederhergestellt“ mit **Erneut versuchen** erledigen.
-3. **Ablagen sichtbar machen.** In `chrome://extensions` die Erweiterung mit dem Schalter **deaktivieren**, noch nicht entfernen. Das KWin-Skript bringt die Ablage-Fenster daraufhin zurück in Taskleiste und Alt+Tab. Sie bleiben minimiert, bis man sie anklickt. Jedes Fenster enthält die Tabs eines Workspace. Die Tabs nach Wunsch zusammenführen oder schließen. Übrig gebliebene Tabs mit der Adresse `chrome-extension://…/stash.html#…` sind leer und können zu.
-4. **KWin-Skript entfernen.** Erst jetzt, denn ohne laufendes Skript tauchen versteckte Fenster nicht wieder auf:
+Without the extension the stash windows lose their marker, but their tabs stay in the windows. Only the running KWin script brings these windows back to the taskbar. To make sure no tabs keep running invisibly, follow this order:
+
+1. **Back up.** In the workspace list, open **Exportieren / Importieren** ("Export / Import") and save the export.
+2. **Show every workspace once.** Switch through all workspaces once so that each one exists as a window. Workspaces that only exist in the backup (for example after a start with the new tab page) are created in the process. Resolve "Tabs nicht wiederhergestellt" notices with **Erneut versuchen**.
+3. **Make the stashes visible.** In `chrome://extensions`, **disable** the extension with the toggle; do not remove it yet. The KWin script then brings the stash windows back to the taskbar and Alt+Tab. They stay minimized until you click them. Each window contains the tabs of one workspace. Merge or close the tabs as you like. Leftover tabs with the address `chrome-extension://…/stash.html#…` are empty and can be closed.
+4. **Remove the KWin script.** Only now, because hidden windows do not reappear without the running script:
 
    ```bash
    qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces
@@ -172,37 +178,37 @@ Ohne die Erweiterung verlieren die Ablage-Fenster ihre Markierung, ihre Tabs ble
    kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
    ```
 
-   Wurde das Skript zu früh entfernt, Helium beenden und neu starten. Danach sind die Fenster wieder normal sichtbar.
-5. **Erweiterung entfernen.** In `chrome://extensions` bei „Workspaces“ auf **Entfernen** klicken. Das löscht die Workspaces und die Sicherung aus dem Profil. Danach kann der Repository-Ordner samt `token.js` gelöscht werden.
+   If the script was removed too early, quit Helium and start it again. After that the windows are visible normally again.
+5. **Remove the extension.** In `chrome://extensions`, click **Remove** on "Workspaces". This deletes the workspaces and the backup from the profile. After that the repository folder including `token.js` can be deleted.
 
-## Einige Hinweise
+## A few notes
 
-Das ist ein privates Bastelprojekt. Rechne mit Fehlern.
+This is a private hobby project. Expect bugs.
 
-## Testen
+## Testing
 
 ```bash
 node --test test/*.test.js
 ```
 
-Braucht nur Node.js ab Version 22, keinen Browser und kein KWin. Die Tests laden `background.js` unverändert in eine Nachbildung der Chrome-APIs und spielen damit Wechsel mit Gruppen und angehefteten Tabs, mehrere Fenster, Neustarts mit und ohne Sitzungswiederherstellung, das Neuladen der Erweiterung, gezielt scheiternde API-Aufrufe und schnell aufeinanderfolgende Änderungen durch. Dazu kommen Syntax, Manifest und KWin-Metadaten. Dieselben Prüfungen laufen in der CI bei jedem Pull Request.
+This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls and changes in quick succession. On top of that come syntax, manifest and KWin metadata. The same checks run in CI on every pull request.
 
-Die Verbindung zu Helium und KWin prüfen die Tests nicht. Nach Änderungen daran kurz von Hand:
+The tests do not check the connection to Helium and KWin. After changing that, briefly check by hand:
 
-1. `./install.sh` ausführen und die Erweiterung unter `chrome://extensions` neu laden.
-2. Zwei Workspaces mit einigen Tabs, einer Tab-Gruppe und einem angehefteten Tab einrichten und in einem davon ein Video starten.
-3. Ein paar Mal hin und her wechseln: Das Video läuft weiter, Gruppe und angehefteter Tab bleiben, und kein Ablage-Fenster taucht in Taskleiste, <kbd>Alt</kbd>+<kbd>Tab</kbd> oder Übersicht auf.
-4. Die Erweiterung unter `chrome://extensions` neu laden: Nach etwa einer Sekunde sind die Ablage-Fenster wieder versteckt, Wechseln geht weiter.
-5. Helium beenden und neu starten: Alle Workspaces sind vollständig da, die Ablage-Fenster bleiben versteckt.
-6. Das Fenster per X schließen und Helium neu starten: Alle Workspaces werden wieder aufgebaut.
+1. Run `./install.sh` and reload the extension in `chrome://extensions`.
+2. Set up two workspaces with a few tabs, a tab group and a pinned tab, and start a video in one of them.
+3. Switch back and forth a few times: the video keeps playing, the group and the pinned tab stay, and no stash window appears in the taskbar, <kbd>Alt</kbd>+<kbd>Tab</kbd> or the overview.
+4. Reload the extension in `chrome://extensions`: after about a second the stash windows are hidden again, and switching still works.
+5. Quit Helium and start it again: all workspaces are complete, and the stash windows stay hidden.
+6. Close the window with the X button and restart Helium: all workspaces are rebuilt.
 
-## Aufbau
+## Structure
 
-- [`extension/`](./extension): die Erweiterung (Manifest V3)
-  - [`background.js`](./extension/background.js): Wechseln, Sicherung, Abgleich nach Neustart
-  - [`popup.html`](./extension/popup.html) / [`popup.js`](./extension/popup.js): die Workspace-Liste
-  - [`transfer.html`](./extension/transfer.html) / [`transfer.js`](./extension/transfer.js): Export und Import, [`exchange.js`](./extension/exchange.js): das Dateiformat und seine Prüfung
-  - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): die Seite, die ein Fenster als Ablage markiert
-- [`kwin/`](./kwin): KWin-Skript, das die Ablage-Fenster versteckt
-- [`install.sh`](./install.sh): Schlüssel erzeugen und KWin-Skript einrichten
-- [`test/`](./test): automatische Tests, [`fake-browser.js`](./test/fake-browser.js) bildet die Chrome-APIs nach
+- [`extension/`](./extension): the extension (Manifest V3)
+  - [`background.js`](./extension/background.js): switching, backup, reconciliation after a restart
+  - [`popup.html`](./extension/popup.html) / [`popup.js`](./extension/popup.js): the workspace list
+  - [`transfer.html`](./extension/transfer.html) / [`transfer.js`](./extension/transfer.js): export and import, [`exchange.js`](./extension/exchange.js): the file format and its validation
+  - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): the page that marks a window as a stash
+- [`kwin/`](./kwin): KWin script that hides the stash windows
+- [`install.sh`](./install.sh): generate the key and set up the KWin script
+- [`test/`](./test): automated tests, [`fake-browser.js`](./test/fake-browser.js) replicates the Chrome APIs
