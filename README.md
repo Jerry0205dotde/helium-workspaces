@@ -55,6 +55,7 @@ Nach Änderungen am Code die Erweiterung dort neu laden oder Helium neu starten.
 
 Gut zu wissen:
 
+- Die Liste lässt sich komplett per Tastatur bedienen: <kbd>Tab</kbd> zum Springen, <kbd>Enter</kbd> zum Auswählen, <kbd>1</kbd>–<kbd>9</kbd> wechselt direkt, <kbd>Esc</kbd> schließt den Editor. Umsortieren geht im Editor mit ↑ / ↓.
 - Angeheftete Tabs gehören zu allen Workspaces und bleiben immer im Fenster.
 - Tab-Gruppen bleiben beim Wechseln erhalten.
 - Mehrere Fenster dürfen denselben Workspace zeigen, etwa nach <kbd>Strg</kbd>+<kbd>N</kbd>.
