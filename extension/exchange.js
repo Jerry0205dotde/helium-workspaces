@@ -23,19 +23,32 @@ const EXCHANGE_VERSION = 1;
 const GROUP_COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
 const EXCHANGE_LIMITS = { workspaces: 500, tabs: 20000, url: 2 * 1024 * 1024, text: 10000 };
 
+// Seiten dieser Erweiterung (Ablage, Popup, diese Seite) gehören nicht in den Austausch.
+// Verglichen wird der Host der geparsten Adresse, damit Schreibweisen wie ./stash.html
+// oder Großbuchstaben nicht an der Prüfung vorbeikommen.
+function isOwnPage(url, extOrigin) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'chrome-extension:' && u.host.toLowerCase() === new URL(extOrigin).host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 // list: [{ ws, entries }] mit Einträgen im Sicherungsformat (url, title, g, gt, gc, gx).
 // Der Gruppenschlüssel g muss innerhalb eines Workspace eine Gruppe eindeutig benennen.
-function buildExchange(list, pinned) {
+function buildExchange(list, pinned, extOrigin) {
+  const keep = (e) => e.url && !isOwnPage(e.url, extOrigin);
   return {
     format: EXCHANGE_FORMAT,
     version: EXCHANGE_VERSION,
     exported: new Date().toISOString(),
-    pinned: pinned.filter((e) => e.url).map((e) => ({ url: e.url, title: e.title || '' })),
+    pinned: pinned.filter(keep).map((e) => ({ url: e.url, title: e.title || '' })),
     workspaces: list.map(({ ws, entries }) => {
       const groups = [];
       const ids = new Map();
       const tabs = entries
-        .filter((e) => e.url)
+        .filter(keep)
         .map((e) => {
           const t = { url: e.url, title: e.title || '' };
           if (e.g) {
@@ -58,7 +71,7 @@ function buildExchange(list, pinned) {
 // geändert wird. Ergebnis: { exported, pinned: [{url, title}], workspaces: [{ id | null,
 // name, color, emoji, groups, tabs }] }, Tabs im Sicherungsformat. Ihr Gruppenschlüssel g
 // ist "<Workspace-Nr.>:<Gruppen-ID>" und muss beim Übernehmen noch eindeutig gemacht werden.
-function parseExchange(text, stashPage) {
+function parseExchange(text, extOrigin) {
   let data;
   try {
     data = JSON.parse(text);
@@ -89,7 +102,7 @@ function parseExchange(text, stashPage) {
       fail(where, `„${v.slice(0, 80)}“ ist keine gültige Adresse.`);
     }
     if (u.protocol === 'javascript:') fail(where, 'javascript:-Adressen werden nicht importiert.');
-    if (v.startsWith(stashPage)) fail(where, 'Ablage-Seiten der Erweiterung gehören nicht in die Datei.');
+    if (isOwnPage(v, extOrigin)) fail(where, 'Seiten der Erweiterung selbst gehören nicht in die Datei.');
     return v;
   };
 

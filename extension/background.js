@@ -1054,21 +1054,35 @@ async function collectAll() {
       pinnedFailed: failed.filter((e) => e.p),
     };
   });
-  const pinned = mains.length ? mains[0].tabs.filter((t) => t.pinned).map((t) => serTab(t, groups)) : backupPinned;
-  return { cfg, mains, list, pinned: [...pinned, ...list.flatMap((x) => x.pinnedFailed)].filter((e) => e.url) };
+  // Angeheftete Tabs aller Hauptfenster; was ein früheres Fenster schon hat, zählt einmal
+  let pinnedOpen = backupPinned;
+  if (mains.length) {
+    pinnedOpen = [];
+    const seen = new Set();
+    for (const w of mains) {
+      const own = w.tabs.filter((t) => t.pinned).map((t) => serTab(t, groups));
+      pinnedOpen.push(...own.filter((e) => !seen.has(e.url)));
+      for (const e of own) seen.add(e.url);
+    }
+  }
+  pinnedOpen = pinnedOpen.filter((e) => e.url);
+  const pinned = [...pinnedOpen, ...list.flatMap((x) => x.pinnedFailed).filter((e) => e.url)];
+  return { cfg, mains, list, pinned, pinnedOpen };
 }
 
 async function exportAll() {
   await resumeSwitch();
   const { list, pinned } = await collectAll();
-  return buildExchange(list, pinned);
+  return buildExchange(list, pinned, chrome.runtime.getURL(''));
 }
 
 // Ordnet beim Zusammenführen jedem importierten Workspace einen vorhandenen zu: zuerst
 // über die ID (derselbe Workspace, etwa bei einem erneuten Import), sonst über den
 // gleichen Namen. Jeder vorhandene Workspace wird höchstens einmal vergeben. Ergänzt
 // werden nur Tabs, deren URL dort noch nicht (so oft) vorkommt.
-function planImport(data, all) {
+// Beim Ersetzen verschwinden die fehlgeschlagenen angehefteten Tabs mit ihren alten
+// Workspaces, dann zählen nur die offenen als vorhanden.
+function planImport(data, all, mode = 'merge') {
   const byId = new Map(all.list.map((x) => [x.ws.id, x]));
   const used = new Set();
   const match = data.workspaces.map((imp) => {
@@ -1091,13 +1105,13 @@ function planImport(data, all) {
       by: match[i]?.by || null,
       add: match[i] ? missingIn(imp.tabs, match[i].target.entries) : imp.tabs,
     })),
-    pinnedAdd: missingIn(data.pinned, all.pinned),
+    pinnedAdd: missingIn(data.pinned, mode === 'replace' ? all.pinnedOpen : all.pinned),
   };
 }
 
 // Prüft die Datei und beschreibt, was Zusammenführen bzw. Ersetzen ändern würde.
 async function previewImport(text) {
-  const data = parseExchange(text, STASH_PAGE);
+  const data = parseExchange(text, chrome.runtime.getURL(''));
   await resumeSwitch();
   const all = await collectAll();
   const plan = planImport(data, all);
@@ -1118,16 +1132,20 @@ async function previewImport(text) {
   };
 }
 
-// Macht die Gruppenschlüssel eines Imports eindeutig. Mit gs merken sich Gruppenmitglieder
-// die URLs ihrer Geschwister, damit recreate(…, join) sie einer schon offenen Gruppe mit
-// gleichem Namen und gleicher Farbe hinzufügt.
-function importEntries(tabs, stamp, withSiblings = false) {
+// Macht die Gruppenschlüssel eines Imports eindeutig. Die Geschwister einer Gruppe kommen
+// aus allen Tabs der Datei (from), auch aus den übersprungenen, die schon vorhanden sind.
+// Liegt eines davon in der Sicherung (existing) in einer Gruppe mit gleichem Namen und
+// gleicher Farbe, übernimmt der neue Tab deren Schlüssel. Mit join merken sich die Tabs die
+// URLs ihrer Geschwister (gs), damit recreate(…, join) sie der schon offenen Gruppe hinzufügt.
+function importEntries(tabs, stamp, { from = tabs, existing = [], join = false } = {}) {
   const gs = new Map();
-  for (const e of tabs) if (e.g) gs.set(e.g, [...(gs.get(e.g) || []), e.url]);
+  for (const e of from) if (e.g) gs.set(e.g, [...(gs.get(e.g) || []), e.url]);
   return tabs.map((e) => {
     if (!e.g) return e;
-    const r = { ...e, g: `${stamp}:${e.g}` };
-    if (withSiblings) r.gs = gs.get(e.g);
+    const sib = gs.get(e.g);
+    const same = existing.find((x) => x.g && x.gt === e.gt && x.gc === e.gc && sib.includes(x.url));
+    const r = { ...e, g: same ? same.g : `${stamp}:${e.g}` };
+    if (join) r.gs = sib;
     return r;
   });
 }
@@ -1158,12 +1176,12 @@ async function addPinned(list) {
 // vorhandene, ohne etwas zu schließen. 'replace' legt alle Workspaces der Datei neu an
 // und löscht danach die bisherigen samt ihren Tabs, deshalb nur mit Bestätigung.
 async function importExchange(text, mode, confirmed) {
-  const data = parseExchange(text, STASH_PAGE);
+  const data = parseExchange(text, chrome.runtime.getURL(''));
   if (mode !== 'merge' && mode !== 'replace') throw new Error('Unbekannte Import-Art.');
   if (mode === 'replace' && !confirmed) throw new Error('Ersetzen schließt Tabs und muss bestätigt werden.');
   await resumeSwitch();
   const all = await collectAll();
-  const plan = planImport(data, all);
+  const plan = planImport(data, all, mode);
   const stamp = `i${Date.now().toString(36)}`;
   const cfg = await getConfig();
   const { backup } = await getBackup();
@@ -1205,7 +1223,8 @@ async function importExchange(text, mode, confirmed) {
       res.merged++;
       if (!m.target.live) {
         const b = (backup[m.target.ws.id] ??= { stash: [], shown: [] });
-        b.stash = [...(b.stash || []), ...importEntries(m.add, stamp)];
+        const existing = [...(b.shown || []), ...(b.stash || [])];
+        b.stash = [...(b.stash || []), ...importEntries(m.add, stamp, { from: m.imp.tabs, existing })];
         res.added += m.add.length;
       }
     }
@@ -1218,7 +1237,7 @@ async function importExchange(text, mode, confirmed) {
       let r;
       switching++;
       try {
-        r = await recreate(importEntries(m.add, stamp, true), m.target.window, false, true);
+        r = await recreate(importEntries(m.add, stamp, { from: m.imp.tabs, join: true }), m.target.window, false, true);
       } finally {
         switching--;
       }
