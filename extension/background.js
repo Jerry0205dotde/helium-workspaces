@@ -1140,11 +1140,17 @@ async function previewImport(text) {
 function importEntries(tabs, stamp, { from = tabs, existing = [], join = false } = {}) {
   const gs = new Map();
   for (const e of from) if (e.g) gs.set(e.g, [...(gs.get(e.g) || []), e.url]);
+  const key = new Map(); // Importgruppe → Schlüssel; jeder vorhandene Schlüssel nur einmal
+  const taken = new Set();
   return tabs.map((e) => {
     if (!e.g) return e;
     const sib = gs.get(e.g);
-    const same = existing.find((x) => x.g && x.gt === e.gt && x.gc === e.gc && sib.includes(x.url));
-    const r = { ...e, g: same ? same.g : `${stamp}:${e.g}` };
+    if (!key.has(e.g)) {
+      const same = existing.find((x) => x.g && !taken.has(x.g) && x.gt === e.gt && x.gc === e.gc && sib.includes(x.url));
+      if (same) taken.add(same.g);
+      key.set(e.g, same ? same.g : `${stamp}:${e.g}`);
+    }
+    const r = { ...e, g: key.get(e.g) };
     if (join) r.gs = sib;
     return r;
   });
