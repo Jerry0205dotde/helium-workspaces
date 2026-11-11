@@ -145,6 +145,21 @@ async function moveOrdered(tabs, windowId) {
   return ids;
 }
 
+// Während ein Tab gezogen wird, lehnt der Browser Änderungen an Tabs vorübergehend ab
+// („Tabs cannot be edited right now (user may be dragging a tab).“). Solche Aufrufe
+// werden nach kurzer Pause wiederholt, insgesamt etwa drei Sekunden lang.
+const BUSY = /cannot be edited right now/i;
+async function whenIdle(fn, tries = 15) {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i >= tries || !BUSY.test(err?.message || '')) throw err;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+}
+
 // Legt gesicherte Tabs neu an (nur nötig, wenn ihr Fenster nicht mehr existiert).
 // Gibt die neuen Tab-IDs und die Einträge zurück, die nicht angelegt werden konnten.
 // Lässt sich eine Gruppe nicht anlegen, werden ihre Tabs wieder geschlossen und
@@ -166,7 +181,7 @@ async function recreate(list, windowId, pinned = false, join = false) {
   for (const e of list) {
     if (!e.url) continue;
     try {
-      const t = await chrome.tabs.create({ windowId, url: e.url, active: false, pinned });
+      const t = await whenIdle(() => chrome.tabs.create({ windowId, url: e.url, active: false, pinned }));
       ids.push(t.id);
       if (e.g && !pinned) {
         if (!groups.has(e.g)) groups.set(e.g, []);
@@ -195,11 +210,11 @@ async function recreate(list, windowId, pinned = false, join = false) {
         }
       }
       if (same) {
-        used.add(await chrome.tabs.group({ groupId: same.id, tabIds }));
+        used.add(await whenIdle(() => chrome.tabs.group({ groupId: same.id, tabIds })));
       } else {
-        const gid = await chrome.tabs.group({ tabIds, createProperties: { windowId } });
+        const gid = await whenIdle(() => chrome.tabs.group({ tabIds, createProperties: { windowId } }));
         used.add(gid);
-        await chrome.tabGroups.update(gid, props);
+        await whenIdle(() => chrome.tabGroups.update(gid, props));
       }
     } catch (err) {
       console.warn('[workspaces] Gruppe nicht wiederherstellbar', err);

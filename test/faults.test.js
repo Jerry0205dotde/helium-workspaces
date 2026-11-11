@@ -177,6 +177,32 @@ test('Ein Tab lässt sich nicht wiederherstellen: wird aufbewahrt, erneut versuc
   check(env2, { ...ALL, C: [] });
 });
 
+// So meldet der Browser, dass gerade ein Tab gezogen wird
+const DRAGGING = 'Tabs cannot be edited right now (user may be dragging a tab).';
+
+test('Während ein Tab gezogen wird: Anlegen und Gruppieren werden kurz darauf wiederholt', async () => {
+  const env = await fromBackup();
+  const { b } = env;
+  const main = b.mains()[0].id;
+  const create = b.fail('tabs.create', { when: (o) => o.url === url('b2'), times: 3, message: DRAGGING });
+  const group = b.fail('tabs.group', { times: 2, message: DRAGGING });
+  await ok(env.w.request({ type: 'switch', windowId: main, wsId: env.ids.B }));
+  assert.equal(create.hits, 3);
+  assert.equal(group.hits, 2);
+  assert.equal(b.local.data.backup[env.ids.B].failed, undefined, 'Tab wurde trotz Wiederholung aufgegeben');
+  check(env, ALL);
+});
+
+test('Dauert das Ziehen zu lange, wird der Tab aufbewahrt statt verworfen', async () => {
+  const env = await fromBackup();
+  const { b } = env;
+  const main = b.mains()[0].id;
+  b.fail('tabs.create', { when: (o) => o.url === url('c1'), times: Infinity, message: DRAGGING });
+  await ok(env.w.request({ type: 'switch', windowId: main, wsId: env.ids.C }));
+  assert.deepEqual(b.local.data.backup[env.ids.C].failed.map((e) => e.url), [url('c1')]);
+  check(env, { ...ALL, C: [] });
+});
+
 test('Eine Gruppe lässt sich nicht anlegen: Tabs werden aufbewahrt und als Gruppe nachgeholt', async () => {
   const env = await fromBackup();
   const { b } = env;
