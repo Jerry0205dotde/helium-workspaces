@@ -151,22 +151,18 @@ function failedNote(ws) {
   retry.title = ws.id === state.current ? '' : 'Wechselt in diesen Workspace';
   const dismiss = el('button', 'btn danger', 'Verwerfen');
   dismiss.title = 'Fehlende Tabs aus der Sicherung entfernen';
-  const run = async (msg) => {
-    retry.disabled = dismiss.disabled = true;
-    try {
-      await send(msg);
-    } finally {
-      await load();
-    }
-  };
-  retry.addEventListener('click', () => run({ type: 'retry', windowId, wsId: ws.id }));
-  dismiss.addEventListener('click', () => {
+  retry.addEventListener('click', () =>
+    run('Tabs werden wiederhergestellt …', 'Tabs konnten nicht wiederhergestellt werden.', () =>
+      send({ type: 'retry', windowId, wsId: ws.id })));
+  dismiss.addEventListener('click', (e) => {
+    if (e.detail > 1) return;
     if (!dismiss.classList.contains('confirm')) {
       dismiss.classList.add('confirm');
       dismiss.textContent = 'Wirklich?';
       return;
     }
-    run({ type: 'dismiss', wsId: ws.id });
+    run('Wird verworfen …', 'Tabs konnten nicht verworfen werden.', () =>
+      send({ type: 'dismiss', wsId: ws.id }));
   });
   box.append(retry, dismiss);
   return box;
