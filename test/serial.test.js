@@ -78,29 +78,37 @@ test('Bedienschritte und Tab-Änderungen mitten in schnellen Wechseln', async ()
   const { b, w, win, ids } = env;
   const replies = [];
   const created = [];
+  // x1 entsteht, während der Wechsel A → B die alten Tabs wegräumt, x2 ebenso bei B → C
+  const into = (name) => env.b.windows.find((x) => b.stashOf(x) === ids[name]).id;
+  const stashA = into('A');
+  const stashB = into('B');
+  const open = (u, active) => () => created.push(b.chrome.tabs.create({ windowId: win, url: url(u), active }));
+  const moving = (id) => (_, o) => o?.windowId === id;
+  const h1 = b.during('tabs.move', open('x1', false), { when: moving(stashA) });
+  const h2 = b.during('tabs.move', open('x2', true), { when: moving(stashB) });
   replies.push(w.send({ type: 'switch', windowId: win, wsId: ids.B }));
-  created.push(b.chrome.tabs.create({ windowId: win, url: url('x1'), active: false }));
   replies.push(w.send({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: ids.C }));
   replies.push(w.send({ type: 'switch', windowId: win, wsId: ids.C }));
-  created.push(b.chrome.tabs.create({ windowId: win, url: url('x2'), active: true }));
   replies.push(w.send({ type: 'create', name: 'E' }));
   replies.push(w.send({ type: 'switch', windowId: win, wsId: ids.D }));
   replies.push(w.send({ type: 'reorder', ids: [ids.D, ids.C, ids.B, ids.A] }));
   replies.push(w.send({ type: 'switch', windowId: win, wsId: ids.A }));
   await w.settle();
+  assert.equal(h1.hits + h2.hits, 2, 'Bedienschritte liefen nicht mitten im Wechsel');
   await Promise.all(created);
   const res = await Promise.all(replies);
   for (const r of res) assert.equal(r.ok, true, r.error);
   env.ids.E = res[3].result.id;
   assert.deepEqual(b.local.data.workspaces.map((x) => x.name), ['D', 'C', 'B', 'A', 'E']);
 
-  // Wohin die neuen Tabs kamen, hängt vom Zeitpunkt ab (a1 liegt beim Verschieben schon in
-  // der Ablage und bleibt dann in A); jeder muss aber genau einmal in genau einem Workspace
-  // stehen, und die Sicherung muss dazu passen.
+  // Ein mitten im Wechsel geöffneter Tab gehört zum alten oder zum neuen Workspace, nie zu
+  // einem anderen. a1 liegt beim Verschieben schon in der Ablage von A (der Wechsel nach B
+  // lief vorher) und bleibt deshalb dort. Die Sicherung muss jeweils dazu passen.
+  const allowed = { a1: ['A'], x1: ['A', 'B'], x2: ['B', 'C'] };
   const expected = { ...ALL, A: SPEC.workspaces.A.slice(1), E: [] };
-  for (const x of ['a1', 'x1', 'x2']) {
+  for (const [x, ok] of Object.entries(allowed)) {
     const name = Object.keys(env.ids).find((n) => env.ids[n] === where(env, x).ws);
-    assert.ok(name, `${x} steht in keinem Workspace`);
+    assert.ok(ok.includes(name), `${x} steht in ${name}, erlaubt sind ${ok.join(', ')}`);
     expected[name] = [...expected[name], x];
   }
   check(env, expected);

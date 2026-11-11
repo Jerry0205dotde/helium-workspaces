@@ -10,7 +10,8 @@ const SPEC = {
   pinned: ['p1', 'p2'],
   workspaces: {
     A: ['a1', { url: 'a2', group: 'Mathe', color: 'blue' }, { url: 'a3', group: 'Mathe', color: 'blue' }, 'a4'],
-    B: [{ url: 'b1', group: 'Lesen', color: 'red', collapsed: true }, { url: 'b2', group: 'Lesen', color: 'red', collapsed: true }, 'b3'],
+    // b0 ist beim Wechsel aktiv; die eingeklappte Gruppe bleibt so eingeklappt
+    B: ['b0', { url: 'b1', group: 'Lesen', color: 'red', collapsed: true }, { url: 'b2', group: 'Lesen', color: 'red', collapsed: true }, 'b3'],
     C: ['c1', 'c2'],
   },
 };

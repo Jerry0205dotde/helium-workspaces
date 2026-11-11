@@ -91,6 +91,8 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
   assert.deepEqual(b.errors.map((e) => `${e.name}: ${e.error?.stack || e.error}`), [], 'Fehler in Ereignis-Listenern');
   assert.equal(b.session.data.pendingSwitch, undefined, 'ein Wechsel ist noch nicht abgeschlossen');
   assert.equal(w.eval('switching'), 0, 'switching wurde nicht zurückgesetzt');
+  // Die Erweiterung lädt nie eine Seite neu (Navigation per tabs.update mit url)
+  assert.deepEqual(b.calls.filter((c) => c.name === 'tabs.update' && c.args[1] && 'url' in c.args[1]), [], 'Tab wurde neu geladen');
   const wsList = b.local.data.workspaces;
   const windowWs = b.session.data.windowWs || {};
   const backup = b.local.data.backup || {};

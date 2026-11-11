@@ -125,6 +125,14 @@ class Browser {
     return f;
   }
 
+  // Führt fn(...args) aus, wenn ein passender Aufruf von name beginnt, etwa um mitten in
+  // einem Wechsel einen Tab zu öffnen. Optionen wie bei fail().
+  during(name, fn, opts = {}) {
+    const f = this.fail(name, opts);
+    f.run = fn;
+    return f;
+  }
+
   matchFault(name, args) {
     for (const f of this.faults) {
       if (f.name !== name || f.left <= 0 || !f.when(...args)) continue;
@@ -145,7 +153,8 @@ class Browser {
       if (owner?.dead) return new Promise(() => {}); // ein beendeter Worker bekommt keine Antworten mehr
       this.calls.push({ name, args: clone(args) });
       const f = this.matchFault(name, args);
-      if (f) {
+      if (f?.run) f.run(...args);
+      else if (f) {
         if (f.hang) return new Promise(() => {});
         throw new Error(f.message || `${name} gescheitert (Test)`);
       }
@@ -230,11 +239,17 @@ class Browser {
     this.fire('tabGroups.onRemoved', this.groupInfo(g));
   }
 
+  // Wird ein Tab einer eingeklappten Gruppe aktiv, klappt Chromium die Gruppe auf.
   activate(t, w) {
     if (t.active) return;
     for (const x of w.tabs) x.active = false;
     t.active = true;
     this.fire('tabs.onActivated', { tabId: t.id, windowId: w.id });
+    const g = this.groups.get(t.groupId);
+    if (g?.collapsed) {
+      g.collapsed = false;
+      this.fire('tabGroups.onUpdated', this.groupInfo(g));
+    }
   }
 
   // Nimmt t aus w heraus; war es aktiv, wird der rechte (sonst linke) Nachbar aktiv.
@@ -512,6 +527,18 @@ class Browser {
           const g = b.groups.get(id);
           if (!g) throw new Error(`No group with id: ${id}.`);
           for (const k of ['title', 'color', 'collapsed']) if (o[k] !== undefined) g[k] = o[k];
+          // Eingeklappt bleibt kein Tab der Gruppe aktiv: der nächste Tab außerhalb übernimmt
+          const { w, tabs } = b.groupTabs(id);
+          const act = tabs.find((t) => t.active);
+          if (g.collapsed && act) {
+            const i = w.tabs.indexOf(act);
+            const out = [...w.tabs.slice(i + 1), ...w.tabs.slice(0, i).reverse()].find((t) => t.groupId !== id);
+            if (out) {
+              for (const x of w.tabs) x.active = false;
+              out.active = true;
+              b.fire('tabs.onActivated', { tabId: out.id, windowId: w.id });
+            }
+          }
           b.fire('tabGroups.onUpdated', b.groupInfo(g));
           return b.groupInfo(g);
         }),
