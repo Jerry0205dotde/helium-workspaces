@@ -1,0 +1,232 @@
+'use strict';
+// Gezielte API-Fehler und beendete Service Worker mitten in einem Ablauf: Danach muss der
+// Bestand vollständig sein, die Sicherung darf nicht durch einen Zwischenstand ersetzt
+// werden, und Wechsel, erneuter Versuch und Verwerfen müssen weiter funktionieren.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { setup, check, ok, url, where, shows } = require('./harness');
+
+const SPEC = {
+  pinned: ['p1'],
+  workspaces: {
+    A: ['a1', { url: 'a2', group: 'Mathe', color: 'blue' }, { url: 'a3', group: 'Mathe', color: 'blue' }, 'a4'],
+    B: [{ url: 'b1', group: 'Lesen', color: 'red' }, { url: 'b2', group: 'Lesen', color: 'red' }, 'b3'],
+    C: ['c1'],
+  },
+};
+const ALL = { ...SPEC.workspaces, pinned: SPEC.pinned };
+
+const stashOf = (env, name) => env.b.windows.find((x) => env.b.stashOf(x) === env.ids[name]);
+const backupJson = (env) => JSON.stringify(env.b.local.data.backup);
+
+test('Alte Tabs lassen sich nicht in die Ablage schieben: Sicherung bleibt, Wechsel wird nachgeholt', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const stashA = stashOf(env, 'A').id;
+  const saved = backupJson(env);
+  // Die Tabs von B sind schon im Fenster, dann scheitert das Wegräumen von A
+  b.fail('tabs.move', { when: (_, o) => o.windowId === stashA });
+  const reply = w.send({ type: 'switch', windowId: win, wsId: ids.B });
+  await w.advance(100); // vor dem erneuten Abgleich
+  assert.equal((await reply).ok, false);
+  assert.ok(b.session.data.pendingSwitch, 'unterbrochener Wechsel ist nicht vermerkt');
+  assert.equal(where(env, 'b1').win.id, win);
+  assert.equal(where(env, 'a1').win.id, win);
+  // Ereignisse aus dem Zwischenstand dürfen die Sicherung nicht überschreiben
+  await b.chrome.tabs.create({ windowId: win, url: url('x1'), active: false });
+  await b.chrome.tabs.remove(where(env, 'x1').tab.id);
+  await w.advance(700);
+  assert.equal(backupJson(env), saved, 'Sicherung wurde mit einem Zwischenstand überschrieben');
+
+  // Der Abgleich schließt den Wechsel ab
+  await w.settle();
+  assert.equal(shows(env, win), 'B');
+  check(env, ALL);
+  for (const name of ['C', 'A', 'B']) {
+    await ok(w.request({ type: 'switch', windowId: win, wsId: ids[name] }));
+    check(env, ALL);
+  }
+});
+
+test('Ein neuer Wechsel vor dem Abgleich setzt den unterbrochenen erst fort', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const stashA = stashOf(env, 'A').id;
+  b.fail('tabGroups.move', { when: (_, o) => o.windowId === stashA });
+  const first = w.send({ type: 'switch', windowId: win, wsId: ids.B });
+  await w.advance(10);
+  assert.equal((await first).ok, false);
+  const second = await w.request({ type: 'switch', windowId: win, wsId: ids.C });
+  assert.equal(second.ok, true);
+  assert.equal(shows(env, win), 'C');
+  check(env, ALL);
+});
+
+test('Fehler beim Holen der Ziel-Tabs nach der ersten Gruppe: Wechsel wird zu Ende geführt', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const stashB = stashOf(env, 'B').id;
+  // Gruppe „Lesen“ ist schon im Fenster, b3 hängt noch in der Ablage
+  b.fail('tabs.move', { when: (_, o) => o.windowId === win });
+  const from = b.calls.length;
+  assert.equal((await w.request({ type: 'switch', windowId: win, wsId: ids.B })).ok, true);
+  assert.equal(b.calls.slice(from).filter((c) => c.name === 'tabGroups.move' && c.args[1].windowId === win).length, 1);
+  assert.equal(shows(env, win), 'B');
+  // b3 wurde nachgeholt, die Ablage von B ist leer
+  assert.equal(where(env, 'b3').win.id, win);
+  assert.equal(stashOf(env, 'B').id, stashB);
+  assert.equal(stashOf(env, 'B').tabs.length, 1);
+  check(env, ALL);
+});
+
+test('Fehler beim allerersten Schritt: nichts bewegt, Fehler wird gemeldet, später klappt es', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const saved = backupJson(env);
+  b.fail('tabGroups.move');
+  const r = await w.request({ type: 'switch', windowId: win, wsId: ids.B });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /gescheitert/);
+  assert.equal(shows(env, win), 'A');
+  assert.equal(b.session.data.pendingSwitch, undefined);
+  assert.equal(backupJson(env), saved);
+  check(env, ALL);
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  check(env, ALL);
+});
+
+test('Wiederholt scheiternder Abschluss wird im Hintergrund erneut versucht', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const stashA = stashOf(env, 'A').id;
+  const f = b.fail('tabs.move', { when: (_, o) => o.windowId === stashA, times: 4 });
+  await w.request({ type: 'switch', windowId: win, wsId: ids.B });
+  assert.equal(f.hits, 4);
+  assert.equal(shows(env, win), 'B');
+  check(env, ALL);
+});
+
+test('Service Worker endet mitten im Wechsel: der nächste Worker setzt ihn fort', async () => {
+  for (const [api, target] of [
+    ['tabs.move', 'stash'], // beim Wegräumen der alten Tabs
+    ['tabs.move', 'main'], // beim Holen der Ziel-Tabs, nach der ersten Gruppe
+    ['tabs.update', 'main'], // beim Aktivieren, alles schon geholt
+  ]) {
+    const env = await setup(SPEC);
+    const { b, win, ids } = env;
+    const stashA = stashOf(env, 'A').id;
+    b.fail(api, { hang: true, when: (id, o) => (target === 'stash' ? o?.windowId === stashA : api === 'tabs.update' || o?.windowId === win) });
+    const reply = env.w.send({ type: 'switch', windowId: win, wsId: ids.B });
+    await env.w.settle();
+    assert.ok(b.session.data.pendingSwitch, `${api}/${target}: kein unterbrochener Wechsel`);
+    const w = b.startWorker(null);
+    await w.settle();
+    assert.equal(await Promise.race([reply.then(() => 'Antwort'), Promise.resolve('keine')]), 'keine');
+    assert.equal(shows(env, win), 'B', `${api}/${target}`);
+    check(env, ALL);
+    await ok(w.request({ type: 'switch', windowId: win, wsId: ids.C }));
+    check(env, ALL);
+  }
+});
+
+// Start mit neuer Tab-Seite, damit B und C beim Wechseln aus der Sicherung kommen
+async function fromBackup() {
+  const env = await setup(SPEC);
+  env.b.restart({ restore: 'none', keepPinned: true });
+  env.b.startWorker('startup');
+  await env.w.settle();
+  check(env, ALL);
+  return env;
+}
+
+test('Ein Tab lässt sich nicht wiederherstellen: wird aufbewahrt, erneut versucht und verworfen', async () => {
+  const env = await fromBackup();
+  const { b } = env;
+  const main = b.mains()[0].id;
+  const f = b.fail('tabs.create', { when: (o) => o.url === url('b2'), times: 2 });
+  await ok(env.w.request({ type: 'switch', windowId: main, wsId: env.ids.B }));
+  const failed = b.local.data.backup[env.ids.B].failed;
+  assert.deepEqual(failed.map((e) => e.url), [url('b2')]);
+  assert.equal(failed[0].gt, 'Lesen', 'Gruppenangaben des fehlgeschlagenen Tabs fehlen');
+  const B = SPEC.workspaces.B.filter((e) => e.url !== 'b2');
+  check(env, { ...ALL, B });
+  const st = await ok(env.w.request({ type: 'state', windowId: main }));
+  assert.equal(st.workspaces.find((x) => x.id === env.ids.B).failed, 1);
+
+  // Erster erneuter Versuch scheitert wieder, der Eintrag bleibt
+  await ok(env.w.request({ type: 'retry', windowId: main, wsId: env.ids.B }));
+  assert.equal(b.local.data.backup[env.ids.B].failed.length, 1);
+  // Wechsel funktionieren trotzdem, der Eintrag geht dabei nicht verloren
+  await ok(env.w.request({ type: 'switch', windowId: main, wsId: env.ids.A }));
+  check(env, { ...ALL, B });
+  // Der zweite Versuch (aus einem anderen Workspace heraus) legt den Tab in seiner Gruppe an
+  await ok(env.w.request({ type: 'retry', windowId: main, wsId: env.ids.B }));
+  assert.equal(f.hits, 2);
+  assert.equal(shows(env, main), 'B');
+  assert.equal(b.local.data.backup[env.ids.B].failed?.length ?? 0, 0);
+  check(env, ALL);
+
+  // Verwerfen entfernt die Einträge
+  const env2 = await fromBackup();
+  env2.b.fail('tabs.create', { when: (o) => o.url === url('c1') });
+  await ok(env2.w.request({ type: 'switch', windowId: env2.b.mains()[0].id, wsId: env2.ids.C }));
+  assert.equal(env2.b.local.data.backup[env2.ids.C].failed.length, 1);
+  await ok(env2.w.request({ type: 'dismiss', wsId: env2.ids.C }));
+  assert.equal(env2.b.local.data.backup[env2.ids.C].failed, undefined);
+  check(env2, { ...ALL, C: [] });
+});
+
+test('Eine Gruppe lässt sich nicht anlegen: Tabs werden aufbewahrt und als Gruppe nachgeholt', async () => {
+  const env = await fromBackup();
+  const { b } = env;
+  const main = b.mains()[0].id;
+  b.fail('tabs.group');
+  await ok(env.w.request({ type: 'switch', windowId: main, wsId: env.ids.B }));
+  const failed = b.local.data.backup[env.ids.B].failed;
+  assert.deepEqual(failed.map((e) => e.url).sort(), [url('b1'), url('b2')]);
+  check(env, { ...ALL, B: ['b3'] });
+  await ok(env.w.request({ type: 'retry', windowId: main, wsId: env.ids.B }));
+  check(env, ALL);
+});
+
+// Endet der Worker, nachdem b1 angelegt ist, legt der nächste b2 und b3 an
+async function killedWhileRestoring() {
+  const env = await fromBackup();
+  const { b } = env;
+  const main = b.mains()[0].id;
+  b.fail('tabs.create', { hang: true, after: 1, when: (o) => o.windowId === main });
+  env.w.send({ type: 'switch', windowId: main, wsId: env.ids.B });
+  await env.w.settle();
+  assert.equal(b.session.data.pendingSwitch?.restoring, true);
+  const w = b.startWorker(null);
+  await w.settle();
+  assert.equal(shows(env, main), 'B');
+  return { env, main, w };
+}
+
+test('Service Worker endet beim Anlegen aus der Sicherung: der Rest wird ohne Doppel ergänzt', async () => {
+  const { env, main, w } = await killedWhileRestoring();
+  check(env, ALL, { groups: false });
+  await ok(w.request({ type: 'switch', windowId: main, wsId: env.ids.A }));
+  check(env, ALL, { groups: false });
+});
+
+test('Service Worker endet beim Anlegen aus der Sicherung: die Gruppe bleibt ganz', { todo: 'Gruppe wird beim Fortsetzen geteilt (#23)' }, async () => {
+  const { env } = await killedWhileRestoring();
+  check(env, ALL);
+});
+
+test('Scheiternder Speicherzugriff beim Sichern hinterlässt keine halbe Sicherung', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  const saved = backupJson(env);
+  b.fail('storage.local.set', { when: (o) => 'backupWindows' in o });
+  await b.chrome.tabs.create({ windowId: win, url: url('a5'), active: false });
+  await w.settle();
+  assert.equal(backupJson(env), saved);
+  // Die nächste Änderung sichert wieder vollständig
+  await b.chrome.tabs.create({ windowId: win, url: url('a6'), active: false });
+  await w.settle();
+  check(env, { ...ALL, A: [...SPEC.workspaces.A, 'a5', 'a6'] });
+});
