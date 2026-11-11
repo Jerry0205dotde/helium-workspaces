@@ -97,3 +97,21 @@ test('Löschen eines angezeigten Workspace wechselt vorher weg und entfernt sein
   check(env, { B: SPEC.workspaces.B, C: SPEC.workspaces.C, pinned: SPEC.pinned });
   assert.equal(env.b.local.data.workspaces.length, 2);
 });
+
+test('Tab in einer Ablage aktivieren (z. B. über die Tab-Suche) wechselt das Hauptfenster dorthin', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  const before = tabIds(env);
+  // Die Tab-Suche aktiviert den Tab und holt sein Fenster nach vorn
+  const at = where(env, 'b3');
+  assert.equal(at.stash, true);
+  await b.chrome.tabs.update(at.tab.id, { active: true });
+  await b.chrome.windows.update(at.win.id, { focused: true });
+  await w.settle();
+  assert.equal(shows(env, win), 'B');
+  assert.equal(where(env, 'b3').win.id, win);
+  assert.equal(where(env, 'b3').tab.active, true);
+  assert.equal(b.windows.find((x) => x.id === win).focused, true, 'Hauptfenster ist nicht im Vordergrund');
+  check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
+  assert.deepEqual(tabIds(env), before, 'Tabs wurden neu angelegt statt verschoben');
+});

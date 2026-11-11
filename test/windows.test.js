@@ -122,3 +122,42 @@ test('Letztes Fenster per X geschlossen: nach dem Start ist alles wieder da', as
     check(env, ALL);
   }
 });
+
+// Wie die Tab-Suche: aktiviert den Tab in seiner Ablage und holt deren Fenster nach vorn
+async function pickInStash(env, name) {
+  const at = where(env, name);
+  assert.equal(at.stash, true, `${name} liegt nicht in einer Ablage`);
+  await env.b.chrome.tabs.update(at.tab.id, { active: true });
+  await env.b.chrome.windows.update(at.win.id, { focused: true });
+  await env.w.settle();
+}
+
+test('Tab in einer Ablage aktivieren: das zuletzt benutzte Fenster wechselt dorthin', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const before = tabIds(env);
+  const win2 = await newWindow(env);
+  await ok(w.request({ type: 'switch', windowId: win2, wsId: ids.B }));
+  await b.chrome.windows.update(win, { focused: true });
+  await b.chrome.windows.update(win2, { focused: true });
+  await pickInStash(env, 'c2');
+  assert.equal(shows(env, win), 'A');
+  assert.equal(shows(env, win2), 'C');
+  assert.equal(where(env, 'c2').win.id, win2);
+  assert.equal(where(env, 'c2').tab.active, true);
+  assert.equal(b.windows.find((x) => x.id === win2).focused, true, 'Fenster 2 ist nicht im Vordergrund');
+  check(env, ALL);
+
+  // Zeigt das Fenster den Workspace schon (Fenster 1 hat von ihm weggewechselt), kommen
+  // die Tabs aus der Ablage dazu
+  await ok(w.request({ type: 'switch', windowId: win2, wsId: ids.A }));
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await b.chrome.windows.update(win2, { focused: true });
+  await pickInStash(env, 'a3');
+  assert.equal(shows(env, win), 'B');
+  assert.equal(shows(env, win2), 'A');
+  assert.equal(where(env, 'a3').win.id, win2);
+  assert.equal(where(env, 'a3').tab.active, true);
+  check(env, ALL);
+  for (const [u, id] of Object.entries(before)) assert.equal(tabIds(env)[u], id, `${u} wurde neu angelegt`);
+});
