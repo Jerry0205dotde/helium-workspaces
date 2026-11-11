@@ -1,0 +1,21 @@
+name: Prüfungen
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      # Syntax, Manifest und KWin-Metadaten (test/static.test.js) sowie das Verhalten
+      # der Hintergrundlogik mit nachgebildeten Chrome-APIs
+      - run: node --test test/*.test.js

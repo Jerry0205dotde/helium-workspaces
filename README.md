@@ -179,6 +179,23 @@ Ohne die Erweiterung verlieren die Ablage-Fenster ihre Markierung, ihre Tabs ble
 
 Das ist ein privates Bastelprojekt. Rechne mit Fehlern.
 
+## Testen
+
+```bash
+node --test test/*.test.js
+```
+
+Braucht nur Node.js ab Version 22, keinen Browser und kein KWin. Die Tests laden `background.js` unverändert in eine Nachbildung der Chrome-APIs und spielen damit Wechsel mit Gruppen und angehefteten Tabs, mehrere Fenster, Neustarts mit und ohne Sitzungswiederherstellung, das Neuladen der Erweiterung, gezielt scheiternde API-Aufrufe und schnell aufeinanderfolgende Änderungen durch. Dazu kommen Syntax, Manifest und KWin-Metadaten. Dieselben Prüfungen laufen in der CI bei jedem Pull Request.
+
+Die Verbindung zu Helium und KWin prüfen die Tests nicht. Nach Änderungen daran kurz von Hand:
+
+1. `./install.sh` ausführen und die Erweiterung unter `chrome://extensions` neu laden.
+2. Zwei Workspaces mit einigen Tabs, einer Tab-Gruppe und einem angehefteten Tab einrichten und in einem davon ein Video starten.
+3. Ein paar Mal hin und her wechseln: Das Video läuft weiter, Gruppe und angehefteter Tab bleiben, und kein Ablage-Fenster taucht in Taskleiste, <kbd>Alt</kbd>+<kbd>Tab</kbd> oder Übersicht auf.
+4. Die Erweiterung unter `chrome://extensions` neu laden: Nach etwa einer Sekunde sind die Ablage-Fenster wieder versteckt, Wechseln geht weiter.
+5. Helium beenden und neu starten: Alle Workspaces sind vollständig da, die Ablage-Fenster bleiben versteckt.
+6. Das Fenster per X schließen und Helium neu starten: Alle Workspaces werden wieder aufgebaut.
+
 ## Aufbau
 
 - [`extension/`](./extension): die Erweiterung (Manifest V3)
@@ -188,3 +205,4 @@ Das ist ein privates Bastelprojekt. Rechne mit Fehlern.
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): die Seite, die ein Fenster als Ablage markiert
 - [`kwin/`](./kwin): KWin-Skript, das die Ablage-Fenster versteckt
 - [`install.sh`](./install.sh): Schlüssel erzeugen und KWin-Skript einrichten
+- [`test/`](./test): automatische Tests, [`fake-browser.js`](./test/fake-browser.js) bildet die Chrome-APIs nach
