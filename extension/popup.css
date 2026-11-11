@@ -140,3 +140,13 @@ footer {
   color: var(--muted);
   font-size: 11px;
 }
+.failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px 40px;
+  font-size: 12px;
+}
+.failed-text { flex: 1 0 100%; color: var(--danger); }
+.failed .btn { padding: 2px 8px; font-size: 12px; }

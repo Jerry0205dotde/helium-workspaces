@@ -66,6 +66,7 @@ function render() {
 
     row.addEventListener('click', () => switchTo(ws.id));
     li.append(row);
+    if (ws.failed) li.append(failedNote(ws));
     if (ws.id === editing) li.append(editor(ws, i));
 
     // Ziehen zum Umsortieren
@@ -96,6 +97,36 @@ function render() {
 
     listEl.append(li);
   });
+}
+
+// Hinweis auf Tabs, die beim Wiederherstellen nicht angelegt werden konnten
+function failedNote(ws) {
+  const box = el('div', 'failed');
+  const n = ws.failed;
+  box.append(el('span', 'failed-text', `${n} ${n === 1 ? 'Tab' : 'Tabs'} nicht wiederhergestellt`));
+  const retry = el('button', 'btn', 'Erneut versuchen');
+  retry.title = ws.id === state.current ? '' : 'Wechselt in diesen Workspace';
+  const dismiss = el('button', 'btn danger', 'Verwerfen');
+  dismiss.title = 'Fehlende Tabs aus der Sicherung entfernen';
+  const run = async (msg) => {
+    retry.disabled = dismiss.disabled = true;
+    try {
+      await send(msg);
+    } finally {
+      await load();
+    }
+  };
+  retry.addEventListener('click', () => run({ type: 'retry', windowId, wsId: ws.id }));
+  dismiss.addEventListener('click', () => {
+    if (!dismiss.classList.contains('confirm')) {
+      dismiss.classList.add('confirm');
+      dismiss.textContent = 'Wirklich?';
+      return;
+    }
+    run({ type: 'dismiss', wsId: ws.id });
+  });
+  box.append(retry, dismiss);
+  return box;
 }
 
 function editor(ws, index) {
