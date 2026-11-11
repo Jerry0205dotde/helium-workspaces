@@ -7,9 +7,9 @@
 <body>
   <div id="error" class="error" role="alert" hidden></div>
   <fieldset id="controls">
-    <ul id="list"></ul>
-    <button id="add" class="add">＋ Neuer Workspace</button>
-    <button id="transfer" class="add">⇅ Exportieren / Importieren</button>
+    <ul id="list" aria-label="Workspaces"></ul>
+    <button id="add" class="add" type="button" data-focus="add">＋ Neuer Workspace</button>
+    <button id="transfer" class="add" type="button" data-focus="transfer">⇅ Exportieren / Importieren</button>
   </fieldset>
   <footer><span class="hint">Alt+Shift+← / → wechseln · Rechtsklick auf Seite: Tab verschieben</span><span id="status" role="status"></span></footer>
   <script src="popup.js"></script>

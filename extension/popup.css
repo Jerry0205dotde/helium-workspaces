@@ -7,6 +7,7 @@
   --border: #dddddd;
   --input: #f6f6f6;
   --danger: #d33;
+  --focus: #2563eb;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -18,6 +19,7 @@
     --border: #444444;
     --input: #222222;
     --danger: #ff6b6b;
+    --focus: #8ab4f8;
   }
 }
 * { box-sizing: border-box; }
@@ -31,16 +33,33 @@ body {
 }
 ul { list-style: none; margin: 0; padding: 0; }
 li { border-radius: 8px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 6px 6px 8px;
+  gap: 2px;
+  padding-right: 6px;
   border-radius: 8px;
   cursor: pointer;
   user-select: none;
 }
-.row:hover { background: var(--hover); }
+.row:hover, .row:focus-within { background: var(--hover); }
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.main:focus-visible { outline-offset: -2px; }
 li.current > .row { background: var(--active); }
 li.dragging { opacity: .4; }
 li.drop-before { box-shadow: inset 0 2px 0 var(--fg); }
@@ -68,12 +87,10 @@ li.drop-after { box-shadow: inset 0 -2px 0 var(--fg); }
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
-  visibility: hidden;
+  opacity: 0;
 }
-.row:hover .icon-btn, li.editing .icon-btn { visibility: visible; }
-.icon-btn.placeholder,
-.row:hover .icon-btn.placeholder,
-li.editing .icon-btn.placeholder { visibility: hidden; pointer-events: none; }
+.row:hover .icon-btn, .row:focus-within .icon-btn, li.editing .icon-btn { opacity: 1; }
+.icon-btn.placeholder { visibility: hidden; }
 .icon-btn:hover { background: var(--border); color: var(--fg); }
 .editor {
   display: grid;
@@ -106,6 +123,7 @@ li.editing .icon-btn.placeholder { visibility: hidden; pointer-events: none; }
   padding: 0;
 }
 .swatch.sel { border-color: var(--fg); }
+.swatch:focus-visible { outline-offset: 2px; }
 .editor .actions { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .btn {
   border: 1px solid var(--border);
@@ -134,7 +152,7 @@ li.editing .icon-btn.placeholder { visibility: hidden; pointer-events: none; }
 }
 .add:hover { background: var(--hover); color: var(--fg); }
 fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
-body.busy .row, body.busy .add { cursor: progress; }
+body.busy .row, body.busy .main, body.busy .add { cursor: progress; }
 fieldset:disabled .row:hover, fieldset:disabled .add:hover { background: transparent; }
 fieldset:disabled .add:hover { color: var(--muted); }
 .error {
