@@ -409,33 +409,191 @@ async function snapshot() {
 
 // ---------------------------------------------------------------- Abgleich
 
-function guessWs(win, s, cfg, entries) {
+// Ordnet neue Hauptfenster einem Workspace zu. entries sind die beim letzten Mal
+// gesicherten Fenster (Workspace + URLs); jeder Eintrag wird höchstens einmal vergeben.
+function assignWindows(wins, s, cfg, entries) {
   const ids = cfg.workspaces.map((w) => w.id);
+  const result = new Map();
+  const rest = [];
   // 1. Tab wurde aus einem anderen Fenster herausgezogen
-  for (const t of win.tabs) {
-    const o = s.tabOrigin[t.id];
-    if (o && ids.includes(o)) return o;
+  for (const win of wins) {
+    const o = win.tabs.map((t) => s.tabOrigin[t.id]).find((x) => x && ids.includes(x));
+    if (o) result.set(win.id, o);
+    else rest.push(win);
   }
-  // 2. Beim Browserstart wiederhergestelltes Fenster: über die gesicherten URLs
-  //    pro Fenster zuordnen, jeder Eintrag nur einmal.
-  const urls = new Set(
+  // 2. Beim Browserstart wiederhergestellte Fenster: über die gesicherten URLs.
+  //    Seiten, die in mehreren Einträgen vorkommen (z. B. ChatGPT in jedem Workspace),
+  //    zählen entsprechend weniger. Vergeben wird nach dem besten Paar über alle
+  //    Fenster, nicht der Reihe nach, damit ein Fenster nicht einem anderen den
+  //    passenderen Eintrag wegnimmt.
+  const valid = entries.map((e, i) => ({ ...e, i })).filter((e) => ids.includes(e.ws));
+  const df = new Map();
+  for (const e of valid) for (const u of new Set(e.urls)) df.set(u, (df.get(u) || 0) + 1);
+  const urlsOf = (win) =>
     movableTabsOf(win)
       .map((t) => t.url || t.pendingUrl)
-      .filter((u) => u && !u.startsWith('chrome://newtab')),
-  );
-  let best = -1;
-  let bestScore = 0;
-  entries.forEach((e, i) => {
-    if (!ids.includes(e.ws)) return;
-    const score = e.urls.filter((u) => urls.has(u)).length;
-    if (score > bestScore) {
-      best = i;
-      bestScore = score;
+      .filter((u) => u && !u.startsWith('chrome://newtab'));
+  const pairs = [];
+  for (const win of rest) {
+    const urls = urlsOf(win);
+    for (const e of valid) {
+      const left = new Map();
+      for (const u of e.urls) left.set(u, (left.get(u) || 0) + 1);
+      let score = 0;
+      for (const u of urls) {
+        if (left.get(u) > 0) {
+          left.set(u, left.get(u) - 1);
+          score += 1 / df.get(u);
+        }
+      }
+      if (score > 0) pairs.push({ win: win.id, e, score, diff: Math.abs(e.urls.length - urls.length) });
     }
-  });
-  if (best >= 0) return entries.splice(best, 1)[0].ws;
+  }
+  pairs.sort((a, b) => b.score - a.score || a.diff - b.diff);
+  const used = new Set();
+  for (const p of pairs) {
+    if (result.has(p.win) || used.has(p.e.i)) continue;
+    result.set(p.win, p.e.ws);
+    used.add(p.e.i);
+  }
+  for (const i of [...used].sort((a, b) => b - a)) entries.splice(i, 1);
   // 3. Neues Fenster (Strg+N): Workspace des zuletzt benutzten Fensters
-  return cfg.lastWs;
+  for (const win of rest) if (!result.has(win.id)) result.set(win.id, cfg.lastWs);
+  return result;
+}
+
+// Ordnet die gesicherten URLs den lebenden zu (längste gemeinsame Teilfolge).
+// Ergebnis: für jeden gesicherten Eintrag der Index des lebenden Tabs oder -1.
+function align(saved, live) {
+  const n = saved.length;
+  const m = live.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = saved[i] === live[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const match = new Array(n).fill(-1);
+  for (let i = 0, j = 0; i < n && j < m; ) {
+    if (saved[i] === live[j]) match[i++] = j++;
+    else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+    else j++;
+  }
+  return match;
+}
+
+// Nach dem Browserstart: Tabs ergänzen, die Chromium beim Wiederherstellen verloren hat.
+// Chromium baut seine Session-Datei nach 250 Änderungen sofort neu auf. Fällt das in den
+// Moment, in dem die Erweiterung einen Tab zwischen zwei Fenstern verschiebt (er ist dann
+// kurz in keinem Fenster), fehlt dieser Tab in der Datei und kommt nach dem nächsten
+// Start nicht wieder. Ergänzt wird nur, wo ein Workspace weniger Tabs hat als gesichert,
+// und höchstens so viele, wie fehlen. Gleich viele abweichende Tabs an einer Stelle
+// gelten als umgeleitete Seiten, nicht als verloren.
+async function repairFromBackup(cfg, s, stash, mains) {
+  const { backup } = await getBackup();
+  let changed = false;
+  for (const ws of cfg.workspaces) {
+    const b = backup[ws.id];
+    const wins = mains.filter((w) => s.windowWs[w.id] === ws.id);
+    const sw = stash.get(ws.id);
+    if (!b || (!wins.length && !sw)) continue;
+    const live = [...wins.flatMap(movableTabsOf), ...(sw ? stashTabsOf(sw) : [])];
+    const shown = (b.shown || []).filter((e) => e.url);
+    const saved = [...shown, ...(b.stash || []).filter((e) => e.url)];
+    let budget = saved.length - live.length;
+    if (budget <= 0) continue;
+    const match = align(
+      saved.map((e) => e.url),
+      live.map((t) => t.url || t.pendingUrl),
+    );
+    // Wie oft fehlt jede URL? (unabhängig von der Reihenfolge der Fenster)
+    const need = new Map();
+    for (const e of saved) need.set(e.url, (need.get(e.url) || 0) + 1);
+    for (const t of live) {
+      const u = t.url || t.pendingUrl;
+      if (need.has(u)) need.set(u, need.get(u) - 1);
+    }
+    // Kandidaten zuerst aus Lücken, in denen die Sicherung mehr Einträge hat als die
+    // Fenster; gleich viele abweichende Tabs sind eher umgeleitete Seiten.
+    const gap = [];
+    for (let i = 0; i < saved.length; ) {
+      if (match[i] >= 0) {
+        i++;
+        continue;
+      }
+      let k = i;
+      while (k < saved.length && match[k] < 0) k++;
+      const prev = i > 0 ? match[i - 1] : -1;
+      const next = k < saved.length ? match[k] : live.length;
+      const deficit = k - i - (next - prev - 1);
+      for (let x = Math.max(i, k - deficit); x < k; x++) gap.push(x);
+      i = k;
+    }
+    const missing = new Set();
+    for (const x of [...gap, ...saved.keys()]) {
+      const u = saved[x].url;
+      if (budget > 0 && match[x] < 0 && !missing.has(x) && need.get(u) > 0) {
+        missing.add(x);
+        need.set(u, need.get(u) - 1);
+        budget--;
+      }
+    }
+    if (!missing.size) continue;
+
+    const created = new Map();
+    let anchor = null;
+    for (let x = 0; x < saved.length; x++) {
+      if (x === shown.length) anchor = null; // Ablage-Abschnitt: nicht hinter Tabs des Hauptfensters
+      if (match[x] >= 0) {
+        anchor = live[match[x]].id;
+        continue;
+      }
+      if (!missing.has(x)) continue;
+      const a = anchor && (await chrome.tabs.get(anchor).catch(() => null));
+      let windowId;
+      let index;
+      if (a) {
+        windowId = a.windowId;
+        index = a.index + 1;
+      } else {
+        windowId = (x < shown.length ? wins[0] || sw : sw || wins[0]).id;
+        index = (await chrome.tabs.query({ windowId })).filter((t) => t.pinned).length;
+      }
+      try {
+        const t = await chrome.tabs.create({ windowId, index, url: saved[x].url, active: false });
+        created.set(x, t);
+        anchor = t.id;
+        changed = true;
+        console.info('[workspaces] verlorenen Tab ergänzt:', saved[x].url);
+      } catch (err) {
+        console.warn('[workspaces] Tab nicht ergänzbar:', saved[x].url, err);
+      }
+    }
+    // Gruppen: der Gruppe eines Nachbarn mit derselben gesicherten Gruppe beitreten,
+    // sonst die Gruppe neu anlegen.
+    for (const [x, t] of created) {
+      const e = saved[x];
+      if (!e.g) continue;
+      try {
+        let gid = -1;
+        for (let y = 0; y < saved.length && gid < 0; y++) {
+          if (y === x || saved[y].g !== e.g) continue;
+          const other = match[y] >= 0 ? live[match[y]] : created.get(y);
+          const cur = other && (await chrome.tabs.get(other.id).catch(() => null));
+          if (cur && cur.windowId === t.windowId && cur.groupId >= 0) gid = cur.groupId;
+        }
+        if (gid >= 0) {
+          await chrome.tabs.group({ groupId: gid, tabIds: [t.id] });
+        } else {
+          gid = await chrome.tabs.group({ tabIds: [t.id], createProperties: { windowId: t.windowId } });
+          await chrome.tabGroups.update(gid, { title: e.gt || '', color: e.gc || 'grey', collapsed: !!e.gx });
+        }
+      } catch (err) {
+        console.warn('[workspaces] Gruppe nicht ergänzbar', err);
+      }
+    }
+  }
+  return changed;
 }
 
 async function reconcile() {
@@ -531,14 +689,24 @@ async function reconcile() {
     entries = (await chrome.storage.local.get('backupWindows')).backupWindows || [];
     entriesUntil = Date.now() + 20000;
   }
-  if (Date.now() > entriesUntil) entries = [];
-  for (const w of mains) {
-    if (!s.windowWs[w.id]) {
-      s.windowWs[w.id] = guessWs(w, s, cfg, entries);
-      changed = true;
-    }
+  // Solange läuft auch die Reparatur verlorener Tabs. Sie hängt nicht nur am ersten
+  // Abgleich, weil der Service Worker vor der Sitzungswiederherstellung laufen kann.
+  const starting = Date.now() <= entriesUntil;
+  if (!starting) entries = [];
+  const fresh = mains.filter((w) => !s.windowWs[w.id]);
+  if (fresh.length) {
+    for (const [id, ws] of assignWindows(fresh, s, cfg, entries)) s.windowWs[id] = ws;
+    changed = true;
   }
   await chrome.storage.session.set({ entries, entriesUntil });
+  if (starting) {
+    switching++;
+    try {
+      if (await repairFromBackup(cfg, s, stash, mains)) changed = true;
+    } finally {
+      switching--;
+    }
+  }
   s.tabOrigin = {};
   await saveSess(s);
 
