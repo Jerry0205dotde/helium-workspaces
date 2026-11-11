@@ -180,7 +180,9 @@ async function whenIdle(fn, tries = 15) {
 // ihrer Geschwister (gs), denn Gruppen-IDs ändern sich bei jeder Wiederherstellung
 // und jedem Browserstart. Mit join treten sie beim erneuten Versuch der Gruppe bei,
 // in der ein Geschwister-Tab liegt (das Fenster zeigt dann nur diesen Workspace).
-async function recreate(list, windowId, pinned = false, join = false) {
+// have sind Tabs, die ein abgebrochener Aufruf für die ersten Einträge schon angelegt
+// hat: Sie werden nicht noch einmal angelegt, aber mit dem Rest gruppiert.
+async function recreate(list, windowId, pinned = false, join = false, have = []) {
   const ids = [];
   const failed = [];
   const groups = new Map();
@@ -190,10 +192,11 @@ async function recreate(list, windowId, pinned = false, join = false) {
     const gs = list.filter((o) => o !== e && o.g === e.g).map((o) => o.url);
     failed.push({ ...e, gs: [...new Set([...(e.gs || []), ...gs])] });
   };
+  let n = 0;
   for (const e of list) {
     if (!e.url) continue;
     try {
-      const t = await whenIdle(() => chrome.tabs.create({ windowId, url: e.url, active: false, pinned }));
+      const t = have[n++] || (await whenIdle(() => chrome.tabs.create({ windowId, url: e.url, active: false, pinned })));
       ids.push(t.id);
       if (e.g && !pinned) {
         if (!groups.has(e.g)) groups.set(e.g, []);
@@ -427,10 +430,11 @@ async function finishSwitch() {
     if (tStash) {
       await moveOrdered(stashTabsOf(tStash), p.windowId);
     } else if (p.restoring) {
-      // Service Worker endete beim Neuanlegen aus der Sicherung: den Rest ergänzen
+      // Service Worker endete beim Neuanlegen aus der Sicherung: den Rest ergänzen und
+      // die Gruppen anlegen, auch für die schon angekommenen Tabs
       const b = (await getBackup()).backup[p.to];
-      const list = [...(b?.shown || []), ...(b?.stash || [])].filter((e) => e.url);
-      await keepFailed(p.to, (await recreate(list.slice(arrived.length), p.windowId)).failed);
+      const list = [...(b?.shown || []), ...(b?.stash || [])];
+      await keepFailed(p.to, (await recreate(list, p.windowId, false, false, arrived)).failed);
     }
 
     const oldLeft = tabs.filter((t) => old.has(t.id));
