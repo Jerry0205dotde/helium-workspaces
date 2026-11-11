@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workspaces exportieren und importieren</title>
+<link rel="stylesheet" href="transfer.css">
+</head>
+<body>
+<main>
+  <h1>Workspaces exportieren und importieren</h1>
+
+  <section>
+    <h2>Exportieren</h2>
+    <p class="muted">Speichert alle Workspaces mit Name, Farbe, Emoji, Reihenfolge, Tabs und Tab-Gruppen sowie die angehefteten Tabs als JSON-Datei. Fenster-IDs und der Geräteschlüssel kommen nicht hinein.</p>
+    <button id="export" class="btn primary">Als Datei speichern</button>
+    <p id="export-result" class="result" role="status"></p>
+  </section>
+
+  <section>
+    <h2>Importieren</h2>
+    <p class="muted">Die Datei wird zuerst vollständig geprüft. Geändert wird erst, wenn du unten bestätigst.</p>
+    <input id="file" type="file" accept=".json,application/json">
+    <div id="error" class="error" role="alert" hidden></div>
+    <div id="preview" hidden>
+      <p id="summary"></p>
+      <ul id="file-list" class="ws-list"></ul>
+
+      <fieldset class="modes">
+        <legend>Was soll passieren?</legend>
+        <label class="mode">
+          <input type="radio" name="mode" value="merge" checked>
+          <span><strong>Zusammenführen</strong> – bisherige Workspaces und Tabs bleiben, nichts wird geschlossen.</span>
+        </label>
+        <ul id="merge-list" class="plan"></ul>
+        <label class="mode">
+          <input type="radio" name="mode" value="replace">
+          <span><strong>Ersetzen</strong> – die bisherigen Workspaces werden gelöscht und durch die aus der Datei ersetzt.</span>
+        </label>
+        <ul id="replace-list" class="plan"></ul>
+      </fieldset>
+
+      <button id="import" class="btn primary">Importieren</button>
+    </div>
+    <p id="import-result" class="result" role="status"></p>
+  </section>
+  <p id="status" class="muted" role="status"></p>
+</main>
+<script src="transfer.js"></script>
+</body>
+</html>
