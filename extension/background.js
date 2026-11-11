@@ -969,8 +969,10 @@ async function restoreStart(wins, wsId) {
   if (!pinned.length && !tabs.length) return false;
   switching++;
   try {
-    await recreate(pinned, win.id, true);
-    const ids = await recreate(tabs, win.id);
+    const p = await recreate(pinned, win.id, true);
+    const r = await recreate(tabs, win.id);
+    await keepFailed(wsId, [...p.failed.map((e) => ({ ...e, p: true })), ...r.failed]);
+    const ids = r.ids;
     const own = movableTabsOf(win);
     const blank = own.length === 1 && isNewTab(own[0]) ? own[0] : null;
     if (blank && ids.length && !saved.some((e) => e.url === (blank.url || blank.pendingUrl))) {
