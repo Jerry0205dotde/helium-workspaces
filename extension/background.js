@@ -404,6 +404,7 @@ async function reorderWs(ids) {
 }
 
 async function deleteWs(id) {
+  await resumeSwitch();
   const cfg = await getConfig();
   if (cfg.workspaces.length < 2) return;
   const idx = cfg.workspaces.findIndex((w) => w.id === id);
@@ -687,6 +688,7 @@ async function reconcile() {
   } catch (err) {
     console.warn('[workspaces] Wechsel noch nicht abschließbar:', err);
     if (++resumeTries < 20) scheduleReconcile();
+    return; // Zuordnung stimmt noch nicht, z. B. würde repairFromBackup sonst Tabs doppelt anlegen
   }
   const cfg = await getConfig();
   const s = await sess();
