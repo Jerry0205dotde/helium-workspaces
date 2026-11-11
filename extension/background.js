@@ -144,31 +144,127 @@ async function moveOrdered(tabs, windowId) {
 }
 
 // Legt gesicherte Tabs neu an (nur nötig, wenn ihr Fenster nicht mehr existiert).
-async function recreate(list, windowId, pinned = false) {
+// Gibt die neuen Tab-IDs und die Einträge zurück, die nicht angelegt werden konnten.
+// Lässt sich eine Gruppe nicht anlegen, werden ihre Tabs wieder geschlossen und
+// zählen samt Gruppenangaben als fehlgeschlagen, damit ein erneuter Versuch sie
+// wieder als Gruppe anlegt. Fehlgeschlagene Gruppenmitglieder merken sich die URLs
+// ihrer Geschwister (gs), denn Gruppen-IDs ändern sich bei jeder Wiederherstellung
+// und jedem Browserstart. Mit join treten sie beim erneuten Versuch der Gruppe bei,
+// in der ein Geschwister-Tab liegt (das Fenster zeigt dann nur diesen Workspace).
+async function recreate(list, windowId, pinned = false, join = false) {
   const ids = [];
+  const failed = [];
   const groups = new Map();
+  const used = new Set(); // in diesem Aufruf belegte Gruppen gehören zu einer anderen Sicherung
+  const fail = (e) => {
+    if (!e.g || pinned) return failed.push(e);
+    const gs = list.filter((o) => o !== e && o.g === e.g).map((o) => o.url);
+    failed.push({ ...e, gs: [...new Set([...(e.gs || []), ...gs])] });
+  };
   for (const e of list) {
     if (!e.url) continue;
     try {
       const t = await chrome.tabs.create({ windowId, url: e.url, active: false, pinned });
       ids.push(t.id);
       if (e.g && !pinned) {
-        if (!groups.has(e.g)) groups.set(e.g, { ids: [], title: e.gt, color: e.gc, collapsed: e.gx });
-        groups.get(e.g).ids.push(t.id);
+        if (!groups.has(e.g)) groups.set(e.g, []);
+        groups.get(e.g).push({ id: t.id, e });
       }
     } catch (err) {
       console.warn('[workspaces] Tab nicht wiederherstellbar:', e.url, err);
+      fail(e);
     }
   }
-  for (const g of groups.values()) {
+  for (const members of groups.values()) {
+    const { e } = members[0];
+    const props = { title: e.gt || '', color: e.gc || 'grey', collapsed: !!e.gx };
+    const tabIds = members.map((m) => m.id);
     try {
-      const gid = await chrome.tabs.group({ tabIds: g.ids, createProperties: { windowId } });
-      await chrome.tabGroups.update(gid, { title: g.title || '', color: g.color || 'grey', collapsed: !!g.collapsed });
+      let same = null;
+      const gs = new Set(members.flatMap((m) => m.e.gs || []));
+      if (join && gs.size) {
+        for (const t of await chrome.tabs.query({ windowId })) {
+          if (t.groupId < 0 || used.has(t.groupId) || !gs.has(t.url || t.pendingUrl)) continue;
+          const g = await chrome.tabGroups.get(t.groupId);
+          if (g.title === props.title && g.color === props.color) {
+            same = g;
+            break;
+          }
+        }
+      }
+      if (same) {
+        used.add(await chrome.tabs.group({ groupId: same.id, tabIds }));
+      } else {
+        const gid = await chrome.tabs.group({ tabIds, createProperties: { windowId } });
+        used.add(gid);
+        await chrome.tabGroups.update(gid, props);
+      }
     } catch (err) {
       console.warn('[workspaces] Gruppe nicht wiederherstellbar', err);
+      for (const m of members) {
+        try {
+          await chrome.tabs.remove(m.id);
+          ids.splice(ids.indexOf(m.id), 1);
+          fail(m.e);
+        } catch {
+          // Tab bleibt ohne Gruppe erhalten
+        }
+      }
     }
   }
-  return ids;
+  return { ids, failed };
+}
+
+// Bewahrt fehlgeschlagene Einträge getrennt von shown/stash auf, damit snapshot()
+// sie nicht durch die lebenden Tabs ersetzt. Aus shown/stash (bzw. den angehefteten
+// Tabs) werden sie entfernt, damit jeder Eintrag nur an einer Stelle steht.
+async function keepFailed(wsId, failed) {
+  if (!failed.length) return;
+  const { backup, backupPinned } = await getBackup();
+  const b = (backup[wsId] ??= { stash: [], shown: [] });
+  for (const e of failed) {
+    for (const arr of e.p ? [backupPinned] : [(b.shown ??= []), (b.stash ??= [])]) {
+      const i = arr.findIndex((a) => a.url === e.url);
+      if (i >= 0) {
+        arr.splice(i, 1);
+        break;
+      }
+    }
+  }
+  b.failed = [...(b.failed || []), ...failed];
+  await chrome.storage.local.set({ backup, backupPinned });
+}
+
+// Legt die fehlgeschlagenen Tabs eines Workspace erneut an, im Fenster windowId.
+// Zeigt das Fenster einen anderen Workspace, wird vorher dorthin gewechselt.
+async function retryFailed(windowId, wsId) {
+  await resumeSwitch();
+  if ((await sess()).windowWs[windowId] !== wsId) await switchTo(windowId, wsId);
+  if ((await sess()).windowWs[windowId] !== wsId) return;
+  const list = (await getBackup()).backup[wsId]?.failed || [];
+  if (!list.length) return;
+  let still;
+  switching++;
+  try {
+    const p = await recreate(list.filter((e) => e.p), windowId, true);
+    const r = await recreate(list.filter((e) => !e.p), windowId, false, true);
+    still = [...p.failed, ...r.failed];
+  } finally {
+    switching--;
+  }
+  const { backup } = await getBackup();
+  backup[wsId].failed = still;
+  await chrome.storage.local.set({ backup });
+  await updateAllIcons();
+  await snapshot();
+}
+
+async function dismissFailed(wsId) {
+  const { backup } = await getBackup();
+  if (!backup[wsId]?.failed) return;
+  delete backup[wsId].failed;
+  await chrome.storage.local.set({ backup });
+  await updateAllIcons();
 }
 
 async function ensureStash(wsId, restoreBackup) {
@@ -181,7 +277,7 @@ async function ensureStash(wsId, restoreBackup) {
   if (restoreBackup) {
     const { backup } = await getBackup();
     const b = backup[wsId];
-    if (b) await recreate([...(b.shown || []), ...(b.stash || [])], win.id);
+    if (b) await keepFailed(wsId, (await recreate([...(b.shown || []), ...(b.stash || [])], win.id)).failed);
     await chrome.tabs.update(tabId, { active: true });
   }
   return { windowId: win.id, tabId, created: true };
@@ -245,7 +341,9 @@ async function switchTo(windowId, targetWs) {
       const b = backup[targetWs];
       if (b) {
         await setPending({ ...p, restoring: true });
-        brought = await recreate([...(b.shown || []), ...(b.stash || [])], windowId);
+        const r = await recreate([...(b.shown || []), ...(b.stash || [])], windowId);
+        brought = r.ids;
+        await keepFailed(targetWs, r.failed);
         await setPending(p);
       }
     }
@@ -303,7 +401,7 @@ async function finishSwitch() {
       // Service Worker endete beim Neuanlegen aus der Sicherung: den Rest ergänzen
       const b = (await getBackup()).backup[p.to];
       const list = [...(b?.shown || []), ...(b?.stash || [])].filter((e) => e.url);
-      await recreate(list.slice(arrived.length), p.windowId);
+      await keepFailed(p.to, (await recreate(list.slice(arrived.length), p.windowId)).failed);
     }
 
     const oldLeft = tabs.filter((t) => old.has(t.id));
@@ -432,7 +530,9 @@ async function deleteWs(id) {
 
 async function clearBackup(wsId) {
   const { backup } = await getBackup();
-  backup[wsId] = { stash: [], shown: [] };
+  // Fehlgeschlagene Einträge waren nie in einem Fenster und bleiben für einen erneuten Versuch
+  const failed = backup[wsId]?.failed;
+  backup[wsId] = { stash: [], shown: [], ...(failed?.length ? { failed } : {}) };
   await chrome.storage.local.set({ backup });
 }
 
@@ -467,9 +567,11 @@ async function snapshot() {
     const sw = stash.get(ws.id);
     const showing = mains.filter((w) => s.windowWs[w.id] === ws.id);
     if (!sw && !showing.length) continue; // nichts Lebendes → alten Stand behalten
+    const failed = backup[ws.id]?.failed;
     backup[ws.id] = {
       stash: sw ? stashTabsOf(sw).map((t) => serTab(t, groups)) : [],
       shown: showing.flatMap((w) => movableTabsOf(w).map((t) => serTab(t, groups))),
+      ...(failed?.length ? { failed } : {}),
     };
   }
   for (const k of Object.keys(backup)) {
@@ -763,8 +865,10 @@ async function reconcile() {
       const blank = win.tabs[0].id;
       s.windowWs[win.id] = target;
       await saveSess(s);
-      await recreate(backupPinned, win.id, true);
-      let ids = await recreate(backup[target]?.shown || [], win.id);
+      const p = await recreate(backupPinned, win.id, true);
+      const r = await recreate(backup[target]?.shown || [], win.id);
+      await keepFailed(target, [...p.failed.map((e) => ({ ...e, p: true })), ...r.failed]);
+      let ids = r.ids;
       const st = stash.get(target);
       if (st) ids = ids.concat(await moveOrdered(stashTabsOf(st), win.id));
       const links = foreign.filter((t) => !isNewTab(t));
@@ -934,8 +1038,14 @@ async function setTabIcon(tabId, wsId) {
   const cfg = await getConfig();
   const ws = cfg.workspaces.find((w) => w.id === wsId);
   if (!ws) return;
+  // Unvollständig wiederhergestellt: Zahl der fehlenden Tabs als Plakette
+  const missing = (await getBackup()).backup[wsId]?.failed?.length || 0;
+  let title = `Workspace: ${ws.name}`;
+  if (missing) title += ` – ${missing} ${missing === 1 ? 'Tab' : 'Tabs'} nicht wiederhergestellt`;
   await chrome.action.setIcon({ tabId, imageData: iconFor(ws) }).catch(() => {});
-  await chrome.action.setTitle({ tabId, title: `Workspace: ${ws.name}` }).catch(() => {});
+  await chrome.action.setTitle({ tabId, title }).catch(() => {});
+  await chrome.action.setBadgeText({ tabId, text: missing ? String(missing) : '' }).catch(() => {});
+  if (missing) await chrome.action.setBadgeBackgroundColor({ tabId, color: '#dc2626' }).catch(() => {});
 }
 
 async function updateIcons(windowId) {
@@ -1031,8 +1141,13 @@ chrome.tabs.onRemoved.addListener((tabId, info) => {
   scheduleReconcile(); // falls eine Ablage-Seite geschlossen wurde
   scheduleSnapshot();
 });
-chrome.tabs.onUpdated.addListener((tabId, info) => {
+chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (info.url || info.pinned !== undefined || info.groupId !== undefined) scheduleSnapshot();
+  // Chromium setzt Symbol, Titel und Plakette eines Tabs beim Laden einer Seite zurück
+  if (info.status === 'complete') {
+    const ws = (await sess()).windowWs[tab.windowId];
+    if (ws) await setTabIcon(tabId, ws);
+  }
 });
 chrome.tabs.onMoved.addListener(() => scheduleSnapshot());
 chrome.tabGroups.onUpdated.addListener(() => scheduleSnapshot());
@@ -1061,7 +1176,8 @@ async function stateFor(windowId) {
       const b = backup[ws.id];
       count = b ? (b.stash?.length || 0) + (b.shown?.length || 0) : 0;
     }
-    return { ...ws, count, elsewhere: showing.some((w) => w.id !== windowId) };
+    const failed = backup[ws.id]?.failed?.length || 0;
+    return { ...ws, count, failed, elsewhere: showing.some((w) => w.id !== windowId) };
   });
   return { workspaces: list, current: s.windowWs[windowId] || null, colors: COLORS };
 }
@@ -1085,6 +1201,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return serial(() => deleteWs(msg.wsId));
       case 'moveTab':
         return serial(() => moveTabToWs(msg.tabId, msg.wsId));
+      case 'retry':
+        return serial(() => retryFailed(msg.windowId, msg.wsId));
+      case 'dismiss':
+        return serial(() => dismissFailed(msg.wsId));
     }
   };
   run().then(
