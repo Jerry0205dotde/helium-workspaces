@@ -95,6 +95,50 @@ test('Start ohne Sitzungswiederherstellung baut den letzten Workspace aus der Si
   }
 });
 
+// Zweites Hauptfenster mit C, in dem q1 und (wie in Fenster 1) p1 angeheftet sind
+async function secondWindowWithPinned(env) {
+  const { b } = env;
+  const win2 = (await b.chrome.windows.create({ focused: true })).id;
+  await env.w.settle();
+  await ok(env.w.request({ type: 'switch', windowId: win2, wsId: env.ids.C }));
+  for (const p of ['q1', 'p1']) {
+    const t = await b.chrome.tabs.create({ windowId: win2, url: url(p), active: false });
+    await b.chrome.tabs.update(t.id, { pinned: true });
+  }
+  await env.w.settle();
+  assert.deepEqual(b.local.data.backupPinned.map((e) => e.url), ['p1', 'p2', 'q1'].map(url));
+  return win2;
+}
+
+test('Angeheftete Tabs eines zweiten Hauptfensters kommen nach einem Start ohne Sitzungswiederherstellung zurück', async () => {
+  for (const keepPinned of [false, true]) {
+    const env = await setup(SPEC);
+    await secondWindowWithPinned(env);
+    env.b.restart({ restore: 'none', keepPinned });
+    const w = env.b.startWorker('startup');
+    await w.settle();
+    assert.equal(env.b.windows.length, 1);
+    assert.equal(shows(env, env.b.windows[0].id), 'C');
+    const all = { ...ALL, pinned: [...SPEC.pinned, 'q1'] };
+    check(env, all);
+    await cycle(env, all, ['A', 'B', 'C']);
+  }
+});
+
+test('Neuaufbau des Hauptfensters bringt die angehefteten Tabs aller Hauptfenster zurück', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  await secondWindowWithPinned(env);
+  // Chromium stellt nur die Ablagen wieder her, keins der beiden Hauptfenster
+  b.restart({ loseWindow: (x) => !x.tabs.some((t) => t.url.startsWith(b.origin)) });
+  const w = b.startWorker('startup');
+  await w.settle();
+  assert.equal(b.mains().length, 1);
+  const all = { ...ALL, pinned: [...SPEC.pinned, 'q1'] };
+  check(env, all);
+  await cycle(env, all);
+});
+
 test('Start, bei dem Chromium die Fenster erst nach dem Service Worker wiederherstellt', async () => {
   const env = await setup(SPEC);
   env.b.restart({ restore: 'later', loseTab: (t) => t.url === url('b2') });

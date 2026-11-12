@@ -620,6 +620,25 @@ function serTab(t, groups) {
   return e;
 }
 
+// Angeheftete Tabs aller Hauptfenster, jede Adresse so oft, wie sie in einem einzelnen
+// Fenster höchstens vorkommt: dieselbe Adresse in zwei Fenstern zählt einmal.
+function pinnedOf(mains, groups) {
+  const out = [];
+  const most = new Map();
+  for (const w of mains) {
+    const own = new Map();
+    for (const e of w.tabs.filter((t) => t.pinned).map((t) => serTab(t, groups))) {
+      const n = (own.get(e.url) || 0) + 1;
+      own.set(e.url, n);
+      if (n > (most.get(e.url) || 0)) {
+        most.set(e.url, n);
+        out.push(e);
+      }
+    }
+  }
+  return out;
+}
+
 // Sichert den Inhalt aller Workspaces, falls ein Fenster verloren geht
 // (z. B. wenn das Hauptfenster per X geschlossen wird).
 async function snapshot() {
@@ -660,7 +679,7 @@ async function snapshot() {
   }));
 
   const data = { backup, stashWins, backupWindows };
-  if (mains.length) data.backupPinned = mains[0].tabs.filter((t) => t.pinned).map((t) => serTab(t, groups));
+  if (mains.length) data.backupPinned = pinnedOf(mains, groups);
   await chrome.storage.local.set(data);
 }
 
