@@ -903,6 +903,49 @@ async function reconcile() {
   const s = await sess();
   let { stash, mains, dups } = await scan();
 
+  // Nach Browserstart oder Neuladen der Erweiterung ist storage.session leer: dann die
+  // gesicherten Fenster-Einträge für 20 s zur Zuordnung wiederhergestellter Fenster nutzen.
+  let { entries, entriesUntil } = await chrome.storage.session.get(['entries', 'entriesUntil']);
+  if (entriesUntil === undefined) {
+    entries = (await chrome.storage.local.get('backupWindows')).backupWindows || [];
+    entriesUntil = Date.now() + 20000;
+  }
+  // Solange läuft auch die Reparatur verlorener Tabs. Sie hängt nicht nur am ersten
+  // Abgleich, weil der Service Worker vor der Sitzungswiederherstellung laufen kann.
+  const starting = Date.now() <= entriesUntil;
+
+  // Beim Start ohne Sitzungswiederherstellung legt Chromium die angehefteten Tabs aller
+  // Fenster zusammen in ein neues Fenster, auch die Ablage-Seiten. Ein Fenster mit mehreren
+  // Ablage-Seiten oder mit angehefteten Tabs ist deshalb keine Ablage, die übrigen Tabs der
+  // Ablagen fehlen darin. Ohne die Ablage-Seiten ist es das Startfenster; die Workspaces
+  // kommen aus der Sicherung. War ein Tab in mehreren Hauptfenstern angeheftet, steht er
+  // darin mehrfach: Er bleibt so oft, wie ihn die Sicherung kennt, mindestens einmal.
+  if (starting) {
+    let merged = false;
+    for (const w of [...stash.values(), ...dups]) {
+      const marks = w.tabs.filter(isStashTab);
+      const pins = w.tabs.filter((t) => t.pinned && !isStashTab(t));
+      if (marks.length < 2 && !pins.length) continue;
+      const keep = new Map();
+      for (const e of (await getBackup()).backupPinned) keep.set(e.url, (keep.get(e.url) || 0) + 1);
+      const seen = new Map();
+      const extra = pins.filter((t) => {
+        const n = (seen.get(urlOf(t)) || 0) + 1;
+        seen.set(urlOf(t), n);
+        return n > Math.max(keep.get(urlOf(t)) || 0, 1);
+      });
+      await moving(async () => {
+        if (marks.length === w.tabs.length) await chrome.tabs.create({ windowId: w.id });
+        await chrome.tabs.remove([...marks, ...extra].map((t) => t.id));
+      });
+      merged = true;
+    }
+    if (merged) {
+      ({ stash, mains, dups } = await scan());
+      changed = true;
+    }
+  }
+
   // Ablage-Fenster, deren Ablage-Seite fehlt (z. B. weil die Erweiterung neu geladen
   // wurde und Chromium dabei ihre Seiten schließt), wieder zu Ablagen machen.
   const { stashWins } = await chrome.storage.local.get('stashWins');
@@ -990,16 +1033,6 @@ async function reconcile() {
   for (const id of Object.keys(s.windowWs)) {
     if (!mains.some((w) => String(w.id) === id)) delete s.windowWs[id];
   }
-  // Nach Browserstart oder Neuladen der Erweiterung ist storage.session leer: dann die
-  // gesicherten Fenster-Einträge für 20 s zur Zuordnung wiederhergestellter Fenster nutzen.
-  let { entries, entriesUntil } = await chrome.storage.session.get(['entries', 'entriesUntil']);
-  if (entriesUntil === undefined) {
-    entries = (await chrome.storage.local.get('backupWindows')).backupWindows || [];
-    entriesUntil = Date.now() + 20000;
-  }
-  // Solange läuft auch die Reparatur verlorener Tabs. Sie hängt nicht nur am ersten
-  // Abgleich, weil der Service Worker vor der Sitzungswiederherstellung laufen kann.
-  const starting = Date.now() <= entriesUntil;
   if (!starting) entries = [];
   const fresh = mains.filter((w) => !s.windowWs[w.id]);
   const guessed = new Set();

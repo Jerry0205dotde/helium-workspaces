@@ -95,6 +95,36 @@ test('Start ohne Sitzungswiederherstellung baut den letzten Workspace aus der Si
   }
 });
 
+test('Start ohne Sitzungswiederherstellung: zusammen wiederhergestellte Ablage-Seiten und angeheftete Tabs verdrängen keine gesicherten Tabs', async () => {
+  const spec = {
+    pinned: ['pin'],
+    workspaces: {
+      S: ['a'],
+      U: [{ url: 'b', group: 'Uni', color: 'blue' }, { url: 'c', group: 'Uni', color: 'blue' }, 'd', 'e'],
+      D: [],
+    },
+  };
+  const all = { ...spec.workspaces, pinned: spec.pinned };
+  const env = await setup(spec);
+  const { b } = env;
+  // D bekommt eine neue Tab-Seite in seine Ablage, zuletzt zeigt das Fenster wieder S
+  await ok(env.w.request({ type: 'switch', windowId: env.win, wsId: env.ids.D }));
+  await ok(env.w.request({ type: 'switch', windowId: env.win, wsId: env.ids.S }));
+  // Ablagen von U und D sowie die leere Ablage von S
+  assert.equal(b.windows.filter((x) => b.stashOf(x)).length, 3);
+  // Wie im beobachteten Fall steht die Ablage-Seite von U im Startfenster vorn
+  const stashU = b.windows.find((x) => b.stashOf(x) === env.ids.U);
+  b.windows = [stashU, ...b.windows.filter((x) => x !== stashU)];
+  b.restart({ restore: 'none', keepPinned: true });
+  assert.equal(b.windows[0].tabs.filter((t) => t.url.startsWith(b.origin)).length, 3);
+  const w = b.startWorker('startup');
+  await w.settle();
+  assert.equal(b.windows.length, 1);
+  assert.equal(shows(env, b.windows[0].id), 'S');
+  check(env, all);
+  await cycle(env, all, ['U', 'D', 'S', 'U']);
+});
+
 // Zweites Hauptfenster mit C, in dem q1 und (wie in Fenster 1) p1 angeheftet sind
 async function secondWindowWithPinned(env) {
   const { b } = env;

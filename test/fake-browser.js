@@ -597,8 +597,8 @@ class Browser {
 
   // Browser beenden und neu starten. restore: 'now' stellt die letzte Sitzung vor dem
   // Start des Service Workers wieder her, 'later' erst durch finishRestore() danach,
-  // 'none' öffnet nur ein Fenster mit neuer Tab-Seite (keepPinned: mit den angehefteten
-  // Tabs). loseTab/loseWindow simulieren, was Chromium beim Wiederherstellen verliert.
+  // 'none' öffnet nur ein Fenster mit neuer Tab-Seite (keepPinned: davor die angehefteten
+  // Tabs aller Fenster). loseTab/loseWindow simulieren, was Chromium beim Wiederherstellen verliert.
   restart({ restore = 'now', loseTab = () => false, loseWindow = () => false, keepPinned = false } = {}) {
     this.worker?.kill();
     this.listeners = new Map();
@@ -611,9 +611,9 @@ class Browser {
     this.lastClosed = null;
     this.pendingRestore = null;
     if (restore === 'none') {
-      // Angeheftete Tabs des ersten Fensters, das keine Ablage ist
-      const first = saved.find((w) => !w.tabs.some((t) => t.url.startsWith(this.origin)));
-      const pinned = keepPinned && first ? first.tabs.filter((t) => t.pinned) : [];
+      // Wie Chromium: die angehefteten Tabs aller Fenster in einem einzigen Fenster, also
+      // auch die Ablage-Markierungen
+      const pinned = keepPinned ? saved.flatMap((w) => w.tabs.filter((t) => t.pinned)) : [];
       const w = { id: this.next.win++, state: 'normal', focused: true, tabs: [] };
       for (const t of pinned) w.tabs.push(this.newTab(t.url, true));
       w.tabs.push(this.newTab(NEWTAB));
