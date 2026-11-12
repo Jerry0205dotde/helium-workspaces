@@ -167,6 +167,10 @@ fieldset:disabled .add:hover { color: var(--muted); }
 .error .detail { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .error p:last-child { margin-bottom: 0; }
 body.busy footer .hint { display: none; }
+.key { margin-top: 4px; padding: 0 8px; color: var(--muted); font-size: 12px; }
+.key summary { padding: 4px 0; cursor: pointer; }
+.key-line { display: flex; align-items: center; gap: 6px; padding-bottom: 4px; }
+.key code { flex: 1; min-width: 0; overflow-wrap: anywhere; user-select: all; color: var(--fg); }
 footer {
   margin-top: 4px;
   padding: 6px 8px 2px;

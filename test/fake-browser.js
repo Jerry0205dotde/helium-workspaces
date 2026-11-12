@@ -768,6 +768,8 @@ class Worker {
       __now: () => browser.now,
       __random: seeded(workerSeed++),
     };
+    const bytes = seeded(workerSeed++);
+    sandbox.crypto = { getRandomValues: (a) => a.fill(0).map(() => Math.floor(bytes() * 256)) };
     sandbox.chrome = browser.buildApi(this);
     sandbox.self = sandbox;
     sandbox.importScripts = (...files) => {

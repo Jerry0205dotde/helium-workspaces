@@ -330,6 +330,22 @@ document.getElementById('transfer').addEventListener('click', () =>
     else await chrome.windows.create({ url, type: 'popup', width: 600, height: 720 });
   }, { close: true }));
 
+// Schlüssel zum Kopieren, install.sh trägt ihn für das KWin-Skript ein
+const keyValue = document.getElementById('key-value');
+const keyCopy = document.getElementById('key-copy');
+send({ type: 'token' }).then(
+  (token) => {
+    keyValue.textContent = token;
+    keyCopy.disabled = false;
+  },
+  (e) => (keyValue.textContent = `Nicht verfügbar: ${errorText(e)}`),
+);
+keyCopy.addEventListener('click', () =>
+  navigator.clipboard.writeText(keyValue.textContent).then(
+    () => (keyCopy.textContent = 'Kopiert'),
+    () => (keyCopy.textContent = 'Fehlgeschlagen'),
+  ));
+
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || !state) return;
   const n = Number(e.key);
