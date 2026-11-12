@@ -9,7 +9,7 @@
 //
 // Angeheftete Tabs bleiben im Hauptfenster und gelten für alle Workspaces.
 
-importScripts('exchange.js');
+importScripts('exchange.js', 'label.js');
 
 const STASH_PAGE = chrome.runtime.getURL('stash.html');
 const COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#64748b'];
@@ -1353,7 +1353,7 @@ function drawIcon(ws, size) {
   x.beginPath();
   x.roundRect(0, 0, size, size, r);
   x.fill();
-  const label = ws.emoji || (ws.name.trim()[0] || '?').toUpperCase();
+  const label = wsLabel(ws);
   x.fillStyle = '#ffffff';
   x.font = `600 ${Math.round(size * (ws.emoji ? 0.7 : 0.64))}px system-ui, sans-serif`;
   x.textAlign = 'center';

@@ -32,7 +32,7 @@ function badge(ws) {
   b.className = 'badge';
   b.ariaHidden = 'true';
   b.style.background = ws.color;
-  b.textContent = ws.emoji || (ws.name.trim()[0] || '?').toUpperCase();
+  b.textContent = wsLabel(ws);
   return b;
 }
 

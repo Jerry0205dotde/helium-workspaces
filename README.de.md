@@ -205,6 +205,7 @@ Die Verbindung zu Helium und KWin prüfen die Tests nicht. Nach Änderungen dara
   - [`popup.html`](./extension/popup.html) / [`popup.js`](./extension/popup.js): die Workspace-Liste
   - [`transfer.html`](./extension/transfer.html) / [`transfer.js`](./extension/transfer.js): Export und Import, [`exchange.js`](./extension/exchange.js): das Dateiformat und seine Prüfung
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): die Seite, die ein Fenster als Ablage markiert
+  - [`label.js`](./extension/label.js): das Zeichen im Symbol eines Workspace
 - [`kwin/`](./kwin): KWin-Skript, das die Ablage-Fenster versteckt
 - [`install.sh`](./install.sh): Schlüssel erzeugen und KWin-Skript einrichten
 - [`test/`](./test): automatische Tests, [`fake-browser.js`](./test/fake-browser.js) bildet die Chrome-APIs nach

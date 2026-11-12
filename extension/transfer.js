@@ -24,7 +24,7 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const tabs = (n) => plural(n, 'Tab', 'Tabs');
 
 function badge(ws) {
-  const b = el('span', 'badge', ws.emoji || (ws.name.trim()[0] || '?').toUpperCase());
+  const b = el('span', 'badge', wsLabel(ws));
   b.style.background = ws.color;
   return b;
 }
