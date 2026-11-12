@@ -471,6 +471,10 @@ async function switchRelative(windowId, step) {
 
 async function moveTabToWs(tabId, wsId) {
   await resumeSwitch();
+  // Das Ziel kann inzwischen gelöscht sein (Löschen oder Import lief noch); ohne diese
+  // Prüfung entstünde eine Ablage, die der Abgleich als „Wiederhergestellt“ zurückholt
+  const cfg = await getConfig();
+  if (!cfg.workspaces.some((w) => w.id === wsId)) return;
   const tab = await chrome.tabs.get(tabId);
   const s = await sess();
   if (s.windowWs[tab.windowId] === wsId) return;

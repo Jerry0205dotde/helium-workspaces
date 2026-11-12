@@ -114,6 +114,23 @@ test('Bedienschritte und Tab-Änderungen mitten in schnellen Wechseln', async ()
   check(env, expected);
 });
 
+test('Tab verschieben direkt nach dem Löschen des Ziels: der Workspace bleibt gelöscht', async () => {
+  const env = await setup(SPEC);
+  const { b, w, ids } = env;
+  const tab = where(env, 'a1').tab;
+  const replies = [w.send({ type: 'delete', wsId: ids.C }), w.send({ type: 'moveTab', tabId: tab.id, wsId: ids.C })];
+  // dasselbe über das Kontextmenü, dessen Eintrag beim Klick noch sichtbar war
+  b.fire('contextMenus.onClicked', { menuItemId: `move:${ids.C}` }, tab);
+  await w.settle();
+  for (const r of await Promise.all(replies)) assert.equal(r.ok, true, r.error);
+  assert.deepEqual(b.local.data.workspaces.map((x) => x.name), ['A', 'B', 'D']);
+  assert.ok(!b.windows.some((x) => b.stashOf(x) === ids.C), 'Ablage für den gelöschten Workspace angelegt');
+  assert.equal(where(env, 'a1').ws, ids.A);
+  delete env.ids.C;
+  const { C, ...rest } = ALL;
+  check(env, rest, { allowNewTab: false });
+});
+
 test('Sicherung: viele Änderungen werden gebündelt', async () => {
   const env = await setup(SPEC);
   const { b, w, win } = env;
