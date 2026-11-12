@@ -177,6 +177,29 @@ test('Ein Tab lässt sich nicht wiederherstellen: wird aufbewahrt, erneut versuc
   check(env2, { ...ALL, C: [] });
 });
 
+test('Plakette für fehlende Tabs: alle Tabs aktualisiert, Konfiguration und Sicherung je einmal gelesen', async () => {
+  const env = await fromBackup();
+  const { b } = env;
+  const main = b.mains()[0].id;
+  b.fail('tabs.create', { when: (o) => o.url === url('b2') });
+  await ok(env.w.request({ type: 'switch', windowId: main, wsId: env.ids.B }));
+  await env.w.settle();
+  const from = b.calls.length;
+  await env.w.eval('updateAllIcons()');
+  const calls = b.calls.slice(from);
+  const reads = (key) => calls.filter((c) => c.name === 'storage.local.get' && [c.args[0]].flat().includes(key)).length;
+  assert.equal(reads('workspaces'), 1);
+  assert.equal(reads('backup'), 1);
+  const tabs = await b.chrome.tabs.query({ windowId: main });
+  const set = (name) => new Map(calls.filter((c) => c.name === name).map((c) => [c.args[0].tabId, c.args[0]]));
+  const badges = set('action.setBadgeText');
+  const titles = set('action.setTitle');
+  for (const t of tabs) {
+    assert.equal(badges.get(t.id)?.text, '1');
+    assert.equal(titles.get(t.id)?.title, 'Workspace: B – 1 Tab nicht wiederhergestellt');
+  }
+});
+
 // So meldet der Browser, dass gerade ein Tab gezogen wird
 const DRAGGING = 'Tabs cannot be edited right now (user may be dragging a tab).';
 
