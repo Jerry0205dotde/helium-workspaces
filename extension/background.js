@@ -1580,7 +1580,15 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       case 'importPreview':
         return userAction(() => previewImport(msg.text));
       case 'import':
-        return userAction(() => importExchange(msg.text, msg.mode, msg.confirmed));
+        return userAction(async () => {
+          try {
+            return await importExchange(msg.text, msg.mode, msg.confirmed);
+          } finally {
+            // Beim Ersetzen holt das Wechseln der Hauptfenster eines davon nach vorn.
+            // Die Importseite bekommt den Fokus zurück, sonst bleibt ihre Meldung verdeckt.
+            if (sender.tab) await chrome.windows.update(sender.tab.windowId, { focused: true }).catch(() => {});
+          }
+        });
     }
   };
   run().then(

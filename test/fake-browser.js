@@ -195,7 +195,7 @@ class Browser {
   }
 
   winInfo(w, populate = true) {
-    const info = { id: w.id, state: w.state, focused: w.focused, incognito: false, type: 'normal' };
+    const info = { id: w.id, state: w.state, focused: w.focused, incognito: false, type: w.type };
     if (populate) info.tabs = w.tabs.map((t) => this.tabInfo(t, w));
     return info;
   }
@@ -293,9 +293,9 @@ class Browser {
     return { id: this.next.tab++, url: url || NEWTAB, title: url || 'Neuer Tab', pinned, active: false, groupId: -1 };
   }
 
-  createWindow({ url, focused = true, state = 'normal' } = {}) {
+  createWindow({ url, focused = true, state = 'normal', type = 'normal' } = {}) {
     const urls = url === undefined ? [NEWTAB] : [].concat(url);
-    const w = { id: this.next.win++, state, focused: false, tabs: [] };
+    const w = { id: this.next.win++, type, state, focused: false, tabs: [] };
     this.windows.push(w);
     for (const u of urls) w.tabs.push(this.newTab(u));
     w.tabs[0].active = true;
@@ -399,9 +399,12 @@ class Browser {
       },
       windows: {
         WINDOW_ID_NONE: -1,
-        getAll: api('windows.getAll', ({ populate = false } = {}) => b.windows.map((w) => b.winInfo(w, populate))),
-        getLastFocused: api('windows.getLastFocused', ({ populate = false } = {}) => {
-          const w = b.windows.find((x) => x.focused) || b.windows.at(-1);
+        getAll: api('windows.getAll', ({ populate = false, windowTypes } = {}) =>
+          b.windowsOf(windowTypes).map((w) => b.winInfo(w, populate)),
+        ),
+        getLastFocused: api('windows.getLastFocused', ({ populate = false, windowTypes } = {}) => {
+          const wins = b.windowsOf(windowTypes);
+          const w = wins.find((x) => x.focused) || wins.at(-1);
           if (!w) throw new Error('No last-focused window');
           return b.winInfo(w, populate);
         }),
@@ -614,7 +617,7 @@ class Browser {
       // Wie Chromium: die angehefteten Tabs aller Fenster in einem einzigen Fenster, also
       // auch die Ablage-Markierungen
       const pinned = keepPinned ? saved.flatMap((w) => w.tabs.filter((t) => t.pinned)) : [];
-      const w = { id: this.next.win++, state: 'normal', focused: true, tabs: [] };
+      const w = { id: this.next.win++, type: 'normal', state: 'normal', focused: true, tabs: [] };
       for (const t of pinned) w.tabs.push(this.newTab(t.url, true));
       w.tabs.push(this.newTab(NEWTAB));
       w.tabs.at(-1).active = true;
@@ -651,7 +654,7 @@ class Browser {
   restoreWindows(list, events) {
     const groupIds = new Map();
     for (const s of list) {
-      const w = { id: this.next.win++, state: s.state, focused: false, tabs: [] };
+      const w = { id: this.next.win++, type: 'normal', state: s.state, focused: false, tabs: [] };
       for (const st of s.tabs) {
         const t = this.newTab(st.url, st.pinned);
         if (st.group) {
@@ -705,7 +708,12 @@ class Browser {
   }
 
   mains() {
-    return this.windows.filter((w) => !this.stashOf(w));
+    return this.windows.filter((w) => w.type === 'normal' && !this.stashOf(w));
+  }
+
+  // Fenster der angegebenen Typen wie bei windowTypes in chrome.windows, sonst alle
+  windowsOf(types) {
+    return types ? this.windows.filter((w) => types.includes(w.type)) : this.windows;
   }
 
   tabsByUrl(url) {
@@ -820,14 +828,20 @@ class Worker {
   }
 
   // Schickt eine Nachricht wie das Popup und gibt die Antwort zurück ({ ok, result | error }).
-  send(msg) {
-    return new Promise((resolve) => this.browser.fire('runtime.onMessage', msg, { id: this.ctx.chrome.runtime.id }, resolve));
+  // Mit tabId kommt sie stattdessen von der Erweiterungsseite in diesem Tab.
+  send(msg, tabId) {
+    const sender = { id: this.ctx.chrome.runtime.id };
+    if (tabId !== undefined) {
+      const { t, w } = this.browser.findTab(tabId);
+      sender.tab = this.browser.tabInfo(t, w);
+    }
+    return new Promise((resolve) => this.browser.fire('runtime.onMessage', msg, sender, resolve));
   }
 
   // send() und danach alles abarbeiten. Kommt keine Antwort, ist das Ergebnis null.
-  async request(msg) {
+  async request(msg, tabId) {
     let reply = null;
-    this.send(msg).then((r) => (reply = r));
+    this.send(msg, tabId).then((r) => (reply = r));
     await this.settle();
     return reply;
   }

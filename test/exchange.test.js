@@ -443,6 +443,32 @@ test('Ersetzen mit Bestätigung: alte Workspaces samt Ablagen sind weg, die neue
   await cycle(now, ['Y', 'X'], expected);
 });
 
+test('Nach dem Ersetzen hat das Importfenster wieder den Fokus, seine Meldung bleibt sichtbar', async () => {
+  // Frisches Profil: Der angezeigte Workspace hat noch keine Ablage
+  const env = await fresh();
+  const { b } = env;
+  const main = b.mains()[0];
+  // Die Importseite läuft wie aus dem Popup geöffnet in einem eigenen Popup-Fenster
+  const popup = b.createWindow({ url: `${b.origin}transfer.html`, type: 'popup' });
+  await env.w.settle();
+  assert.equal(popup.focused, true);
+
+  const calls = b.calls.length;
+  const msg = { type: 'import', text: JSON.stringify(REPLACEMENT), mode: 'replace', confirmed: true };
+  const res = plain(await ok(env.w.request(msg, popup.tabs[0].id)));
+  assert.equal(res.removed, 1);
+  // Der Wechsel legt eine Ablage für die alten Tabs an und holt dabei das Hauptfenster
+  // nach vorn, wie im echten Browser
+  const focused = b.calls.slice(calls).filter((c) => c.name === 'windows.update' && c.args[1].focused).map((c) => c.args[0]);
+  assert.deepEqual(focused, [main.id, popup.id]);
+  assert.equal(popup.focused, true, 'das Hauptfenster verdeckt die Abschlussmeldung');
+  assert.equal(main.focused, false);
+
+  await b.chrome.windows.remove(popup.id);
+  await env.w.settle();
+  check(envOf(b), { X: ['x1', { url: 'x2', group: 'G', color: 'pink' }, { url: 'x3', group: 'G', color: 'pink' }], Y: ['y1'], pinned: ['p1', 'p9'] });
+});
+
 test('Ersetzen durch den eigenen Export legt jeden Tab genau einmal neu an', async () => {
   const env = await source();
   const { b } = env;
