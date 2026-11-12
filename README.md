@@ -209,6 +209,7 @@ The tests do not check the connection to Helium and KWin. After changing that, b
   - [`popup.html`](./extension/popup.html) / [`popup.js`](./extension/popup.js): the workspace list
   - [`transfer.html`](./extension/transfer.html) / [`transfer.js`](./extension/transfer.js): export and import, [`exchange.js`](./extension/exchange.js): the file format and its validation
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): the page that marks a window as a stash
+  - [`label.js`](./extension/label.js): the character shown in a workspace's icon
 - [`kwin/`](./kwin): KWin script that hides the stash windows
 - [`install.sh`](./install.sh): generate the key and set up the KWin script
 - [`test/`](./test): automated tests, [`fake-browser.js`](./test/fake-browser.js) replicates the Chrome APIs
