@@ -8,6 +8,23 @@ function firstChar(s) {
   return first?.segment || '';
 }
 
+// Höchstlänge eines Workspace-Namens in UTF-16-Einheiten. So viel nimmt das Namensfeld
+// im Popup an, und länger wird kein gespeicherter, exportierter oder importierter Name.
+const NAME_MAX = 200;
+
+// Ein Workspace-Name, wie er gespeichert wird: ohne Leerraum außen, höchstens NAME_MAX
+// Einheiten lang, ohne dabei ein Zeichen zu zerteilen, und nie leer. Dieselbe Regel gilt
+// beim Speichern aus dem Popup, beim Export und beim Import, damit jeder eigene Export
+// wieder importierbar ist.
+function wsName(s) {
+  let name = '';
+  for (const { segment } of new Intl.Segmenter().segment(s.trim())) {
+    if (name.length + segment.length > NAME_MAX) break;
+    name += segment;
+  }
+  return name.trim() || 'Workspace';
+}
+
 // Zeichen im Symbol eines Workspace: sein Emoji, sonst der Anfang des Namens.
 function wsLabel(ws) {
   return ws.emoji || (firstChar(ws.name) || '?').toUpperCase();

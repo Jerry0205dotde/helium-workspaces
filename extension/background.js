@@ -568,7 +568,7 @@ async function updateWs(id, patch) {
   const ws = cfg.workspaces.find((w) => w.id === id);
   if (!ws) return;
   for (const k of ['name', 'color', 'emoji']) if (typeof patch[k] === 'string') ws[k] = patch[k];
-  ws.name = ws.name.trim() || 'Workspace';
+  ws.name = wsName(ws.name);
   await saveWorkspaces(cfg.workspaces);
   iconCache.clear();
   await updateAllIcons();

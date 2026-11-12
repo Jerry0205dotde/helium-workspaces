@@ -172,6 +172,33 @@ test('Import übernimmt vom Emoji das ganze erste Zeichen, wie die Eingabe im Po
   assert.deepEqual(emojis.map((e) => env.w.eval(`firstChar(${JSON.stringify(e)})`)), stored);
 });
 
+test('Lange Namen werden auf 200 Einheiten gekürzt, der eigene Export lässt sich wieder importieren', async () => {
+  const env = await fresh();
+  const [std] = env.b.local.data.workspaces;
+  // Über das Popup gespeichert: 201-mal L wie im Fehlerbericht, und ein Name, bei dem
+  // die Grenze mitten in ein Emoji aus zwei UTF-16-Einheiten fiele
+  await ok(env.w.request({ type: 'update', wsId: std.id, patch: { name: `  ${'L'.repeat(201)}  ` } }));
+  assert.equal(env.b.local.data.workspaces[0].name, 'L'.repeat(200));
+  await ok(env.w.request({ type: 'update', wsId: std.id, patch: { name: `${'L'.repeat(199)}🎓` } }));
+  assert.equal(env.b.local.data.workspaces[0].name, 'L'.repeat(199));
+
+  // Ein Name, der vor dieser Grenze schon länger gespeichert wurde
+  const old = 'x'.repeat(5000);
+  env.b.local.data.workspaces[0].name = old;
+  const file = await request(env, { type: 'export' });
+  assert.equal(file.workspaces[0].name, 'x'.repeat(200));
+  const dst = await fresh();
+  await importFile(dst, file, 'replace', true);
+  assert.equal(dst.b.local.data.workspaces[0].name, 'x'.repeat(200));
+
+  // Ältere Export-Dateien mit überlangen Namen gehen auch, gekürzt wie im Popup
+  const res = await importFile(dst, fileOf([{ name: 'y'.repeat(5000), color: '#abcdef', tabs: [tab('w')] }]), 'merge');
+  assert.equal(res.created, 1);
+  assert.equal(dst.b.local.data.workspaces[1].name, 'y'.repeat(200));
+  // Dieselbe Regel, mit der das Popup und das Namensfeld (maxLength) arbeiten
+  assert.equal(env.w.eval('NAME_MAX'), 200);
+});
+
 // ---------------------------------------------------------------- Abgelehnte Dateien
 
 test('Abgelehnte Dateien ändern nichts, weder in der Vorschau noch beim Import', async () => {
