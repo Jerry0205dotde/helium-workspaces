@@ -1387,12 +1387,20 @@ function iconFor(ws) {
   return iconCache.get(key);
 }
 
-async function setTabIcon(tabId, wsId) {
-  const cfg = await getConfig();
-  const ws = cfg.workspaces.find((w) => w.id === wsId);
+// Workspaces und Sicherung, aus denen die Symbole entstehen. Bei Aktualisierungen
+// mehrerer Tabs einmal geladen und an setTabIcon übergeben.
+async function iconSource() {
+  const { workspaces } = await getConfig();
+  const { backup } = await getBackup();
+  return { workspaces, backup };
+}
+
+async function setTabIcon(tabId, wsId, src) {
+  src ??= await iconSource();
+  const ws = src.workspaces.find((w) => w.id === wsId);
   if (!ws) return;
   // Unvollständig wiederhergestellt: Zahl der fehlenden Tabs als Plakette
-  const missing = (await getBackup()).backup[wsId]?.failed?.length || 0;
+  const missing = src.backup[wsId]?.failed?.length || 0;
   let title = `Workspace: ${ws.name}`;
   if (missing) title += ` – ${missing} ${missing === 1 ? 'Tab' : 'Tabs'} nicht wiederhergestellt`;
   await chrome.action.setIcon({ tabId, imageData: iconFor(ws) }).catch(() => {});
@@ -1401,17 +1409,19 @@ async function setTabIcon(tabId, wsId) {
   if (missing) await chrome.action.setBadgeBackgroundColor({ tabId, color: '#dc2626' }).catch(() => {});
 }
 
-async function updateIcons(windowId) {
+async function updateIcons(windowId, src) {
   const s = await sess();
   const wsId = s.windowWs[windowId];
   if (!wsId) return;
   const tabs = await chrome.tabs.query({ windowId });
-  await Promise.all(tabs.map((t) => setTabIcon(t.id, wsId)));
+  src ??= await iconSource();
+  await Promise.all(tabs.map((t) => setTabIcon(t.id, wsId, src)));
 }
 
 async function updateAllIcons() {
   const s = await sess();
-  await Promise.all(Object.keys(s.windowWs).map((id) => updateIcons(Number(id))));
+  const src = await iconSource();
+  await Promise.all(Object.keys(s.windowWs).map((id) => updateIcons(Number(id), src)));
 }
 
 // ---------------------------------------------------------------- Kontextmenü
