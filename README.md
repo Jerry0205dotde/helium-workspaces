@@ -60,6 +60,8 @@ Do not move the folder after loading it. Helium loads the extension from exactly
 
 ### Updating
 
+There are no automatic updates. Helium loads the extension straight from the repository folder, so a new version only arrives when you fetch it yourself:
+
 1. Fetch the new version and run the script again:
 
    ```bash
@@ -99,6 +101,7 @@ Good to know:
 - The list can be used entirely by keyboard: <kbd>Tab</kbd> to move, <kbd>Enter</kbd> to select, <kbd>1</kbd>–<kbd>9</kbd> switches directly, <kbd>Esc</kbd> closes the editor. Reordering works in the editor with ↑ / ↓.
 - Pinned tabs belong to all workspaces and always stay in the window.
 - Tab groups survive switching.
+- If you pick a tab from a stash window, for example via the tab search, the last used main window shows its workspace with the selected tab.
 - Several windows may show the same workspace, for example after <kbd>Ctrl</kbd>+<kbd>N</kbd>.
 - If the window is closed with the X button, the extension rebuilds all workspaces from its backup on the next start.
 - The export is a JSON file with all workspaces including order, colors, emoji, tabs, tab groups and pinned tabs, for example for another device or a new profile. On import the file is first checked and summarized. **Zusammenführen** ("Merge") only adds what is missing: a workspace with the same ID or the same name gets the tabs it does not have yet. **Ersetzen** ("Replace") deletes the existing workspaces including their tabs and therefore asks for confirmation.
@@ -191,7 +194,7 @@ This is a private hobby project. Expect bugs.
 node --test test/*.test.js
 ```
 
-This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls and changes in quick succession. On top of that come syntax, manifest and KWin metadata. The same checks run in CI on every pull request.
+This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata. The same checks run in CI on every pull request.
 
 The tests do not check the connection to Helium and KWin. After changing that, briefly check by hand:
 
