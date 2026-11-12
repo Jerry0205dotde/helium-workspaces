@@ -157,6 +157,21 @@ test('Rundlauf: Export in ein leeres Profil zusammenführen lässt „Standard�
   await cycle(dst, ['C', 'A', 'B'], { ...ALL, Standard: [] });
 });
 
+test('Import übernimmt vom Emoji das ganze erste Zeichen, wie die Eingabe im Popup', async () => {
+  const env = await fresh();
+  // Familie aus vier Personen (11 UTF-16-Einheiten), Flagge von Schottland mit Tag-Folge
+  // (14), Familie mit Hauttönen (19); dazu Text nach dem Emoji und nur Leerzeichen
+  const emojis = ['👨‍👩‍👧‍👦', '🏴󠁧󠁢󠁳󠁣󠁴󠁿', '👨🏻‍👩🏻‍👧🏻‍👦🏻', ' 🎓 Uni', '   '];
+  const file = fileOf(emojis.map((emoji, i) => ({ name: `W${i}`, color: '#abcdef', emoji, tabs: [tab(`w${i}`)] })));
+  const preview = await request(env, { type: 'importPreview', text: JSON.stringify(file) });
+  const stored = ['👨‍👩‍👧‍👦', '🏴󠁧󠁢󠁳󠁣󠁴󠁿', '👨🏻‍👩🏻‍👧🏻‍👦🏻', '🎓', ''];
+  assert.deepEqual(preview.workspaces.map((w) => w.emoji), stored);
+  await importFile(env, file, 'merge');
+  assert.deepEqual(env.b.local.data.workspaces.slice(1).map((w) => w.emoji), stored);
+  // Dieselbe Regel, mit der das Popup die Eingabe speichert
+  assert.deepEqual(emojis.map((e) => env.w.eval(`firstChar(${JSON.stringify(e)})`)), stored);
+});
+
 // ---------------------------------------------------------------- Abgelehnte Dateien
 
 test('Abgelehnte Dateien ändern nichts, weder in der Vorschau noch beim Import', async () => {

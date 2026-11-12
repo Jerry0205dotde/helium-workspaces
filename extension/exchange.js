@@ -135,8 +135,7 @@ function parseExchange(text, extOrigin) {
     where = `Workspace ${wi + 1} („${name}“)`;
     const color = str(w.color, where, 'color');
     if (!/^#[0-9a-f]{6}$/i.test(color)) fail(where, `„${color}“ ist keine Farbe der Form #rrggbb.`);
-    const emoji = optStr(w.emoji, where, 'emoji');
-    if (emoji.length > 16) fail(where, '„emoji“ ist zu lang.');
+    const emoji = firstChar(optStr(w.emoji, where, 'emoji'));
     let id = null;
     if (w.id !== undefined) {
       id = str(w.id, where, 'id', 64);

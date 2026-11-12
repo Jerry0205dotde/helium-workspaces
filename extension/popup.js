@@ -219,7 +219,6 @@ function editor(ws, index) {
   emojiIn.title = 'Emoji (leer = Anfangsbuchstabe)';
   emojiIn.ariaLabel = 'Emoji, leer für Anfangsbuchstaben';
   emojiIn.value = ws.emoji;
-  emojiIn.maxLength = 8;
   const nameIn = el('input', 'name-in');
   nameIn.dataset.focus = `name:${ws.id}`;
   nameIn.value = ws.name;
@@ -236,10 +235,7 @@ function editor(ws, index) {
   nameIn.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') save({ name: nameIn.value }, () => (editing = null), [`ed:${ws.id}`]);
   });
-  emojiIn.addEventListener('change', () => {
-    const chars = [...new Intl.Segmenter().segment(emojiIn.value.trim())].map((s) => s.segment);
-    save({ emoji: chars[0] || '' });
-  });
+  emojiIn.addEventListener('change', () => save({ emoji: firstChar(emojiIn.value) }));
 
   const sw = el('div', 'swatches');
   sw.role = 'group';
