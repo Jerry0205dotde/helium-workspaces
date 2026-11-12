@@ -177,6 +177,24 @@ test('Neuladen der Erweiterung: geschlossene Ablage-Seiten werden ersetzt, kein 
   await cycle(env, expected, ['D', 'A', 'B', 'C']);
 });
 
+test('Neuladen der Erweiterung: leere Ablage bleibt Ablage statt eines weiteren Hauptfensters', async () => {
+  const env = await setup(SPEC);
+  const { b, ids } = env;
+  await ok(env.w.request({ type: 'switch', windowId: env.win, wsId: ids.B }));
+  await ok(env.w.request({ type: 'switch', windowId: env.win, wsId: ids.A }));
+  const stashA = b.windows.find((x) => b.stashOf(x) === ids.A);
+  assert.equal(stashA.tabs.length, 1, 'Ablage von A enthält nur ihre Ablage-Seite');
+
+  const w = b.reloadExtension();
+  await w.settle();
+  assert.equal(b.mains().length, 1);
+  assert.equal(shows(env, env.win), 'A');
+  assert.equal(b.stashOf(stashA), ids.A);
+  assert.deepEqual(b.tabsByUrl(NEWTAB), [], 'neue Tab-Seite ist geblieben');
+  check(env, ALL);
+  await cycle(env);
+});
+
 test('Zweimaliges Neuladen hintereinander und danach ein Browserstart', async () => {
   const env = await setup(SPEC);
   let w = env.b.reloadExtension();

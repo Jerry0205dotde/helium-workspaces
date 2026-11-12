@@ -683,8 +683,14 @@ class Browser {
   reloadExtension() {
     this.worker?.kill();
     this.listeners = new Map();
+    // Chromium schließt die Seiten der Erweiterung. Ist eine davon der letzte Tab ihres
+    // Fensters, lädt es dort stattdessen die neue Tab-Seite; der Tab bleibt angeheftet.
     for (const w of [...this.windows]) {
-      for (const t of [...w.tabs]) if (t.url.startsWith(this.origin)) this.removeTab(t.id);
+      for (const t of [...w.tabs]) {
+        if (!t.url.startsWith(this.origin)) continue;
+        if (w.tabs.length > 1) this.removeTab(t.id);
+        else Object.assign(t, { url: NEWTAB, title: 'Neuer Tab' });
+      }
     }
     this.session.clear();
     return this.startWorker('installed');
