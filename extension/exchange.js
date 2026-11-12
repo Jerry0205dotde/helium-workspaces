@@ -62,7 +62,7 @@ function buildExchange(list, pinned, extOrigin) {
           }
           return t;
         });
-      return { id: ws.id, name: ws.name, color: ws.color, emoji: ws.emoji || '', groups, tabs };
+      return { id: ws.id, name: wsName(ws.name), color: ws.color, emoji: ws.emoji || '', groups, tabs };
     }),
   };
 }
@@ -131,7 +131,7 @@ function parseExchange(text, extOrigin) {
   const workspaces = list.map((w, wi) => {
     let where = `Workspace ${wi + 1}`;
     if (!isObj(w)) fail(where, 'Eintrag ist kein Objekt.');
-    const name = str(w.name, where, 'name', 200).trim() || 'Workspace';
+    const name = wsName(str(w.name, where, 'name'));
     where = `Workspace ${wi + 1} („${name}“)`;
     const color = str(w.color, where, 'color');
     if (!/^#[0-9a-f]{6}$/i.test(color)) fail(where, `„${color}“ ist keine Farbe der Form #rrggbb.`);

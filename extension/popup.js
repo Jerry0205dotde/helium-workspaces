@@ -222,6 +222,7 @@ function editor(ws, index) {
   const nameIn = el('input', 'name-in');
   nameIn.dataset.focus = `name:${ws.id}`;
   nameIn.value = ws.name;
+  nameIn.maxLength = NAME_MAX;
   nameIn.placeholder = 'Name';
   nameIn.ariaLabel = 'Name';
   line.append(emojiIn, nameIn);
