@@ -7,32 +7,13 @@ let text = null; // Inhalt der gewählten Datei
 let preview = null;
 let busy = false;
 
-const send = (msg) =>
-  chrome.runtime.sendMessage(msg).then((r) => {
-    if (!r?.ok) throw new Error(r?.error || 'Fehler');
-    return r.result;
-  });
-
-function el(tag, cls, txt) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (txt !== undefined) e.textContent = txt;
-  return e;
-}
-
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const tabs = (n) => plural(n, 'Tab', 'Tabs');
-
-function badge(ws) {
-  const b = el('span', 'badge', wsLabel(ws));
-  b.style.background = ws.color;
-  return b;
-}
 
 function showError(text, err) {
   const box = $('error');
   box.replaceChildren(el('p', 'msg', text));
-  const detail = String(err?.message || err || '').replace(/^Error:\s*/, '');
+  const detail = errorText(err);
   if (detail) box.append(el('p', 'detail', detail));
   box.hidden = false;
 }
@@ -71,7 +52,7 @@ $('export').addEventListener('click', () =>
       if (data.pinned.length) msg += ` und ${plural(data.pinned.length, 'angeheftetem Tab', 'angehefteten Tabs')}`;
       $('export-result').textContent = `${msg} exportiert.`;
     } catch (e) {
-      $('export-result').textContent = `Export fehlgeschlagen: ${String(e.message || e).replace(/^Error:\s*/, '')}`;
+      $('export-result').textContent = `Export fehlgeschlagen: ${errorText(e)}`;
     }
   }),
 );

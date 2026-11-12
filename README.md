@@ -20,7 +20,7 @@ Three parts work together:
 
 - **The extension** (folder `extension/`) moves the tabs and creates the stash windows. The first, pinned tab of every stash is a page of the extension. It sets the window title to `HWS-Ablage <key> · <workspace name>`.
 - **The key** is stored in `extension/token.js`. `install.sh` generates it once per device and also writes it to the KWin settings (`kwinrc`).
-- **The KWin script** (folder `kwin/`) looks for Helium windows whose title starts with this key. It removes them from the taskbar, Alt+Tab, the overview and the pager and keeps them minimized. A website therefore cannot pose as a stash, because it does not know the key.
+- **The KWin script** (folder `kwin/`) looks for Helium windows whose title contains `HWS-Ablage` followed by this key. It removes them from the taskbar, Alt+Tab, the overview and the pager and keeps them minimized. A website therefore cannot pose as a stash, because it does not know the key.
 
 ### Limitations
 

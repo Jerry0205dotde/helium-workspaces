@@ -20,7 +20,7 @@ Drei Teile arbeiten zusammen:
 
 - **Die Erweiterung** (Ordner `extension/`) verschiebt die Tabs und legt die Ablage-Fenster an. Der erste, angeheftete Tab jeder Ablage ist eine Seite der Erweiterung. Sie setzt den Fenstertitel auf `HWS-Ablage <Schlüssel> · <Workspace-Name>`.
 - **Der Schlüssel** steht in `extension/token.js`. `install.sh` erzeugt ihn einmal pro Gerät und trägt ihn auch in die KWin-Einstellungen (`kwinrc`) ein.
-- **Das KWin-Skript** (Ordner `kwin/`) sucht Helium-Fenster, deren Titel mit diesem Schlüssel beginnt. Es nimmt sie aus Taskleiste, Alt+Tab, Übersicht und Pager und hält sie minimiert. Eine Webseite kann sich deshalb nicht als Ablage ausgeben, denn sie kennt den Schlüssel nicht.
+- **Das KWin-Skript** (Ordner `kwin/`) sucht Helium-Fenster, in deren Titel `HWS-Ablage` mit diesem Schlüssel steht. Es nimmt sie aus Taskleiste, Alt+Tab, Übersicht und Pager und hält sie minimiert. Eine Webseite kann sich deshalb nicht als Ablage ausgeben, denn sie kennt den Schlüssel nicht.
 
 ### Grenzen
 

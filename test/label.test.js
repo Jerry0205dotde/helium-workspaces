@@ -29,13 +29,18 @@ test('Symbol zeigt das Emoji, sonst das ganze erste Zeichen des Namens', async (
   assert.equal(label('👍🏽 Gut'), '👍🏽');
 });
 
-test('Seiten, die das Symbol zeichnen, laden label.js vor ihrem eigenen Skript', () => {
+test('Seiten, die das Symbol zeichnen, laden label.js vor dem Skript, das es nutzt', () => {
   const pages = fs.readdirSync(EXT).filter((f) => f.endsWith('.html'));
-  const using = pages.filter((f) => fs.readFileSync(path.join(EXT, f.replace('.html', '.js')), 'utf8').includes('wsLabel('));
-  assert.deepEqual(using, ['popup.html', 'transfer.html']);
-  for (const f of using) {
+  const using = [];
+  for (const f of pages) {
     const srcs = [...fs.readFileSync(path.join(EXT, f), 'utf8').matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
+    const users = srcs.filter(
+      (s) => s !== 'label.js' && fs.existsSync(path.join(EXT, s)) && fs.readFileSync(path.join(EXT, s), 'utf8').includes('wsLabel('),
+    );
+    if (!users.length) continue;
+    using.push(f);
     assert.ok(srcs.includes('label.js'), `${f} lädt label.js nicht`);
-    assert.ok(srcs.indexOf('label.js') < srcs.indexOf(f.replace('.html', '.js')), `${f} lädt label.js zu spät`);
+    for (const s of users) assert.ok(srcs.indexOf('label.js') < srcs.indexOf(s), `${f} lädt label.js erst nach ${s}`);
   }
+  assert.deepEqual(using, ['popup.html', 'transfer.html']);
 });
