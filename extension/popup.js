@@ -21,28 +21,6 @@ const COLOR_NAMES = {
   '#64748b': 'Grau',
 };
 
-const send = (msg) =>
-  chrome.runtime.sendMessage(msg).then((r) => {
-    if (!r?.ok) throw new Error(r?.error || 'Fehler');
-    return r.result;
-  });
-
-function badge(ws) {
-  const b = document.createElement('span');
-  b.className = 'badge';
-  b.ariaHidden = 'true';
-  b.style.background = ws.color;
-  b.textContent = wsLabel(ws);
-  return b;
-}
-
-function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
 // Schaltfläche mit Schlüssel, damit der Fokus das Neuzeichnen übersteht
 function btn(cls, text, focusKey) {
   const b = el('button', cls, text);
@@ -65,7 +43,7 @@ function setBusy(text) {
 }
 
 function showError(text, err, stale) {
-  const detail = String(err?.message || err || '').replace(/^Error:\s*/, '');
+  const detail = errorText(err);
   const msg = el('p', 'msg', text);
   errorEl.replaceChildren(msg);
   if (detail) errorEl.append(el('p', 'detail', detail));
@@ -115,7 +93,9 @@ function render(focus) {
     }
     if (ws.id === state.current) main.setAttribute('aria-current', 'true');
     const meta = ws.elsewhere ? 'anderes Fenster' : `${ws.count} ${ws.count === 1 ? 'Tab' : 'Tabs'}`;
-    main.append(badge(ws), el('span', 'name', ws.name), el('span', 'meta', meta));
+    const icon = badge(ws);
+    icon.ariaHidden = 'true'; // der Name steht daneben
+    main.append(icon, el('span', 'name', ws.name), el('span', 'meta', meta));
     main.addEventListener('click', () => switchTo(ws.id));
     row.append(main);
 
@@ -299,7 +279,7 @@ function editor(ws, index) {
     if (e.detail > 1) return;
     if (!del.classList.contains('confirm')) {
       del.classList.add('confirm');
-      del.textContent = ws.count ? `${ws.count} Tabs schließen?` : 'Wirklich löschen?';
+      del.textContent = ws.count ? `${ws.count} ${ws.count === 1 ? 'Tab' : 'Tabs'} schließen?` : 'Wirklich löschen?';
       return;
     }
     run('Workspace wird gelöscht …', 'Workspace konnte nicht gelöscht werden.', async () => {

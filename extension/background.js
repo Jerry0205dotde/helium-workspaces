@@ -16,6 +16,16 @@ const COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a855f7', '#ec4899'
 
 let switching = 0; // > 0, solange wir selbst Tabs verschieben
 
+// Führt fn aus, während die Tab-Ereignisse die eigenen Änderungen übergehen
+async function moving(fn) {
+  switching++;
+  try {
+    return await fn();
+  } finally {
+    switching--;
+  }
+}
+
 // ---------------------------------------------------------------- Speicher
 
 function newId() {
@@ -46,6 +56,9 @@ async function sess() {
 async function saveSess(s) {
   await chrome.storage.session.set(s);
 }
+
+// Gesicherte Tabs eines Workspace: erst die gezeigten, dann die der Ablage
+const savedOf = (b) => [...(b?.shown || []), ...(b?.stash || [])];
 
 async function getBackup() {
   const { backup, backupPinned } = await chrome.storage.local.get(['backup', 'backupPinned']);
@@ -92,16 +105,17 @@ const scheduleSnapshot = () => debounce('snapshot', 300, snapshot, 2000);
 
 // ---------------------------------------------------------------- Fenster erkennen
 
+const urlOf = (t) => t.url || t.pendingUrl;
+
 function isStashTab(t) {
-  const u = t.url || t.pendingUrl || '';
-  return u.startsWith(STASH_PAGE);
+  return (urlOf(t) || '').startsWith(STASH_PAGE);
 }
 
-const isNewTab = (t) => /^chrome:\/\/(newtab|new-tab-page)\//.test(t.url || t.pendingUrl || '');
+const isNewTab = (t) => /^chrome:\/\/(newtab|new-tab-page)\//.test(urlOf(t) || '');
 
 function stashWsOf(win) {
   for (const t of win.tabs || []) {
-    if (isStashTab(t)) return (t.url || t.pendingUrl).split('#')[1] || null;
+    if (isStashTab(t)) return urlOf(t).split('#')[1] || null;
   }
   return null;
 }
@@ -126,6 +140,12 @@ async function scan() {
 
 const stashTabsOf = (win) => win.tabs.filter((t) => !isStashTab(t));
 const movableTabsOf = (win) => win.tabs.filter((t) => !t.pinned);
+
+// Ablage (sw) und Hauptfenster (showing), in denen die Tabs von wsId gerade liegen
+const windowsOf = (wsId, s, stash, mains) => ({
+  sw: stash.get(wsId),
+  showing: mains.filter((w) => s.windowWs[w.id] === wsId),
+});
 
 // ---------------------------------------------------------------- Tabs bewegen
 
@@ -172,6 +192,8 @@ async function whenIdle(fn, tries = 15) {
   }
 }
 
+const groupProps = (e) => ({ title: e.gt || '', color: e.gc || 'grey', collapsed: !!e.gx });
+
 // Legt gesicherte Tabs neu an (nur nötig, wenn ihr Fenster nicht mehr existiert).
 // Gibt die neuen Tab-IDs und die Einträge zurück, die nicht angelegt werden konnten.
 // Lässt sich eine Gruppe nicht anlegen, werden ihre Tabs wieder geschlossen und
@@ -209,14 +231,14 @@ async function recreate(list, windowId, pinned = false, join = false, have = [])
   }
   for (const members of groups.values()) {
     const { e } = members[0];
-    const props = { title: e.gt || '', color: e.gc || 'grey', collapsed: !!e.gx };
+    const props = groupProps(e);
     const tabIds = members.map((m) => m.id);
     try {
       let same = null;
       const gs = new Set(members.flatMap((m) => m.e.gs || []));
       if (join && gs.size) {
         for (const t of await chrome.tabs.query({ windowId })) {
-          if (t.groupId < 0 || used.has(t.groupId) || !gs.has(t.url || t.pendingUrl)) continue;
+          if (t.groupId < 0 || used.has(t.groupId) || !gs.has(urlOf(t))) continue;
           const g = await chrome.tabGroups.get(t.groupId);
           if (g.title === props.title && g.color === props.color) {
             same = g;
@@ -247,6 +269,9 @@ async function recreate(list, windowId, pinned = false, join = false, have = [])
   return { ids, failed };
 }
 
+// Fehlgeschlagene angeheftete Tabs kennzeichnet p
+const asPinned = (failed) => failed.map((e) => ({ ...e, p: true }));
+
 // Bewahrt fehlgeschlagene Einträge getrennt von shown/stash auf, damit snapshot()
 // sie nicht durch die lebenden Tabs ersetzt. Aus shown/stash (bzw. den angehefteten
 // Tabs) werden sie entfernt, damit jeder Eintrag nur an einer Stelle steht.
@@ -275,15 +300,11 @@ async function retryFailed(windowId, wsId) {
   if ((await sess()).windowWs[windowId] !== wsId) return;
   const list = (await getBackup()).backup[wsId]?.failed || [];
   if (!list.length) return;
-  let still;
-  switching++;
-  try {
+  const still = await moving(async () => {
     const p = await recreate(list.filter((e) => e.p), windowId, true);
     const r = await recreate(list.filter((e) => !e.p), windowId, false, true);
-    still = [...p.failed, ...r.failed];
-  } finally {
-    switching--;
-  }
+    return [...p.failed, ...r.failed];
+  });
   const { backup } = await getBackup();
   backup[wsId].failed = still;
   await chrome.storage.local.set({ backup });
@@ -307,9 +328,8 @@ async function ensureStash(wsId, restoreBackup) {
   const tabId = win.tabs[0].id;
   await chrome.tabs.update(tabId, { pinned: true });
   if (restoreBackup) {
-    const { backup } = await getBackup();
-    const b = backup[wsId];
-    if (b) await keepFailed(wsId, (await recreate([...(b.shown || []), ...(b.stash || [])], win.id)).failed);
+    const b = (await getBackup()).backup[wsId];
+    if (b) await keepFailed(wsId, (await recreate(savedOf(b), win.id)).failed);
     await chrome.tabs.update(tabId, { active: true });
   }
   return { windowId: win.id, tabId, created: true };
@@ -361,35 +381,34 @@ async function switchTo(windowId, targetWs) {
 
   // 1. Tabs des Ziel-Workspace holen (zuerst, damit das Fenster nie leer wird)
   let failed = null;
-  switching++;
   try {
-    let brought = [];
-    const tStash = stash.get(targetWs);
-    if (tStash) {
-      brought = await moveOrdered(stashTabsOf(tStash), windowId);
-    } else if (!mains.some((w) => w.id !== windowId && s.windowWs[w.id] === targetWs)) {
-      // Nur wiederherstellen, wenn die Tabs nicht schon lebend in einem anderen Fenster sind
-      const { backup } = await getBackup();
-      const b = backup[targetWs];
-      if (b) {
-        await setPending({ ...p, restoring: true });
-        const r = await recreate([...(b.shown || []), ...(b.stash || [])], windowId);
-        brought = r.ids;
-        await keepFailed(targetWs, r.failed);
-        await setPending(p);
+    await moving(async () => {
+      let brought = [];
+      const tStash = stash.get(targetWs);
+      if (tStash) {
+        brought = await moveOrdered(stashTabsOf(tStash), windowId);
+      } else if (!mains.some((w) => w.id !== windowId && s.windowWs[w.id] === targetWs)) {
+        // Nur wiederherstellen, wenn die Tabs nicht schon lebend in einem anderen Fenster sind
+        const { backup } = await getBackup();
+        const b = backup[targetWs];
+        if (b) {
+          await setPending({ ...p, restoring: true });
+          const r = await recreate(savedOf(b), windowId);
+          brought = r.ids;
+          await keepFailed(targetWs, r.failed);
+          await setPending(p);
+        }
       }
-    }
-    if (!brought.length) {
-      const t = await chrome.tabs.create({ windowId, active: true });
-      brought = [t.id];
-    }
-    const want = s.lastTab[targetWs];
-    await chrome.tabs.update(brought.includes(want) ? want : brought[0], { active: true });
+      if (!brought.length) {
+        const t = await chrome.tabs.create({ windowId, active: true });
+        brought = [t.id];
+      }
+      const want = s.lastTab[targetWs];
+      await chrome.tabs.update(brought.includes(want) ? want : brought[0], { active: true });
+    });
   } catch (err) {
     console.warn('[workspaces] Wechsel unterbrochen, schließe ihn anhand der Fenster ab:', err);
     failed = err;
-  } finally {
-    switching--;
   }
 
   // 2. Alte Tabs in die Ablage des alten Workspace (nach einem Fehler nur, was davon übrig ist)
@@ -413,8 +432,7 @@ async function switchTo(windowId, targetWs) {
 async function finishSwitch() {
   const p = await getPending();
   if (!p) return null;
-  switching++;
-  try {
+  return moving(async () => {
     const s = await sess();
     const { stash, mains } = await scan();
     const main = mains.find((w) => w.id === p.windowId);
@@ -432,8 +450,7 @@ async function finishSwitch() {
     } else if (p.restoring) {
       // Service Worker endete beim Neuanlegen aus der Sicherung: den Rest ergänzen und
       // die Gruppen anlegen, auch für die schon angekommenen Tabs
-      const b = (await getBackup()).backup[p.to];
-      const list = [...(b?.shown || []), ...(b?.stash || [])];
+      const list = savedOf((await getBackup()).backup[p.to]);
       await keepFailed(p.to, (await recreate(list, p.windowId, false, false, arrived)).failed);
     }
 
@@ -452,9 +469,7 @@ async function finishSwitch() {
     await chrome.storage.local.set({ lastWs: p.to });
     await setPending(null);
     return 'forward';
-  } finally {
-    switching--;
-  }
+  });
 }
 
 async function switchRelative(windowId, step) {
@@ -482,8 +497,7 @@ async function moveTabToWs(tabId, wsId) {
   const main = mains.find((w) => w.id === tab.windowId);
   if (!main) return;
 
-  switching++;
-  try {
+  await moving(async () => {
     // Fenster darf nicht leer werden
     if (main.tabs.length === 1 || (!tab.pinned && movableTabsOf(main).length <= 1)) {
       await chrome.tabs.create({ windowId: tab.windowId, active: true });
@@ -499,9 +513,7 @@ async function moveTabToWs(tabId, wsId) {
       await chrome.tabs.update(st.tabId, { active: true });
       await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
     }
-  } finally {
-    switching--;
-  }
+  });
   const s2 = await sess();
   delete s2.tabOrigin[tabId];
   await saveSess(s2);
@@ -528,13 +540,10 @@ async function showStashTab(tabId) {
     await switchTo(main.id, ws);
   } else {
     // Das Fenster zeigt den Workspace schon, die Ablage stammt von einem zweiten Fenster
-    switching++;
-    try {
+    await moving(async () => {
       await moveOrdered(stashTabsOf(sw), main.id);
       await chrome.tabs.update(tabId, { active: true });
-    } finally {
-      switching--;
-    }
+    });
     await updateIcons(main.id);
     await snapshot();
   }
@@ -609,7 +618,7 @@ async function clearBackup(wsId) {
 // ---------------------------------------------------------------- Sicherung
 
 function serTab(t, groups) {
-  const e = { url: t.url || t.pendingUrl || '', title: t.title || '' };
+  const e = { url: urlOf(t) || '', title: t.title || '' };
   if (typeof t.groupId === 'number' && t.groupId >= 0) {
     const g = groups.get(t.groupId);
     e.g = String(t.groupId);
@@ -653,8 +662,7 @@ async function snapshot() {
   const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
 
   for (const ws of cfg.workspaces) {
-    const sw = stash.get(ws.id);
-    const showing = mains.filter((w) => s.windowWs[w.id] === ws.id);
+    const { sw, showing } = windowsOf(ws.id, s, stash, mains);
     if (!sw && !showing.length) continue; // nichts Lebendes → alten Stand behalten
     const failed = backup[ws.id]?.failed;
     backup[ws.id] = {
@@ -667,20 +675,16 @@ async function snapshot() {
     if (!cfg.workspaces.some((w) => w.id === k)) delete backup[k];
   }
   // Ablage-Fenster merken, um sie nach einem Neuladen der Erweiterung zu reparieren
-  const prev = (await chrome.storage.local.get('stashWins')).stashWins || {};
   const stashWins = {};
   for (const [ws, w] of stash) stashWins[w.id] = { ws, tabs: stashTabsOf(w).map((t) => t.id) };
-  for (const w of mains) if (prev[w.id] && !s.windowWs[w.id]) stashWins[w.id] = prev[w.id];
 
   const backupWindows = mains.map((w) => ({
     id: w.id,
     ws: s.windowWs[w.id],
-    urls: movableTabsOf(w).map((t) => t.url || t.pendingUrl),
+    urls: movableTabsOf(w).map(urlOf),
   }));
 
-  const data = { backup, stashWins, backupWindows };
-  if (mains.length) data.backupPinned = pinnedOf(mains, groups);
-  await chrome.storage.local.set(data);
+  await chrome.storage.local.set({ backup, stashWins, backupWindows, backupPinned: pinnedOf(mains, groups) });
 }
 
 // ---------------------------------------------------------------- Abgleich
@@ -717,8 +721,9 @@ function assignWindows(wins, s, cfg, entries, guessed = new Set()) {
   for (const e of valid) for (const u of new Set(e.urls)) df.set(u, (df.get(u) || 0) + 1);
   const urlsOf = (win) =>
     movableTabsOf(win)
-      .map((t) => t.url || t.pendingUrl)
-      .filter((u) => u && !u.startsWith('chrome://newtab'));
+      .filter((t) => !isNewTab(t))
+      .map(urlOf)
+      .filter(Boolean);
   const pairs = [];
   for (const win of rest) {
     if (result.has(win.id)) continue;
@@ -784,25 +789,21 @@ async function repairFromBackup(cfg, s, stash, mains) {
   let changed = false;
   for (const ws of cfg.workspaces) {
     const b = backup[ws.id];
-    const wins = mains.filter((w) => s.windowWs[w.id] === ws.id);
-    const sw = stash.get(ws.id);
+    const { sw, showing: wins } = windowsOf(ws.id, s, stash, mains);
     if (!b || (!wins.length && !sw)) continue;
     const live = [...wins.flatMap(movableTabsOf), ...(sw ? stashTabsOf(sw) : [])];
     const shown = (b.shown || []).filter((e) => e.url);
-    const saved = [...shown, ...(b.stash || []).filter((e) => e.url)];
+    const saved = savedOf(b).filter((e) => e.url);
     let budget = saved.length - live.length;
     if (budget <= 0) continue;
     const match = align(
       saved.map((e) => e.url),
-      live.map((t) => t.url || t.pendingUrl),
+      live.map(urlOf),
     );
     // Wie oft fehlt jede URL? (unabhängig von der Reihenfolge der Fenster)
     const need = new Map();
     for (const e of saved) need.set(e.url, (need.get(e.url) || 0) + 1);
-    for (const t of live) {
-      const u = t.url || t.pendingUrl;
-      if (need.has(u)) need.set(u, need.get(u) - 1);
-    }
+    for (const u of live.map(urlOf)) if (need.has(u)) need.set(u, need.get(u) - 1);
     // Kandidaten zuerst aus Lücken, in denen die Sicherung mehr Einträge hat als die
     // Fenster; gleich viele abweichende Tabs sind eher umgeleitete Seiten.
     const gap = [];
@@ -876,7 +877,7 @@ async function repairFromBackup(cfg, s, stash, mains) {
           await chrome.tabs.group({ groupId: gid, tabIds: [t.id] });
         } else {
           gid = await chrome.tabs.group({ tabIds: [t.id], createProperties: { windowId: t.windowId } });
-          await chrome.tabGroups.update(gid, { title: e.gt || '', color: e.gc || 'grey', collapsed: !!e.gx });
+          await chrome.tabGroups.update(gid, groupProps(e));
         }
       } catch (err) {
         console.warn('[workspaces] Gruppe nicht ergänzbar', err);
@@ -957,8 +958,7 @@ async function reconcile() {
   // Kein Hauptfenster, aber Ablagen (z. B. nach Schließen per X und Neustart):
   // Hauptfenster neu aufbauen.
   if (!mains.length && stash.size) {
-    switching++;
-    try {
+    await moving(async () => {
       const target = cfg.lastWs;
       const win = await chrome.windows.create({ focused: true });
       const blank = win.tabs[0].id;
@@ -966,7 +966,7 @@ async function reconcile() {
       await saveSess(s);
       const p = await recreate(backupPinned, win.id, true);
       const r = await recreate(backup[target]?.shown || [], win.id);
-      await keepFailed(target, [...p.failed.map((e) => ({ ...e, p: true })), ...r.failed]);
+      await keepFailed(target, [...asPinned(p.failed), ...r.failed]);
       let ids = r.ids;
       const st = stash.get(target);
       if (st) ids = ids.concat(await moveOrdered(stashTabsOf(st), win.id));
@@ -977,9 +977,7 @@ async function reconcile() {
         await chrome.tabs.remove(blank);
       }
       for (const t of foreign) if (isNewTab(t)) await chrome.tabs.remove(t.id).catch(() => {});
-    } finally {
-      switching--;
-    }
+    });
     ({ stash, mains } = await scan());
     changed = true;
   }
@@ -1024,14 +1022,7 @@ async function reconcile() {
       }
     }
   }
-  if (starting) {
-    switching++;
-    try {
-      if (await repairFromBackup(cfg, s, stash, mains)) changed = true;
-    } finally {
-      switching--;
-    }
-  }
+  if (starting && (await moving(() => repairFromBackup(cfg, s, stash, mains)))) changed = true;
   s.tabOrigin = {};
   await saveSess(s);
 
@@ -1046,43 +1037,23 @@ async function reconcile() {
 async function restoreStart(wins, wsId) {
   const win = wins[0];
   const { backup, backupPinned } = await getBackup();
-  const b = backup[wsId];
-  const open = (pinned) => {
-    const n = new Map();
-    for (const w of wins) {
-      for (const t of w.tabs) {
-        const u = t.url || t.pendingUrl;
-        if (!!t.pinned === pinned) n.set(u, (n.get(u) || 0) + 1);
-      }
-    }
-    return n;
-  };
-  const missing = (list, have) =>
-    list.filter((e) => {
-      if (!e.url) return false;
-      const n = have.get(e.url) || 0;
-      have.set(e.url, n - 1);
-      return n <= 0;
-    });
-  const saved = [...(b?.shown || []), ...(b?.stash || [])];
-  const pinned = missing(backupPinned, open(true));
-  const tabs = missing(saved, open(false));
+  const open = (pinned) => wins.flatMap((w) => w.tabs.filter((t) => !!t.pinned === pinned).map((t) => ({ url: urlOf(t) })));
+  const saved = savedOf(backup[wsId]);
+  const pinned = missingIn(backupPinned.filter((e) => e.url), open(true));
+  const tabs = missingIn(saved.filter((e) => e.url), open(false));
   if (!pinned.length && !tabs.length) return false;
-  switching++;
-  try {
+  await moving(async () => {
     const p = await recreate(pinned, win.id, true);
     const r = await recreate(tabs, win.id);
-    await keepFailed(wsId, [...p.failed.map((e) => ({ ...e, p: true })), ...r.failed]);
+    await keepFailed(wsId, [...asPinned(p.failed), ...r.failed]);
     const ids = r.ids;
     const own = movableTabsOf(win);
     const blank = own.length === 1 && isNewTab(own[0]) ? own[0] : null;
-    if (blank && ids.length && !saved.some((e) => e.url === (blank.url || blank.pendingUrl))) {
+    if (blank && ids.length && !saved.some((e) => e.url === urlOf(blank))) {
       await chrome.tabs.update(ids[0], { active: true });
       await chrome.tabs.remove(blank.id);
     }
-  } finally {
-    switching--;
-  }
+  });
   console.info('[workspaces] Workspace nach dem Start aus der Sicherung aufgebaut');
   return true;
 }
@@ -1135,13 +1106,12 @@ async function collectAll() {
   const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
   const tag = (list, p) => list.filter((e) => e.url).map((e) => (e.g ? { ...e, g: p + e.g } : e));
   const list = cfg.workspaces.map((ws) => {
-    const sw = stash.get(ws.id);
-    const showing = mains.filter((w) => s.windowWs[w.id] === ws.id);
+    const { sw, showing } = windowsOf(ws.id, s, stash, mains);
     const b = backup[ws.id] || {};
     const live = !!sw || showing.length > 0;
     const open = live
       ? [...showing.flatMap(movableTabsOf), ...(sw ? stashTabsOf(sw) : [])].map((t) => serTab(t, groups))
-      : [...(b.shown || []), ...(b.stash || [])];
+      : savedOf(b);
     const failed = b.failed || [];
     return {
       ws,
@@ -1264,15 +1234,9 @@ async function addPinned(list) {
     await chrome.storage.local.set({ backupPinned: [...backupPinned, ...list] });
     return { added: list.length, failed: 0 };
   }
-  let r;
-  switching++;
-  try {
-    r = await recreate(list, mains[0].id, true);
-  } finally {
-    switching--;
-  }
+  const r = await moving(() => recreate(list, mains[0].id, true));
   const ws = (await sess()).windowWs[mains[0].id] || (await getConfig()).lastWs;
-  await keepFailed(ws, r.failed.map((e) => ({ ...e, p: true })));
+  await keepFailed(ws, asPinned(r.failed));
   return { added: r.ids.length, failed: r.failed.length };
 }
 
@@ -1328,7 +1292,7 @@ async function importExchange(text, mode, confirmed) {
       res.merged++;
       if (!m.target.live) {
         const b = (backup[m.target.ws.id] ??= { stash: [], shown: [] });
-        const existing = [...(b.shown || []), ...(b.stash || [])];
+        const existing = savedOf(b);
         b.stash = [...(b.stash || []), ...importEntries(m.add, stamp, { from: m.imp.tabs, existing })];
         res.added += m.add.length;
       }
@@ -1339,13 +1303,8 @@ async function importExchange(text, mode, confirmed) {
     // Snapshot die Sicherung wieder durch die lebenden Tabs.
     for (const m of plan.merge) {
       if (!m.target?.live || !m.add.length) continue;
-      let r;
-      switching++;
-      try {
-        r = await recreate(importEntries(m.add, stamp, { from: m.imp.tabs, join: true }), m.target.window, false, true);
-      } finally {
-        switching--;
-      }
+      const entries = importEntries(m.add, stamp, { from: m.imp.tabs, join: true });
+      const r = await moving(() => recreate(entries, m.target.window, false, true));
       await keepFailed(m.target.ws.id, r.failed);
       res.added += r.ids.length;
       res.failed += r.failed.length;
@@ -1524,7 +1483,7 @@ chrome.commands.onCommand.addListener(async (cmd, tab) => {
   if (cmd === 'prev-workspace') userAction(() => switchRelative(windowId, -1));
 });
 
-// ---------------------------------------------------------------- Nachrichten (Popup, Ablage-Seite)
+// ---------------------------------------------------------------- Nachrichten (Popup, Export und Import)
 
 async function stateFor(windowId) {
   const cfg = await getConfig();
@@ -1532,14 +1491,12 @@ async function stateFor(windowId) {
   const { stash, mains } = await scan();
   const { backup } = await getBackup();
   const list = cfg.workspaces.map((ws) => {
-    const sw = stash.get(ws.id);
-    const showing = mains.filter((w) => s.windowWs[w.id] === ws.id);
+    const { sw, showing } = windowsOf(ws.id, s, stash, mains);
     let count;
     if (sw || showing.length) {
       count = (sw ? stashTabsOf(sw).length : 0) + showing.reduce((n, w) => n + movableTabsOf(w).length, 0);
     } else {
-      const b = backup[ws.id];
-      count = b ? (b.stash?.length || 0) + (b.shown?.length || 0) : 0;
+      count = savedOf(backup[ws.id]).length;
     }
     const failed = backup[ws.id]?.failed?.length || 0;
     return { ...ws, count, failed, elsewhere: showing.some((w) => w.id !== windowId) };
@@ -1554,10 +1511,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return stateFor(msg.windowId);
       case 'switch':
         return userAction(() => switchTo(msg.windowId, msg.wsId));
-      case 'create': {
-        const ws = await userAction(() => createWs(msg.name));
-        return ws;
-      }
+      case 'create':
+        return userAction(() => createWs(msg.name));
       case 'update':
         return userAction(() => updateWs(msg.wsId, msg.patch));
       case 'reorder':
