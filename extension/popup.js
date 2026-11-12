@@ -59,8 +59,11 @@ function showError(text, err, stale) {
 // den tatsächlichen Zustand neu. Mit close schließt sich das Popup nur bei Erfolg.
 // focus: Fokus-Schlüssel, die danach der Reihe nach versucht werden. Die Sperre
 // nimmt allen Knöpfen den Fokus, deshalb wird er erst nach dem Entsperren gesetzt.
+// Ergibt true, wenn die Aktion gelungen ist. Ein verlassenes Feld, das noch aufs
+// Speichern wartet, wird zuerst gespeichert; misslingt das, unterbleibt die Aktion.
 async function run(busyText, failText, fn, { close = false, focus } = {}) {
-  if (busy) return;
+  if (pending && !(await flush())) return false;
+  if (busy) return false;
   setBusy(busyText);
   errorEl.hidden = true;
   errorEl.replaceChildren();
@@ -68,9 +71,11 @@ async function run(busyText, failText, fn, { close = false, focus } = {}) {
     await fn();
     if (close) return window.close();
     await load();
+    return true;
   } catch (e) {
     const fresh = windowId !== undefined && (await load().then(() => true, () => false));
     showError(failText, e, !fresh);
+    return false;
   } finally {
     setBusy(null);
     restoreFocus(focus);
@@ -166,6 +171,46 @@ document.addEventListener('focusout', (e) => {
   if (e.relatedTarget) focusKey = e.relatedTarget.dataset?.focus ?? null;
 });
 
+// Felder speichern beim Verlassen. Verlässt man eines mit einem Klick, wartet das
+// Speichern, bis der Klick ausgelöst ist: Sperre und Neuzeichnen würden ihn sonst
+// verschlucken. Die Aktion des Klicks speichert das Feld dann zuerst (siehe run),
+// sonst geschieht es gleich nach dem Klick.
+let pressed = false;
+let pending = null; // wartendes Speichern eines verlassenen Feldes
+document.addEventListener('pointerdown', () => (pressed = true), true);
+for (const type of ['pointerup', 'pointercancel']) {
+  document.addEventListener(type, () => {
+    pressed = false;
+    setTimeout(flush); // erst nach dem click, den der Klick noch auslöst
+  }, true);
+}
+
+function saveOnLeave(save) {
+  if (pressed) pending = save;
+  else save();
+}
+
+// Führt das wartende Speichern aus; ergibt true, wenn nichts wartet oder es gelang
+async function flush() {
+  const save = pending;
+  pending = null;
+  return !save || save();
+}
+
+// Erster Klick fragt nach, der zweite führt aus. Ein Doppelklick bestätigt nicht.
+// Zeichnet ein wartendes Speichern die Liste neu, fragt die neue Schaltfläche nach.
+function confirmFirst(b, question, act) {
+  b.addEventListener('click', async (e) => {
+    if (e.detail > 1) return;
+    if (b.classList.contains('confirm')) return act();
+    if (pending && !(await flush())) return;
+    const t = b.isConnected ? b : document.querySelector(`[data-focus="${CSS.escape(b.dataset.focus)}"]`);
+    if (!t || t.disabled) return;
+    t.classList.add('confirm');
+    t.textContent = question;
+  });
+}
+
 // Setzt den Fokus, wenn er durch Neuzeichnen oder Sperre verloren ging.
 function restoreFocus(keys = [focusKey]) {
   if (document.activeElement && document.activeElement !== document.body) return;
@@ -192,16 +237,9 @@ function failedNote(ws) {
   retry.addEventListener('click', () =>
     run('Tabs werden wiederhergestellt …', 'Tabs konnten nicht wiederhergestellt werden.', () =>
       send({ type: 'retry', windowId, wsId: ws.id }), { focus: [`retry:${ws.id}`, `ws:${ws.id}`] }));
-  dismiss.addEventListener('click', (e) => {
-    if (e.detail > 1) return;
-    if (!dismiss.classList.contains('confirm')) {
-      dismiss.classList.add('confirm');
-      dismiss.textContent = 'Wirklich?';
-      return;
-    }
+  confirmFirst(dismiss, 'Wirklich?', () =>
     run('Wird verworfen …', 'Tabs konnten nicht verworfen werden.', () =>
-      send({ type: 'dismiss', wsId: ws.id }), { focus: [`dismiss:${ws.id}`, `ws:${ws.id}`] });
-  });
+      send({ type: 'dismiss', wsId: ws.id }), { focus: [`dismiss:${ws.id}`, `ws:${ws.id}`] }));
   box.append(retry, dismiss);
   return box;
 }
@@ -232,11 +270,11 @@ function editor(ws, index) {
       await send({ type: 'update', wsId: ws.id, patch });
       done?.();
     }, { focus });
-  nameIn.addEventListener('change', () => save({ name: nameIn.value }));
+  nameIn.addEventListener('change', () => saveOnLeave(() => save({ name: nameIn.value })));
   nameIn.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') save({ name: nameIn.value }, () => (editing = null), [`ed:${ws.id}`]);
   });
-  emojiIn.addEventListener('change', () => save({ emoji: firstChar(emojiIn.value) }));
+  emojiIn.addEventListener('change', () => saveOnLeave(() => save({ emoji: firstChar(emojiIn.value) })));
 
   const sw = el('div', 'swatches');
   sw.role = 'group';
@@ -271,19 +309,12 @@ function editor(ws, index) {
   const del = btn('btn danger', 'Löschen', `del:${ws.id}`);
   del.disabled = state.workspaces.length < 2;
   if (del.disabled) del.title = 'Der letzte Workspace kann nicht gelöscht werden';
-  del.addEventListener('click', (e) => {
-    // Der zweite Klick eines Doppelklicks bestätigt nicht.
-    if (e.detail > 1) return;
-    if (!del.classList.contains('confirm')) {
-      del.classList.add('confirm');
-      del.textContent = ws.count ? `${ws.count} ${ws.count === 1 ? 'Tab' : 'Tabs'} schließen?` : 'Wirklich löschen?';
-      return;
-    }
+  const question = ws.count ? `${ws.count} ${ws.count === 1 ? 'Tab' : 'Tabs'} schließen?` : 'Wirklich löschen?';
+  confirmFirst(del, question, () =>
     run('Workspace wird gelöscht …', 'Workspace konnte nicht gelöscht werden.', async () => {
       await send({ type: 'delete', wsId: ws.id });
       editing = null;
-    });
-  });
+    }));
   actions.append(moveBox, del);
 
   box.addEventListener('keydown', (e) => {
@@ -303,9 +334,12 @@ function reorder(ids, focus) {
     send({ type: 'reorder', ids }), { focus });
 }
 
-function switchTo(id) {
+async function switchTo(id) {
   if (busy) return;
-  if (id === state.current) return window.close();
+  if (id === state.current) {
+    if (await flush()) window.close();
+    return;
+  }
   run('Workspace wird gewechselt …', 'Workspace konnte nicht gewechselt werden.', () =>
     send({ type: 'switch', windowId, wsId: id }), { close: true });
 }
