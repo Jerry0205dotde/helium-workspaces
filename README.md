@@ -20,7 +20,7 @@ Three parts work together:
 
 - **The extension** (folder `extension/`) moves the tabs and creates the stash windows. The first, pinned tab of every stash is a page of the extension. It sets the window title to `HWS-Ablage <key> · <workspace name>`.
 - **The key** is created on the first start of the extension and kept in its storage in the Helium profile. `install.sh` writes it to the KWin settings (`kwinrc`).
-- **The KWin script** (folder `kwin/`) looks for Helium windows whose title contains `HWS-Ablage` followed by this key. It removes them from the taskbar, Alt+Tab, the overview and the pager and keeps them minimized. A website therefore cannot pose as a stash, because it does not know the key.
+- **The KWin script** (folder `kwin/`) looks for browser windows whose title contains `HWS-Ablage` followed by this key. It removes them from the taskbar, Alt+Tab, the overview and the pager and keeps them minimized. A website therefore cannot pose as a stash, because it does not know the key.
 
 ### Limitations
 
@@ -37,6 +37,13 @@ Three parts work together:
 - For `install.sh`: `bash` and `tr` as well as `kpackagetool6`, `kreadconfig6`, `kwriteconfig6` and `qdbus6`. On Arch the packages are called `coreutils`, `kpackage`, `kconfig` and `qt6-tools`.
 - A running Plasma session. `install.sh` loads the script straight into KWin over the D-Bus of that session. The safest way is to run it in a terminal inside the session.
 - In Helium, under *Settings → On startup*, the option **"Continue where you left off"**. With any other startup setting Helium does not restore the stash windows on startup. The extension then rebuilds the workspaces from its backup, but the tabs reload and lose their history (see [What is preserved](#what-is-preserved)).
+
+### Google Chrome and Chromium
+
+The extension also runs in Google Chrome and Chromium. It is installed the same way under `chrome://extensions`, and the startup setting above applies there too. Two parts have to be told apart:
+
+- **Extension:** creating, renaming, switching and deleting workspaces, moving tabs, pinned tabs and the keyboard shortcuts. This works the same as in Helium. Tested with Google Chrome 157.0.8103.78 and Chromium 160.0.8158.0.
+- **Desktop integration:** the KWin script only hides stash windows of browsers it knows by their window class (X11) or app ID (Wayland): `helium`, `google-chrome`, `chromium` and `chromium-browser`. Tested with Google Chrome 157.0.8103.78 and Chromium 157.0.8103.38 under KWin 6.8.2, as native Wayland windows and as X11 windows via XWayland. Other browsers such as Brave, Vivaldi or Edge are not recognized. Their stash windows stay visible as minimized windows.
 
 ## Installation
 
@@ -59,7 +66,7 @@ Three parts work together:
    ```
 
    The last line of output is `Fertig.` ("Done."). The KWin script is then installed, enabled and loaded, and it knows the key.
-6. To check, create a second workspace and switch back and forth. No additional Helium window may appear in the taskbar.
+6. To check, create a second workspace and switch back and forth. No additional browser window may appear in the taskbar.
 
 Do not move the folder after loading it. Helium loads the extension from exactly this folder on every start. Leave developer mode turned on. Without it Helium disables unpacked extensions.
 
@@ -205,7 +212,7 @@ This is a private hobby project. Expect bugs.
 node --test test/*.test.js
 ```
 
-This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata. The same checks run in CI on every pull request.
+This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. The same checks run in CI on every pull request.
 
 The tests do not check the connection to Helium and KWin. After changing that, briefly check by hand:
 
