@@ -911,9 +911,13 @@ async function reconcile() {
     for (const w of mains) {
       const rec = stashWins[w.id];
       if (!rec || s.windowWs[w.id] || !cfg.workspaces.some((x) => x.id === rec.ws)) continue;
+      // War die Ablage leer, hat Chromium statt ihrer Ablage-Seite eine neue Tab-Seite
+      // geladen, damit das Fenster offen bleibt. Diese gehört nicht in den Workspace.
       const ids = new Set(rec.tabs);
-      if (!w.tabs.some((t) => ids.has(t.id))) continue;
+      const blank = !ids.size && w.tabs.length && w.tabs.every(isNewTab);
+      if (!blank && !w.tabs.some((t) => ids.has(t.id))) continue;
       await chrome.tabs.create({ windowId: w.id, url: `${STASH_PAGE}#${rec.ws}`, index: 0, pinned: true, active: true });
+      if (blank) await chrome.tabs.remove(w.tabs.map((t) => t.id)).catch(() => {});
       repaired = true;
     }
     if (repaired) {
