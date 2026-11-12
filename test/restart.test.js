@@ -270,3 +270,26 @@ test('Nach einem Browserstart werden gespeicherte Fenster-IDs nicht mehr genutzt
   await w.settle();
   check(env, ALL);
 });
+
+test('Der Schlüssel entsteht bei der Installation und bleibt bei Neustart und Neuladen gleich', async () => {
+  const env = await setup(SPEC);
+  const { token } = env.b.local.data;
+  assert.match(token, /^[0-9a-f]{24}$/);
+  assert.equal(await ok(env.w.request({ type: 'token' })), token);
+  await env.b.reloadExtension().settle();
+  env.b.restart();
+  const w = env.b.startWorker('startup');
+  await w.settle();
+  assert.equal(await ok(w.request({ type: 'token' })), token);
+  assert.equal(env.b.local.data.token, token);
+});
+
+test('Ältere Installation ohne Schlüssel bekommt ihn beim nächsten Start des Service Workers', async () => {
+  const env = await setup(SPEC);
+  delete env.b.local.data.token;
+  const w = env.b.startWorker(null);
+  await w.settle();
+  const { token } = env.b.local.data;
+  assert.match(token, /^[0-9a-f]{24}$/);
+  assert.equal(await ok(w.request({ type: 'token' })), token);
+});

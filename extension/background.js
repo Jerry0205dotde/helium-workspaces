@@ -42,6 +42,17 @@ async function getConfig() {
   return { workspaces, lastWs };
 }
 
+// Geräteeigener Schlüssel im Titel der Ablage-Fenster (stash.js). Das KWin-Skript
+// versteckt nur Fenster mit diesem Schlüssel, install.sh trägt ihn in kwinrc ein.
+async function ensureToken() {
+  let { token } = await chrome.storage.local.get('token');
+  if (!token) {
+    token = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
+    await chrome.storage.local.set({ token });
+  }
+  return token;
+}
+
 async function saveWorkspaces(workspaces) {
   await chrome.storage.local.set({ workspaces });
   await buildMenus();
@@ -1513,6 +1524,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     switch (msg.type) {
       case 'state':
         return stateFor(msg.windowId);
+      case 'token':
+        return serial(ensureToken);
       case 'switch':
         return userAction(() => switchTo(msg.windowId, msg.wsId));
       case 'create':
@@ -1556,4 +1569,6 @@ chrome.runtime.onStartup.addListener(() =>
     await buildMenus();
   }),
 );
+// Bei jedem Start, damit auch eine ältere Installation ohne Neuladen ihren Schlüssel bekommt
+serial(ensureToken);
 scheduleReconcile();

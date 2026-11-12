@@ -10,8 +10,6 @@ const { execFileSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 const EXT = path.join(ROOT, 'extension');
 const KWIN = path.join(ROOT, 'kwin');
-// Von install.sh erzeugt und nicht im Repository
-const GENERATED = new Set(['token.js']);
 
 function files(dir, ext) {
   return fs
@@ -27,7 +25,6 @@ test('JavaScript-Syntax aller Dateien der Erweiterung, des KWin-Skripts und der 
   const all = [...files(EXT, '.js'), ...files(KWIN, '.js'), ...files(__dirname, '.js')];
   assert.ok(all.length > 5);
   for (const f of all) {
-    if (GENERATED.has(path.basename(f))) continue;
     try {
       execFileSync(process.execPath, ['--check', f], { stdio: 'pipe' });
     } catch (e) {
@@ -60,11 +57,9 @@ test('HTML-Seiten der Erweiterung laden nur vorhandene Skripte und Stile', () =>
   for (const f of files(EXT, '.html')) {
     const html = fs.readFileSync(f, 'utf8');
     for (const [, src] of html.matchAll(/<(?:script[^>]*\ssrc|link[^>]*\shref)="([^"]+)"/g)) {
-      if (GENERATED.has(src)) continue;
       assert.ok(exists(EXT, src), `${path.basename(f)}: ${src} fehlt`);
     }
   }
-  assert.ok(fs.readFileSync(path.join(ROOT, '.gitignore'), 'utf8').includes('extension/token.js'), 'token.js muss ignoriert werden');
 });
 
 test('KWin-Metadaten sind gültig und passen zu install.sh', () => {

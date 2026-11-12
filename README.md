@@ -19,7 +19,7 @@ Every normal window shows exactly one workspace. The tabs of the workspaces that
 Three parts work together:
 
 - **The extension** (folder `extension/`) moves the tabs and creates the stash windows. The first, pinned tab of every stash is a page of the extension. It sets the window title to `HWS-Ablage <key> · <workspace name>`.
-- **The key** is stored in `extension/token.js`. `install.sh` generates it once per device and also writes it to the KWin settings (`kwinrc`).
+- **The key** is created on the first start of the extension and kept in its storage in the Helium profile. `install.sh` writes it to the KWin settings (`kwinrc`).
 - **The KWin script** (folder `kwin/`) looks for Helium windows whose title contains `HWS-Ablage` followed by this key. It removes them from the taskbar, Alt+Tab, the overview and the pager and keeps them minimized. A website therefore cannot pose as a stash, because it does not know the key.
 
 ### Limitations
@@ -34,7 +34,7 @@ Three parts work together:
 
 - [Helium](https://github.com/imputnet/helium-linux) on Linux. Tested with Helium 0.21.
 - KDE Plasma 6 with KWin 6, on Wayland or X11. Other desktops do not hide the stash windows.
-- For `install.sh`: `bash`, `od` and `sed` as well as `kpackagetool6`, `kwriteconfig6` and `qdbus6`. On Arch the packages are called `coreutils`, `sed`, `kpackage`, `kconfig` and `qt6-tools`.
+- For `install.sh`: `bash` and `tr` as well as `kpackagetool6`, `kreadconfig6`, `kwriteconfig6` and `qdbus6`. On Arch the packages are called `coreutils`, `kpackage`, `kconfig` and `qt6-tools`.
 - A running Plasma session. `install.sh` loads the script straight into KWin over the D-Bus of that session. The safest way is to run it in a terminal inside the session.
 - In Helium, under *Settings → On startup*, the option **"Continue where you left off"**. With any other startup setting Helium does not restore the stash windows on startup. The extension then rebuilds the workspaces from its backup, but the tabs reload and lose their history (see [What is preserved](#what-is-preserved)).
 
@@ -42,19 +42,24 @@ Three parts work together:
 
 ### First installation
 
-1. Clone the repository, then generate the key and set up the KWin script inside it:
+1. Clone the repository:
 
    ```bash
    git clone https://github.com/Jerry0205dotde/helium-workspaces.git
    cd helium-workspaces
-   ./install.sh
    ```
 
-   The last line of output starts with `Fertig.` ("Done."). After that `extension/token.js` exists, and the KWin script is installed, enabled and loaded.
 2. Open `chrome://extensions` in Helium and turn on **Developer mode** in the top right.
 3. Choose **Load unpacked** and select the folder `extension/` from the repository.
 4. Pin the workspace button to the toolbar.
-5. To check, create a second workspace and switch back and forth. No additional Helium window may appear in the taskbar.
+5. Click the workspace button, expand **Schlüssel für install.sh** ("key for install.sh") at the bottom and click **Kopieren** ("Copy"). Then set up the KWin script inside the repository and paste the key when the script asks for it:
+
+   ```bash
+   ./install.sh
+   ```
+
+   The last line of output is `Fertig.` ("Done."). The KWin script is then installed, enabled and loaded, and it knows the key.
+6. To check, create a second workspace and switch back and forth. No additional Helium window may appear in the taskbar.
 
 Do not move the folder after loading it. Helium loads the extension from exactly this folder on every start. Leave developer mode turned on. Without it Helium disables unpacked extensions.
 
@@ -62,24 +67,31 @@ Do not move the folder after loading it. Helium loads the extension from exactly
 
 There are no automatic updates. Helium loads the extension straight from the repository folder, so a new version only arrives when you fetch it yourself:
 
-1. Fetch the new version and run the script again:
+1. Fetch the new version:
 
    ```bash
    cd helium-workspaces
    git pull
+   ```
+
+2. In `chrome://extensions`, click **Reload** (the circular arrow) on "Workspaces". Restarting Helium is not enough, the old background logic can still be running afterwards.
+3. Update the KWin script:
+
+   ```bash
    ./install.sh
    ```
 
-   `install.sh` keeps the existing key and only updates the KWin script.
-2. In `chrome://extensions`, click **Reload** (the circular arrow) on "Workspaces". Alternatively, restart Helium.
+   When it asks for the key, press <kbd>Enter</kbd> to keep the current one.
 
 When reloading, Chromium closes all pages of the extension, including the stash markers. The stash windows then show up in the taskbar briefly until the extension marks them again after one or two seconds. The tabs stay where they are.
 
 Do not remove and re-add the extension to update it. When it is removed, Helium deletes all workspaces and the backup.
 
-### The key `token.js`
+Once, when updating from a version that kept the key in `extension/token.js`: after the reload the extension creates a new key, and the stash windows are visible. In step 3, do not press <kbd>Enter</kbd> but paste the new key from the popup. `install.sh` then deletes the old `extension/token.js`.
 
-`extension/token.js` is created on the first run of `install.sh` on each device and is listed in `.gitignore`. Do not commit the file and do not copy it to other devices. Every device gets its own key by running `install.sh` there. If the key in `token.js` does not match the one in `kwinrc`, the stash windows stay visible.
+### The key
+
+On its first start the extension generates a random key and keeps it in its storage in the Helium profile. Websites cannot read it there. The popup shows it under **Schlüssel für install.sh**, and `install.sh` writes it to `kwinrc`. That way every device has its own key. If the key in `kwinrc` does not match the one in the popup, the stash windows stay visible.
 
 To bring workspaces to another device, use the export (see below). It does not contain the key.
 
@@ -140,19 +152,18 @@ A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its fir
 2. Do the keys match?
 
    ```bash
-   cat extension/token.js
    kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token
    ```
 
-   Both outputs must contain the same key, and the window title must show it after `HWS-Ablage`. If the title contains no key (`HWS-Ablage · Uni`), `token.js` is missing or the extension was loaded without it.
-3. To repair, run `./install.sh` and then reload the extension in `chrome://extensions`. Only the reload makes the stashes pick up a new key. After one or two seconds they disappear from the taskbar.
+   The output must be the key the popup shows under **Schlüssel für install.sh**, and the window title must show it after `HWS-Ablage`. If the title contains no key (`HWS-Ablage · Uni`), reload the extension in `chrome://extensions`.
+3. To repair, run `./install.sh` and paste the key from the popup. The script reloads the KWin script, and after one or two seconds the stashes disappear from the taskbar.
 
 ### `install.sh` aborts
 
 The messages of `install.sh` itself are in German.
 
 - **`command not found`** or **`Kommando nicht gefunden`**: a program from the [requirements](#requirements) is missing.
-- **`Ungültige …/token.js`** ("invalid …/token.js"): the file is damaged or was edited by hand. Delete it and run `./install.sh` again. That generates a new key. Then reload the extension.
+- **`Ungültiger Schlüssel`** ("invalid key"): no key or an incomplete key was entered. In the popup, click **Kopieren** under **Schlüssel für install.sh** and paste it again. The key consists of 24 characters `0`–`9` and `a`–`f`.
 - **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** or **`KWin-Skript wurde nicht geladen`** ("KWin script was not loaded"): `install.sh` cannot reach KWin, for example over SSH or in a text console. The script is then already installed but not loaded. Run it again in a terminal inside the Plasma session.
 
 ### Tabs are missing after a restart
@@ -182,7 +193,7 @@ Without the extension the stash windows lose their marker, but their tabs stay i
    ```
 
    If the script was removed too early, quit Helium and start it again. After that the windows are visible normally again.
-5. **Remove the extension.** In `chrome://extensions`, click **Remove** on "Workspaces". This deletes the workspaces and the backup from the profile. After that the repository folder including `token.js` can be deleted.
+5. **Remove the extension.** In `chrome://extensions`, click **Remove** on "Workspaces". This deletes the workspaces and the backup from the profile. After that the repository folder can be deleted.
 
 ## A few notes
 
@@ -198,7 +209,7 @@ This only needs Node.js 22 or later, no browser and no KWin. The tests load `bac
 
 The tests do not check the connection to Helium and KWin. After changing that, briefly check by hand:
 
-1. Run `./install.sh` and reload the extension in `chrome://extensions`.
+1. Reload the extension in `chrome://extensions` and run `./install.sh` with the key from the popup.
 2. Set up two workspaces with a few tabs, a tab group and a pinned tab, and start a video in one of them.
 3. Switch back and forth a few times: the video keeps playing, the group and the pinned tab stay, and no stash window appears in the taskbar, <kbd>Alt</kbd>+<kbd>Tab</kbd> or the overview.
 4. Reload the extension in `chrome://extensions`: after about a second the stash windows are hidden again, and switching still works.
@@ -214,5 +225,5 @@ The tests do not check the connection to Helium and KWin. After changing that, b
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): the page that marks a window as a stash
   - [`label.js`](./extension/label.js): the character shown in a workspace's icon
 - [`kwin/`](./kwin): KWin script that hides the stash windows
-- [`install.sh`](./install.sh): generate the key and set up the KWin script
+- [`install.sh`](./install.sh): set up the KWin script and write the key
 - [`test/`](./test): automated tests, [`fake-browser.js`](./test/fake-browser.js) replicates the Chrome APIs
