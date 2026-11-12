@@ -505,6 +505,39 @@ async function moveTabToWs(tabId, wsId) {
   await snapshot();
 }
 
+// Ein Tab in einer Ablage wurde aktiv, ohne dass die Erweiterung es war (z. B. über die
+// Tab-Suche des Browsers). Die Ablage verliert dadurch ihren Titel und wird sichtbar.
+// Deshalb zeigt das zuletzt benutzte Hauptfenster diesen Workspace mit dem gewählten Tab.
+async function showStashTab(tabId) {
+  await resumeSwitch();
+  const s = await sess();
+  const { stash, mains } = await scan();
+  const sw = [...stash.values()].find((w) => w.tabs.some((t) => t.id === tabId && t.active && !isStashTab(t)));
+  if (!sw) return;
+  const { lastMain } = await chrome.storage.session.get('lastMain');
+  const main = mains.find((w) => w.id === lastMain && s.windowWs[w.id]) || mains.find((w) => s.windowWs[w.id]);
+  if (!main) return; // noch kein Hauptfenster zugeordnet: der Abgleich räumt auf
+  const ws = stashWsOf(sw);
+  s.lastTab[ws] = tabId;
+  await saveSess(s);
+  if (s.windowWs[main.id] !== ws) {
+    await switchTo(main.id, ws);
+  } else {
+    // Das Fenster zeigt den Workspace schon, die Ablage stammt von einem zweiten Fenster
+    switching++;
+    try {
+      await moveOrdered(stashTabsOf(sw), main.id);
+      await chrome.tabs.update(tabId, { active: true });
+    } finally {
+      switching--;
+    }
+    await updateIcons(main.id);
+    await snapshot();
+  }
+  await chrome.windows.update(sw.id, { state: 'minimized' }).catch(() => {});
+  await chrome.windows.update(main.id, { focused: true }).catch(() => {});
+}
+
 // ---------------------------------------------------------------- Workspaces verwalten
 
 async function createWs(name) {
@@ -949,7 +982,9 @@ async function reconcile() {
     for (const [id, ws] of assignWindows(fresh, s, cfg, entries, guessed)) s.windowWs[id] = ws;
     changed = true;
   }
-  await chrome.storage.session.set({ entries, entriesUntil });
+  // Ein neues Fenster (Strg+N) hat den Fokus bekommen, bevor es zugeordnet war
+  const focused = fresh.find((w) => w.focused);
+  await chrome.storage.session.set({ entries, entriesUntil, ...(focused ? { lastMain: focused.id } : {}) });
 
   // Start ohne wiederhergestellte Fenster (Starteinstellung „Neuer-Tab-Seite“): Chromium
   // öffnet nur ein neues Fenster, höchstens mit den angehefteten Tabs. Den zuletzt aktiven
@@ -1391,7 +1426,9 @@ chrome.windows.onFocusChanged.addListener(async (winId) => {
   if (winId === chrome.windows.WINDOW_ID_NONE) return;
   const s = await sess();
   const ws = s.windowWs[winId];
-  if (ws) await chrome.storage.local.set({ lastWs: ws });
+  if (!ws) return;
+  await chrome.storage.local.set({ lastWs: ws });
+  await chrome.storage.session.set({ lastMain: winId });
 });
 
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
@@ -1399,7 +1436,7 @@ chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
   serial(async () => {
     const s = await sess();
     const ws = s.windowWs[windowId];
-    if (!ws) return;
+    if (!ws) return showStashTab(tabId);
     s.lastTab[ws] = tabId;
     await saveSess(s);
   });
