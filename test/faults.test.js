@@ -286,3 +286,33 @@ test('Scheiternder Speicherzugriff beim Sichern hinterlässt keine halbe Sicheru
   await w.settle();
   check(env, { ...ALL, A: [...SPEC.workspaces.A, 'a5', 'a6'] });
 });
+
+test('Scheitert das Speichern der Sicherung, meldet das Popup es, bis es wieder gelingt', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  const saved = backupJson(env);
+  const quota = b.fail('storage.local.set', {
+    when: (items) => 'backupPinned' in items,
+    times: Infinity,
+    message: 'Resource::kQuotaBytes quota exceeded',
+  });
+  await b.chrome.tabs.create({ windowId: win, url: url('x1'), active: false });
+  await w.settle();
+  assert.ok(quota.hits > 0, 'Sicherung wurde nicht versucht');
+  assert.equal(backupJson(env), saved);
+  const { backupError } = await ok(w.request({ type: 'state', windowId: win }));
+  assert.match(backupError?.message || '', /quota exceeded/);
+  const since = backupError.since;
+
+  // Weitere Fehlschläge behalten den Zeitpunkt des ersten
+  await w.advance(5000);
+  await b.chrome.tabs.create({ windowId: win, url: url('x2'), active: false });
+  await w.settle();
+  assert.equal((await ok(w.request({ type: 'state', windowId: win }))).backupError?.since, since);
+
+  quota.left = 0;
+  await b.chrome.tabs.create({ windowId: win, url: url('x3'), active: false });
+  await w.settle();
+  assert.equal((await ok(w.request({ type: 'state', windowId: win }))).backupError, null);
+  assert.match(backupJson(env), /x1\.test.*x2\.test.*x3\.test/);
+});

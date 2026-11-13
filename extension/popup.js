@@ -3,6 +3,7 @@ const addBtn = document.getElementById('add');
 const controlsEl = document.getElementById('controls');
 const statusEl = document.getElementById('status');
 const errorEl = document.getElementById('error');
+const backupErrorEl = document.getElementById('backup-error');
 
 let windowId;
 let activeTabId;
@@ -82,7 +83,21 @@ async function run(busyText, failText, fn, { close = false, focus } = {}) {
   }
 }
 
+// Hinweis, solange die Sicherung nicht gespeichert werden kann
+function renderBackupError() {
+  const e = state.backupError;
+  backupErrorEl.hidden = !e;
+  if (!e) return backupErrorEl.replaceChildren();
+  const since = new Date(e.since).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+  backupErrorEl.replaceChildren(
+    el('p', 'msg', `Sicherung scheitert seit ${since}`),
+    el('p', null, 'Geht ein Fenster verloren, fehlen alle Änderungen seitdem.'),
+    el('p', 'detail', errorText(e.message)),
+  );
+}
+
 function render(focus) {
+  renderBackupError();
   listEl.replaceChildren();
   state.workspaces.forEach((ws, i) => {
     const li = el('li');

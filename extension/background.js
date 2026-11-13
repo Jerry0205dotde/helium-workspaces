@@ -702,7 +702,16 @@ async function snapshot() {
     urls: movableTabsOf(w).map(urlOf),
   }));
 
-  await chrome.storage.local.set({ backup, stashWins, backupWindows, backupPinned: pinnedOf(mains, groups) });
+  try {
+    await chrome.storage.local.set({ backup, stashWins, backupWindows, backupPinned: pinnedOf(mains, groups) });
+  } catch (e) {
+    // Etwa wegen voller Speichergrenze. Die Sicherung bleibt auf dem alten Stand, das
+    // Popup weist darauf hin, bis wieder eine gelingt.
+    const { backupError } = await chrome.storage.session.get('backupError');
+    await chrome.storage.session.set({ backupError: { since: backupError?.since ?? Date.now(), message: String(e?.message || e) } });
+    throw e;
+  }
+  await chrome.storage.session.remove('backupError');
 }
 
 // ---------------------------------------------------------------- Abgleich
@@ -1561,7 +1570,8 @@ async function stateFor(windowId) {
     const failed = backup[ws.id]?.failed?.length || 0;
     return { ...ws, count, failed, elsewhere: showing.some((w) => w.id !== windowId) };
   });
-  return { workspaces: list, current: s.windowWs[windowId] || null, colors: COLORS };
+  const { backupError } = await chrome.storage.session.get('backupError');
+  return { workspaces: list, current: s.windowWs[windowId] || null, colors: COLORS, backupError: backupError || null };
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
