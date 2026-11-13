@@ -34,7 +34,7 @@ Three parts work together:
 
 - [Helium](https://github.com/imputnet/helium-linux) on Linux. Tested with Helium 0.21.
 - KDE Plasma 6 with KWin 6, on Wayland or X11. Other desktops do not hide the stash windows.
-- For `install.sh`: `bash` and `tr` as well as `kpackagetool6`, `kreadconfig6`, `kwriteconfig6` and `qdbus6`. On Arch the packages are called `coreutils`, `kpackage`, `kconfig` and `qt6-tools`.
+- For `install.sh`: `bash`, `tr` and `git` as well as `kpackagetool6`, `kreadconfig6`, `kwriteconfig6` and `qdbus6`. On Arch the packages are called `coreutils`, `kpackage`, `kconfig` and `qt6-tools`.
 - A running Plasma session. `install.sh` loads the script straight into KWin over the D-Bus of that session. The safest way is to run it in a terminal inside the session.
 - In Helium, under *Settings → On startup*, the option **"Continue where you left off"**. With any other startup setting Helium does not restore the stash windows on startup. The extension then rebuilds the workspaces from its backup, but the tabs reload and lose their history (see [What is preserved](#what-is-preserved)).
 
@@ -92,27 +92,21 @@ Do not move the folder after loading it. Helium loads the extension from exactly
 
 There are no automatic updates. Helium loads the extension straight from the repository folder, so a new version only arrives when you fetch it yourself:
 
-1. Fetch the new version:
+1. Fetch the new version and update the KWin script:
 
    ```bash
    cd helium-workspaces
-   git pull
+   ./install.sh --update
    ```
 
-2. In `chrome://extensions`, click **Reload** (the circular arrow) on "Workspaces". Restarting Helium is not enough, the old background logic can still be running afterwards.
-3. Update the KWin script:
-
-   ```bash
-   ./install.sh
-   ```
-
-   When it asks for the key, press <kbd>Enter</kbd> to keep the current one.
+   This runs `git pull --ff-only` and sets up the KWin script again without asking. The key and the browser list are kept.
+2. In `chrome://extensions`, click **Reload** (the circular arrow) on "Workspaces". Restarting Helium is not enough, the old background logic can still be running afterwards. At the end `install.sh` names the new version, the popup shows it in the bottom right.
 
 When reloading, Chromium closes all pages of the extension, including the stash markers. The stash windows then show up in the taskbar briefly until the extension marks them again after one or two seconds. The tabs stay where they are.
 
 Do not remove and re-add the extension to update it. When it is removed, Helium deletes all workspaces and the backup.
 
-Once, when updating from a version that kept the key in `extension/token.js`: after the reload the extension creates a new key, and the stash windows are visible. In step 3, do not press <kbd>Enter</kbd> but paste the new key from the popup. `install.sh` then deletes the old `extension/token.js`.
+Once, when updating from a version that kept the key in `extension/token.js`: after the reload the extension creates a new key, and the stash windows are visible. So after step 2, run `./install.sh` and paste the new key from the popup. `install.sh` then deletes the old `extension/token.js`.
 
 ### The key
 
@@ -236,7 +230,7 @@ This is a private hobby project. Expect bugs.
 node --test test/*.test.js
 ```
 
-This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. `install.sh --uninstall` runs against stand-ins for the KDE commands. The same checks run in CI on every pull request.
+This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. `install.sh --uninstall` and `--update` run against stand-ins for the KDE commands, and `--update` pulls with real `git` from a test repository. The same checks run in CI on every pull request.
 
 If anything in `extension/` changes, the version in [`manifest.json`](./extension/manifest.json) must be higher than on `main`, otherwise `static.test.js` fails. The version is shown in the bottom right of the popup, so after an update you can see whether the new code is running. The comparison is against `origin/main`; `VERSION_BASE` selects a different ref. If the ref is missing, the check is skipped.
 
@@ -272,7 +266,7 @@ The tests do not check KWin. After changing that, briefly check by hand:
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): the page that marks a window as a stash
   - [`label.js`](./extension/label.js): the character shown in a workspace's icon
 - [`kwin/`](./kwin): KWin script that hides the stash windows
-- [`install.sh`](./install.sh): set up the KWin script and write the key, remove it again with `--uninstall`
+- [`install.sh`](./install.sh): set up the KWin script and write the key, update with `--update`, remove it again with `--uninstall`
 - [`test/`](./test): automated tests, [`fake-browser.js`](./test/fake-browser.js) replicates the Chrome APIs, [`page.js`](./test/page.js) drives the popup and the import page in Chromium, [`chromium.js`](./test/chromium.js) drives a real Chromium
 
 ## License
