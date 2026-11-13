@@ -391,9 +391,13 @@ document.getElementById('transfer').addEventListener('click', () =>
     else await chrome.windows.create({ url, type: 'popup', width: 600, height: 720 });
   }, { close: true }));
 
-muteStashEl.addEventListener('change', () =>
+// Den Wert vorher festhalten: Speichert run() zuerst ein verlassenes Feld, setzt dessen
+// Neuzeichnen die Checkbox auf den alten Stand zurück
+muteStashEl.addEventListener('change', () => {
+  const on = muteStashEl.checked;
   run('Wird gespeichert …', 'Einstellung konnte nicht gespeichert werden.', () =>
-    send({ type: 'muteStash', on: muteStashEl.checked }), { focus: ['mute-stash'] }));
+    send({ type: 'muteStash', on }), { focus: ['mute-stash'] });
+});
 
 // Schlüssel zum Kopieren, install.sh trägt ihn für das KWin-Skript ein
 const keyValue = document.getElementById('key-value');
