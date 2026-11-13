@@ -205,6 +205,17 @@ async function whenIdle(fn, tries = 15) {
 
 const groupProps = (e) => ({ title: e.gt || '', color: e.gc || 'grey', collapsed: !!e.gx });
 
+// Legt einen Tab im Hintergrund an, solange der Browser wegen Ziehens ablehnt erneut
+const openTab = (props) => whenIdle(() => chrome.tabs.create({ active: false, ...props }));
+
+// Eintrag für failed: Gruppenmitglieder merken sich die URLs ihrer Geschwister in list
+// (siehe recreate), damit ein erneuter Versuch sie wieder der Gruppe zuordnet.
+function failedEntry(e, list) {
+  if (!e.g) return e;
+  const gs = list.filter((o) => o !== e && o.g === e.g).map((o) => o.url);
+  return { ...e, gs: [...new Set([...(e.gs || []), ...gs])] };
+}
+
 // Legt gesicherte Tabs neu an (nur nötig, wenn ihr Fenster nicht mehr existiert).
 // Gibt die neuen Tab-IDs und die Einträge zurück, die nicht angelegt werden konnten.
 // Lässt sich eine Gruppe nicht anlegen, werden ihre Tabs wieder geschlossen und
@@ -220,16 +231,12 @@ async function recreate(list, windowId, pinned = false, join = false, have = [])
   const failed = [];
   const groups = new Map();
   const used = new Set(); // in diesem Aufruf belegte Gruppen gehören zu einer anderen Sicherung
-  const fail = (e) => {
-    if (!e.g || pinned) return failed.push(e);
-    const gs = list.filter((o) => o !== e && o.g === e.g).map((o) => o.url);
-    failed.push({ ...e, gs: [...new Set([...(e.gs || []), ...gs])] });
-  };
+  const fail = (e) => failed.push(pinned ? e : failedEntry(e, list));
   let n = 0;
   for (const e of list) {
     if (!e.url) continue;
     try {
-      const t = have[n++] || (await whenIdle(() => chrome.tabs.create({ windowId, url: e.url, active: false, pinned })));
+      const t = have[n++] || (await openTab({ windowId, url: e.url, pinned }));
       ids.push(t.id);
       if (e.g && !pinned) {
         if (!groups.has(e.g)) groups.set(e.g, []);
@@ -794,7 +801,9 @@ function align(saved, live) {
 // kurz in keinem Fenster), fehlt dieser Tab in der Datei und kommt nach dem nächsten
 // Start nicht wieder. Ergänzt wird nur, wo ein Workspace weniger Tabs hat als gesichert,
 // und höchstens so viele, wie fehlen. Gleich viele abweichende Tabs an einer Stelle
-// gelten als umgeleitete Seiten, nicht als verloren.
+// gelten als umgeleitete Seiten, nicht als verloren. Tabs, die sich nicht anlegen lassen,
+// kommen wie bei recreate nach failed („Erneut versuchen“), statt mit dem nächsten
+// Snapshot aus der Sicherung zu verschwinden.
 async function repairFromBackup(cfg, s, stash, mains) {
   const { backup } = await getBackup();
   let changed = false;
@@ -843,6 +852,7 @@ async function repairFromBackup(cfg, s, stash, mains) {
     if (!missing.size) continue;
 
     const created = new Map();
+    const failed = [];
     let anchor = null;
     for (let x = 0; x < saved.length; x++) {
       if (x === shown.length) anchor = null; // Ablage-Abschnitt: nicht hinter Tabs des Hauptfensters
@@ -862,15 +872,17 @@ async function repairFromBackup(cfg, s, stash, mains) {
         index = (await chrome.tabs.query({ windowId })).filter((t) => t.pinned).length;
       }
       try {
-        const t = await chrome.tabs.create({ windowId, index, url: saved[x].url, active: false });
+        const t = await openTab({ windowId, index, url: saved[x].url });
         created.set(x, t);
         anchor = t.id;
         changed = true;
         console.info('[workspaces] verlorenen Tab ergänzt:', saved[x].url);
       } catch (err) {
         console.warn('[workspaces] Tab nicht ergänzbar:', saved[x].url, err);
+        failed.push(failedEntry(saved[x], saved));
       }
     }
+    await keepFailed(ws.id, failed);
     // Gruppen: der Gruppe eines Nachbarn mit derselben gesicherten Gruppe beitreten,
     // sonst die Gruppe neu anlegen.
     for (const [x, t] of created) {
@@ -885,10 +897,10 @@ async function repairFromBackup(cfg, s, stash, mains) {
           if (cur && cur.windowId === t.windowId && cur.groupId >= 0) gid = cur.groupId;
         }
         if (gid >= 0) {
-          await chrome.tabs.group({ groupId: gid, tabIds: [t.id] });
+          await whenIdle(() => chrome.tabs.group({ groupId: gid, tabIds: [t.id] }));
         } else {
-          gid = await chrome.tabs.group({ tabIds: [t.id], createProperties: { windowId: t.windowId } });
-          await chrome.tabGroups.update(gid, groupProps(e));
+          gid = await whenIdle(() => chrome.tabs.group({ tabIds: [t.id], createProperties: { windowId: t.windowId } }));
+          await whenIdle(() => chrome.tabGroups.update(gid, groupProps(e)));
         }
       } catch (err) {
         console.warn('[workspaces] Gruppe nicht ergänzbar', err);

@@ -77,6 +77,48 @@ test('Beim Wiederherstellen verlorene Tabs werden an ihrer Stelle und in ihrer G
   await cycle(env);
 });
 
+test('Ein verlorener Tab lässt sich nicht ergänzen: wird samt Gruppe aufbewahrt und erneut versucht', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  b.restart({ loseTab: (t) => t.url === url('b1') });
+  const f = b.fail('tabs.create', { when: (o) => o.url === url('b1') });
+  const w = b.startWorker('startup');
+  await w.settle();
+  assert.equal(f.hits, 1);
+  const failed = b.local.data.backup[env.ids.B].failed;
+  assert.deepEqual(failed?.map((e) => e.url), [url('b1')], 'Tab fehlt in der Sicherung');
+  assert.equal(failed[0].gt, 'Lesen', 'Gruppenangaben des fehlgeschlagenen Tabs fehlen');
+  assert.deepEqual(failed[0].gs, [url('b2')]);
+  const B = SPEC.workspaces.B.filter((e) => e.url !== 'b1');
+  check(env, { ...ALL, B });
+  // Weitere Abgleiche während des Starts legen den Eintrag nicht doppelt ab
+  await w.advance(5000);
+  await w.settle();
+  assert.equal(b.local.data.backup[env.ids.B].failed.length, 1);
+  const main = b.mains()[0].id;
+  const st = await ok(w.request({ type: 'state', windowId: main }));
+  assert.equal(st.workspaces.find((x) => x.id === env.ids.B).failed, 1);
+  // Erneuter Versuch legt den Tab in der Gruppe seines Geschwisters an
+  await ok(w.request({ type: 'retry', windowId: main, wsId: env.ids.B }));
+  assert.equal(b.local.data.backup[env.ids.B].failed?.length ?? 0, 0);
+  check(env, ALL);
+});
+
+test('Wird beim Ergänzen gerade ein Tab gezogen, werden Anlegen und Gruppieren wiederholt', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  b.restart({ loseTab: (t) => t.url === url('a3') });
+  const busy = 'Tabs cannot be edited right now (user may be dragging a tab).';
+  const create = b.fail('tabs.create', { when: (o) => o.url === url('a3'), times: 3, message: busy });
+  const group = b.fail('tabs.group', { times: 2, message: busy });
+  const w = b.startWorker('startup');
+  await w.settle();
+  assert.equal(create.hits, 3);
+  assert.equal(group.hits, 2);
+  assert.equal(b.local.data.backup[env.ids.A].failed, undefined);
+  check(env, ALL);
+});
+
 test('Start ohne Sitzungswiederherstellung baut den letzten Workspace aus der Sicherung auf', async () => {
   for (const keepPinned of [false, true]) {
     const env = await setup(SPEC);
