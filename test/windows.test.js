@@ -239,6 +239,26 @@ test('Nach einem Neustart des Service Workers: Tab geöffnet, dann gleich das le
   check(env, { ...ALL, A: [...SPEC.workspaces.A, 'a4'] });
 });
 
+test('Eine veraltete Gruppenantwort überschreibt keine neueren Gruppenangaben im Abbild', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  await w.settle();
+  // Die Gruppe wird umbenannt; die Gruppenabfrage der Auffrischung bleibt aus, die reguläre
+  // Sicherung danach übernimmt den neuen Namen
+  b.fail('tabGroups.query', { hold: true });
+  await b.chrome.tabGroups.update(where(env, 'a2').tab.groupId, { title: 'Neu', color: 'red' });
+  await w.advance(1000);
+  b.fail('tabGroups.query', { hold: true });
+  await b.chrome.tabs.create({ windowId: win, url: url('a4'), active: false });
+  await w.advance(50);
+  await b.closeWindowByX(win);
+  await w.settle();
+  b.restart();
+  await b.startWorker('startup').settle();
+  const A = ['a1', { url: 'a2', group: 'Neu', color: 'red' }, { url: 'a3', group: 'Neu', color: 'red' }, 'a4'];
+  check(env, { ...ALL, A });
+});
+
 // Wie die Tab-Suche: aktiviert den Tab in seiner Ablage und holt deren Fenster nach vorn
 async function pickInStash(env, name) {
   const at = where(env, name);
