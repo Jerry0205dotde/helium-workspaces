@@ -645,6 +645,14 @@ class Browser {
     };
   }
 
+  // Strg+Shift+T: das zuletzt geschlossene Fenster wieder öffnen
+  reopenClosed() {
+    const w = this.lastClosed;
+    this.lastClosed = null;
+    this.restoreWindows([{ ...w, focused: true }], true);
+    return this.windows.at(-1).id;
+  }
+
   finishRestore() {
     const kept = this.pendingRestore || [];
     this.pendingRestore = null;

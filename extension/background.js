@@ -726,7 +726,8 @@ async function snapshot() {
 // ---------------------------------------------------------------- Abgleich
 
 // Ordnet neue Hauptfenster einem Workspace zu. entries sind die beim letzten Mal
-// gesicherten Fenster (ID, Workspace und URLs); jeder Eintrag wird höchstens einmal vergeben.
+// gesicherten Fenster (ID, Workspace und URLs) und in dieser Sitzung geschlossene Fenster
+// (closed: true); jeder Eintrag wird höchstens einmal vergeben.
 // Fenster, die nur geraten zugeordnet wurden (Schritt 4), landen in guessed.
 function assignWindows(wins, s, cfg, entries, guessed = new Set()) {
   const ids = cfg.workspaces.map((w) => w.id);
@@ -747,7 +748,7 @@ function assignWindows(wins, s, cfg, entries, guessed = new Set()) {
     result.set(win.id, entries[i].ws);
     used.add(i);
   }
-  // 3. Beim Browserstart wiederhergestellte Fenster: über die gesicherten URLs.
+  // 3. Beim Browserstart oder mit Strg+Shift+T wiederhergestellte Fenster: über die URLs.
   //    Seiten, die in mehreren Einträgen vorkommen (z. B. ChatGPT in jedem Workspace),
   //    zählen entsprechend weniger. Vergeben wird nach dem besten Paar über alle
   //    Fenster, nicht der Reihe nach, damit ein Fenster nicht einem anderen den
@@ -768,12 +769,17 @@ function assignWindows(wins, s, cfg, entries, guessed = new Set()) {
       const left = new Map();
       for (const u of e.urls) left.set(u, (left.get(u) || 0) + 1);
       let score = 0;
+      let hits = 0;
       for (const u of urls) {
         if (left.get(u) > 0) {
           left.set(u, left.get(u) - 1);
           score += 1 / df.get(u);
+          hits++;
         }
       }
+      // Ein geschlossenes Fenster gilt erst, wenn die meisten Tabs beider Seiten passen,
+      // damit z. B. ein in einem neuen Fenster geöffneter Link nicht in dessen Workspace landet.
+      if (e.closed && hits * 2 <= Math.max(urls.length, e.urls.length)) continue;
       if (score > 0) pairs.push({ win: win.id, e, score, diff: Math.abs(e.urls.length - urls.length) });
     }
   }
@@ -1077,13 +1083,17 @@ async function reconcile() {
   if (!starting) entries = [];
   const fresh = mains.filter((w) => !s.windowWs[w.id]);
   const guessed = new Set();
+  let { closed = [] } = await chrome.storage.session.get('closed');
   if (fresh.length) {
-    for (const [id, ws] of assignWindows(fresh, s, cfg, entries, guessed)) s.windowWs[id] = ws;
+    const pool = [...entries, ...closed];
+    for (const [id, ws] of assignWindows(fresh, s, cfg, pool, guessed)) s.windowWs[id] = ws;
+    entries = pool.filter((e) => !e.closed);
+    closed = pool.filter((e) => e.closed);
     changed = true;
   }
   // Ein neues Fenster (Strg+N) hat den Fokus bekommen, bevor es zugeordnet war
   const focused = fresh.find((w) => w.focused);
-  await chrome.storage.session.set({ entries, entriesUntil, ...(focused ? { lastMain: focused.id } : {}) });
+  await chrome.storage.session.set({ entries, entriesUntil, closed, ...(focused ? { lastMain: focused.id } : {}) });
 
   // Start ohne wiederhergestellte Fenster (Starteinstellung „Neuer-Tab-Seite“): Chromium
   // öffnet nur ein neues Fenster, höchstens mit den angehefteten Tabs. Den zuletzt aktiven
@@ -1147,6 +1157,15 @@ async function onWindowRemoved(winId) {
   delete s.windowWs[winId];
   await saveSess(s);
   const { stash, mains } = await scan();
+  // Workspace und URLs merken, damit das Fenster nach Strg+Shift+T wieder seinen Workspace
+  // zeigt (assignWindows). Die URLs stammen aus dem letzten Snapshot; neue Tab-Seiten
+  // zählen wie beim Abgleich nicht mit.
+  const { backupWindows } = await chrome.storage.local.get('backupWindows');
+  const urls = backupWindows?.find((e) => e.id === winId)?.urls.filter((u) => u && !isNewTab({ url: u }));
+  if (mains.length && urls?.length) {
+    const { closed = [] } = await chrome.storage.session.get('closed');
+    await chrome.storage.session.set({ closed: [...closed, { ws, urls, closed: true }].slice(-10) });
+  }
 
   if (!mains.length) {
     // Letztes sichtbares Fenster geschlossen → Ablagen auch schließen, damit der
