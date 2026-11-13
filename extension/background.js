@@ -269,6 +269,95 @@ const groupProps = (e) => ({ title: e.gt || '', color: e.gc || 'grey', collapsed
 // Legt einen Tab im Hintergrund an, solange der Browser wegen Ziehens ablehnt erneut
 const openTab = (props) => whenIdle(() => chrome.tabs.create({ active: false, ...props }));
 
+// ---------------------------------------------------------------- Entladen
+//
+// Entladen (tabs.discard) gibt den Arbeitsspeicher eines Tabs frei. Er bleibt mit Adresse,
+// Titel und Gruppe stehen und lädt neu, sobald er aktiv wird. Chromium gibt ihm dabei eine
+// neue ID (tabs.onReplaced, siehe replaceTabId). Vor dem ersten Eintrag in den Verlauf
+// entladen, verlöre er seine Adresse; ein solcher Tab bleibt deshalb geladen.
+
+// Aus der Sicherung angelegte Tabs, die nach dem ersten vollständigen Laden entladen werden
+const unloadLater = new Set();
+
+// Chromium vergisst dabei die Stummschaltung, deshalb wird sie danach wieder gesetzt. Die
+// neue ID wird gleich nachgezogen, nicht erst über tabs.onReplaced: Eine Aktion, die schon
+// in serial() wartet, liefe sonst noch mit der alten.
+async function discard(t) {
+  if (t.active || t.discarded || !t.url) return;
+  const d = await chrome.tabs.discard(t.id).catch((e) => console.warn('[workspaces] Tab nicht entladbar:', t.url, e));
+  if (!d) return;
+  if (d.id !== t.id) await replaceTabId(t.id, d.id);
+  if (t.mutedInfo?.muted) await chrome.tabs.update(d.id, { muted: true }).catch(() => {});
+}
+
+async function unloadRestored(tabId) {
+  if (await getPending()) return;
+  const t = await chrome.tabs.get(tabId).catch(() => null);
+  if (t) await discard(t);
+}
+
+// Option „Ablagen entladen nach“: Minuten, 0 = nie
+const UNLOAD_CHOICES = [0, 5, 15, 30, 60, 120];
+
+async function getUnloadAfter() {
+  const { unloadAfter } = await chrome.storage.local.get('unloadAfter');
+  return UNLOAD_CHOICES.includes(unloadAfter) ? unloadAfter : 0;
+}
+
+// Ein Wecker prüft jede Minute, solange die Option eingeschaltet ist
+async function scheduleUnload() {
+  if (!(await getUnloadAfter())) return chrome.alarms.clear('unload');
+  if (!(await chrome.alarms.get('unload'))) await chrome.alarms.create('unload', { periodInMinutes: 1 });
+}
+
+async function setUnloadAfter(minutes) {
+  if (!UNLOAD_CHOICES.includes(minutes)) throw new Error('Ungültige Zeit zum Entladen.');
+  await chrome.storage.local.set({ unloadAfter: minutes });
+  await scheduleUnload();
+}
+
+// Entlädt die Tabs der Ablagen, deren Workspace seit unloadAfter Minuten nicht mehr
+// gezeigt wird. Seit wann, steht in stashedAt (finishSwitch); eine Ablage ohne Eintrag
+// (nach Start oder Neuladen der Erweiterung) zählt ab jetzt. Tabs, deren Ton zu hören
+// ist, bleiben geladen.
+async function unloadStashes() {
+  const minutes = await getUnloadAfter();
+  if (!minutes || (await getPending())) return;
+  const { stash } = await scan();
+  const { stashedAt = {} } = await chrome.storage.session.get('stashedAt');
+  const now = Date.now();
+  const next = {};
+  for (const [ws, w] of stash) {
+    next[ws] = stashedAt[ws] ?? now;
+    if (now - next[ws] < minutes * 60000) continue;
+    for (const t of stashTabsOf(w)) if (!t.audible || t.mutedInfo?.muted) await discard(t);
+  }
+  await chrome.storage.session.set({ stashedAt: next });
+}
+
+// Ein Tab hat durch Entladen eine neue ID bekommen: gemerkte IDs nachziehen. Ein zweiter
+// Aufruf für dasselbe Paar ändert nichts mehr.
+async function replaceTabId(from, to) {
+  const swap = (id) => (id === from ? to : id);
+  const s = await sess();
+  for (const [ws, id] of Object.entries(s.lastTab)) s.lastTab[ws] = swap(id);
+  if (from in s.tabOrigin) {
+    s.tabOrigin[to] = s.tabOrigin[from];
+    delete s.tabOrigin[from];
+  }
+  await saveSess(s);
+  const { pendingSwitch: p, startCopies, startSeen } = await chrome.storage.session.get(['pendingSwitch', 'startCopies', 'startSeen']);
+  if (p) await setPending({ ...p, oldTabs: p.oldTabs.map(swap) });
+  if (startCopies) {
+    await chrome.storage.session.set({
+      startCopies: startCopies.map((c) => ({ ...c, id: swap(c.id) })),
+      startSeen: (startSeen || []).map(swap),
+    });
+  }
+  const { stashMuted } = await chrome.storage.local.get('stashMuted');
+  if (stashMuted?.includes(from)) await chrome.storage.local.set({ stashMuted: stashMuted.map(swap) });
+}
+
 // Eintrag für failed: Gruppenmitglieder merken sich die URLs ihrer Geschwister in list
 // (siehe recreate), damit ein erneuter Versuch sie wieder der Gruppe zuordnet.
 function failedEntry(e, list) {
@@ -287,6 +376,7 @@ function failedEntry(e, list) {
 // in der ein Geschwister-Tab liegt (das Fenster zeigt dann nur diesen Workspace).
 // have sind Tabs, die ein abgebrochener Aufruf für die ersten Einträge schon angelegt
 // hat: Sie werden nicht noch einmal angelegt, aber mit dem Rest gruppiert.
+// Nicht angeheftete Tabs werden nach dem ersten Laden entladen, solange sie nicht aktiv sind.
 async function recreate(list, windowId, pinned = false, join = false, have = []) {
   const ids = [];
   const failed = [];
@@ -299,6 +389,7 @@ async function recreate(list, windowId, pinned = false, join = false, have = [])
     try {
       const t = have[n++] || (await openTab({ windowId, url: e.url, pinned }));
       ids.push(t.id);
+      if (!pinned) unloadLater.add(t.id);
       if (e.g && !pinned) {
         if (!groups.has(e.g)) groups.set(e.g, []);
         groups.get(e.g).push({ id: t.id, e });
@@ -538,6 +629,8 @@ async function finishSwitch() {
       const st = await ensureStash(p.from, false);
       await moveOrdered(oldLeft, st.windowId);
       await chrome.tabs.update(st.tabId, { active: true });
+      const { stashedAt = {} } = await chrome.storage.session.get('stashedAt');
+      await chrome.storage.session.set({ stashedAt: { ...stashedAt, [p.from]: Date.now() } });
       if (st.created) await chrome.windows.update(p.windowId, { focused: true }).catch(() => {});
     } else if (!p.oldTabs.length) {
       await clearBackup(p.from);
@@ -1728,6 +1821,7 @@ chrome.tabs.onRemoved.addListener((tabId, info) => {
 });
 chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (info.url || info.pinned !== undefined || info.groupId !== undefined) scheduleSnapshot();
+  if (info.status === 'complete' && unloadLater.delete(tabId)) serial(() => unloadRestored(tabId));
   // Chromium setzt Symbol, Titel und Plakette eines Tabs beim Laden einer Seite zurück
   if (info.status === 'complete') {
     const ws = (await sess()).windowWs[tab.windowId];
@@ -1735,6 +1829,13 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   }
 });
 chrome.tabs.onMoved.addListener(() => scheduleSnapshot());
+chrome.tabs.onReplaced.addListener((added, removed) => {
+  serial(() => replaceTabId(removed, added));
+  scheduleSnapshot(); // stashWins kennt sonst die alte ID
+});
+chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name === 'unload') serial(unloadStashes);
+});
 chrome.tabGroups.onUpdated.addListener(() => scheduleSnapshot());
 
 chrome.commands.onCommand.addListener(async (cmd, tab) => {
@@ -1765,7 +1866,15 @@ async function stateFor(windowId) {
   });
   const { backupError } = await chrome.storage.session.get('backupError');
   const { muteStash } = await chrome.storage.local.get('muteStash');
-  return { workspaces: list, current: s.windowWs[windowId] || null, colors: COLORS, backupError: backupError || null, muteStash: !!muteStash };
+  return {
+    workspaces: list,
+    current: s.windowWs[windowId] || null,
+    colors: COLORS,
+    backupError: backupError || null,
+    muteStash: !!muteStash,
+    unloadAfter: await getUnloadAfter(),
+    unloadChoices: UNLOAD_CHOICES,
+  };
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
@@ -1795,6 +1904,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return userAction(() => muteWs(msg.wsId));
       case 'muteStash':
         return userAction(() => chrome.storage.local.set({ muteStash: !!msg.on }));
+      case 'unloadAfter':
+        return serial(() => setUnloadAfter(msg.minutes));
       case 'export':
         return userAction(exportAll);
       case 'importPreview':
@@ -1832,4 +1943,5 @@ chrome.runtime.onStartup.addListener(() =>
 );
 // Bei jedem Start, damit auch eine ältere Installation ohne Neuladen ihren Schlüssel bekommt
 serial(ensureToken);
+serial(scheduleUnload);
 scheduleReconcile();

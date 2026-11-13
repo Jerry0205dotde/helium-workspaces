@@ -3,7 +3,7 @@
   "name": "Workspaces",
   "version": "0.1.0",
   "description": "Arbeitsbereiche wie in Opera: mehrere Tab-Sätze im selben Fenster, ohne Neuladen.",
-  "permissions": ["tabs", "tabGroups", "storage", "unlimitedStorage", "contextMenus"],
+  "permissions": ["tabs", "tabGroups", "storage", "unlimitedStorage", "contextMenus", "alarms"],
   "background": { "service_worker": "background.js" },
   "action": { "default_popup": "popup.html", "default_title": "Workspaces" },
   "commands": {

@@ -15,6 +15,11 @@
 //   extensionId). Tabs kommen nach einem Browserstart ohne Stummschaltung wieder.
 // - storage.session ist nach einem Browserstart und nach dem Neuladen der Erweiterung
 //   leer, beim Neustart nur des Service Workers bleibt es erhalten.
+// - Ein neu angelegter Tab meldet kurz darauf status 'complete' (geladen).
+// - tabs.discard gibt dem Tab eine neue ID (tabs.onReplaced) und hebt seine
+//   Stummschaltung auf, wie Helium 0.21.3 mit Chromium 157. Ein entladener Tab lädt neu,
+//   sobald er aktiv wird.
+// - Wecker (chrome.alarms) klingeln nur, während ein Test mit advance() Zeit vergehen lässt.
 // Ereignisse werden sofort zugestellt, noch bevor der auslösende API-Aufruf zurückkehrt.
 
 const fs = require('node:fs');
@@ -85,6 +90,7 @@ class Browser {
     this.errors = []; // Ausnahmen in Ereignis-Listenern
     this.worker = null;
     this.menus = [];
+    this.alarms = new Map(); // Name → { name, scheduledTime, periodInMinutes }
     this.chrome = this.buildApi(null); // für Bedienschritte im Test, wie von Hand im Browser
   }
 
@@ -196,9 +202,10 @@ class Browser {
       active: t.active,
       highlighted: t.active,
       groupId: t.groupId,
+      status: t.discarded ? 'unloaded' : 'complete',
+      discarded: !!t.discarded,
       audible: !!t.audible,
       mutedInfo: clone(t.mutedInfo || { muted: false }),
-      status: 'complete',
       incognito: false,
     };
   }
@@ -254,6 +261,11 @@ class Browser {
     for (const x of w.tabs) x.active = false;
     t.active = true;
     this.fire('tabs.onActivated', { tabId: t.id, windowId: w.id });
+    if (t.discarded) {
+      t.discarded = false;
+      this.fire('tabs.onUpdated', t.id, { discarded: false }, this.tabInfo(t, w));
+      this.loaded(t);
+    }
     const g = this.groups.get(t.groupId);
     if (g?.collapsed) {
       g.collapsed = false;
@@ -298,6 +310,28 @@ class Browser {
     this.fire('windows.onFocusChanged', w.id);
   }
 
+  // Meldet kurz darauf, dass der Tab fertig geladen hat (nach der Antwort des Aufrufs)
+  loaded(t) {
+    setImmediate(() => {
+      for (const w of this.windows) {
+        if (w.tabs.includes(t) && !t.discarded) this.fire('tabs.onUpdated', t.id, { status: 'complete' }, this.tabInfo(t, w));
+      }
+    });
+  }
+
+  // Entlädt den Tab; er bekommt eine neue ID
+  discardTab(id) {
+    const { t, w } = this.findTab(id);
+    if (t.discarded) return this.tabInfo(t, w);
+    t.id = this.next.tab++;
+    t.discarded = true;
+    t.audible = false;
+    t.mutedInfo = { muted: false };
+    this.fire('tabs.onReplaced', t.id, id);
+    this.fire('tabs.onUpdated', t.id, { discarded: true, status: 'unloaded' }, this.tabInfo(t, w));
+    return this.tabInfo(t, w);
+  }
+
   newTab(url, pinned = false) {
     return { id: this.next.tab++, url: url || NEWTAB, title: url || 'Neuer Tab', pinned, active: false, groupId: -1 };
   }
@@ -321,6 +355,7 @@ class Browser {
     this.insert(w, t, index);
     this.fire('tabs.onCreated', this.tabInfo(t, w));
     if (active || w.tabs.length === 1) this.activate(t, w);
+    this.loaded(t);
     return { t, w };
   }
 
@@ -510,6 +545,7 @@ class Browser {
         remove: api('tabs.remove', (ids) => {
           for (const id of [].concat(ids)) b.removeTab(id);
         }),
+        discard: api('tabs.discard', (id) => b.discardTab(id)),
         group: api('tabs.group', ({ tabIds, groupId, createProperties } = {}) => {
           const list = [].concat(tabIds).map((id) => b.findTab(id));
           if (!list.length) throw new Error('No tabs given.');
@@ -546,6 +582,7 @@ class Browser {
         onMoved: b.event('tabs.onMoved'),
         onAttached: b.event('tabs.onAttached'),
         onDetached: b.event('tabs.onDetached'),
+        onReplaced: b.event('tabs.onReplaced'),
       },
       tabGroups: {
         get: api('tabGroups.get', (id) => {
@@ -612,6 +649,14 @@ class Browser {
         onClicked: b.event('contextMenus.onClicked'),
       },
       commands: { onCommand: b.event('commands.onCommand') },
+      alarms: {
+        create: api('alarms.create', (name, { periodInMinutes, delayInMinutes = periodInMinutes } = {}) => {
+          b.alarms.set(name, { name, scheduledTime: b.now + delayInMinutes * 60000, periodInMinutes });
+        }),
+        get: api('alarms.get', (name) => b.alarms.get(name)),
+        clear: api('alarms.clear', (name) => b.alarms.delete(name)),
+        onAlarm: b.event('alarms.onAlarm'),
+      },
     };
   }
 
@@ -642,6 +687,7 @@ class Browser {
     this.windows = [];
     this.groups = new Map();
     this.session.clear();
+    this.alarms.clear();
     this.lastClosed = null;
     this.pendingRestore = null;
     this.crashed = restore === 'crash' ? saved : null;
@@ -871,6 +917,7 @@ class Worker {
 
   // Lässt alle Promises und fälligen Zeitgeber laufen, bis nichts mehr ansteht. Die Uhr
   // springt dabei jeweils zum nächsten Zeitgeber, höchstens bis until (ms ab jetzt).
+  // Mit until klingeln auch fällige Wecker.
   async settle({ until = Infinity } = {}) {
     const end = until === Infinity ? Infinity : this.browser.now + until;
     for (let step = 0; step < 100000; step++) {
@@ -878,6 +925,14 @@ class Worker {
       if (this.dead) return;
       let next = null;
       for (const [id, t] of this.timers) if (!next || t.at < next.t.at || (t.at === next.t.at && t.seq < next.t.seq)) next = { id, t };
+      const alarm = end === Infinity ? null : [...this.browser.alarms.values()].sort((a, b) => a.scheduledTime - b.scheduledTime)[0];
+      if (alarm && alarm.scheduledTime <= end && (!next || alarm.scheduledTime < next.t.at)) {
+        this.browser.now = Math.max(this.browser.now, alarm.scheduledTime);
+        if (alarm.periodInMinutes) alarm.scheduledTime += alarm.periodInMinutes * 60000;
+        else this.browser.alarms.delete(alarm.name);
+        this.browser.fire('alarms.onAlarm', { name: alarm.name, scheduledTime: this.browser.now });
+        continue;
+      }
       if (!next || next.t.at > end) {
         if (end !== Infinity) this.browser.now = Math.max(this.browser.now, end);
         return;
