@@ -40,7 +40,7 @@ test('manifest.json ist gültig und verweist nur auf vorhandene Dateien', () => 
   assert.match(m.version, /^\d+(\.\d+){0,3}$/);
   assert.ok(exists(EXT, m.background.service_worker), 'Service Worker fehlt');
   assert.ok(exists(EXT, m.action.default_popup), 'Popup fehlt');
-  for (const p of ['tabs', 'tabGroups', 'storage', 'contextMenus']) assert.ok(m.permissions.includes(p), `Berechtigung ${p} fehlt`);
+  for (const p of ['tabs', 'tabGroups', 'storage', 'unlimitedStorage', 'contextMenus']) assert.ok(m.permissions.includes(p), `Berechtigung ${p} fehlt`);
   for (const [name, c] of Object.entries(m.commands || {})) {
     assert.match(c.description || '', /\S/, `Befehl ${name} ohne Beschreibung`);
   }
