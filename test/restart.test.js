@@ -40,6 +40,20 @@ test('Neustart mit Sitzungswiederherstellung: Fenster werden über ihre Tabs wie
   assert.deepEqual(tabIds(env), ids, 'nach dem Neustart wurden Tabs neu angelegt');
 });
 
+test('Nach einem Browserstart lässt sich ein gelöschter Workspace nicht mehr zurückholen (#80)', async () => {
+  const env = await setup(SPEC);
+  await ok(env.w.request({ type: 'delete', wsId: env.ids.C }));
+  assert.ok(env.b.local.data.deleted);
+  env.b.restart();
+  const w = env.b.startWorker('startup');
+  await w.settle();
+  assert.equal(env.b.local.data.deleted, undefined);
+  assert.equal((await ok(w.request({ type: 'state', windowId: env.b.mains()[0].id }))).deleted, null);
+  delete env.ids.C;
+  const { C, ...rest } = ALL;
+  check(env, rest);
+});
+
 test('Neustart mit zwei Hauptfenstern ordnet jedes Fenster seinem Workspace zu', async () => {
   const env = await setup(SPEC);
   const { b, ids } = env;

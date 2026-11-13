@@ -128,6 +128,7 @@ function render() {
   if (failed) rep.push(el('li', 'warn', tr('replaceDiscard', plural(failed, 'notRestoredTabs'))));
   rep.push(el('li', '', tr('replaceCreate', plural(p.workspaces.length, 'workspaces'))));
   rep.push(el('li', '', tr('replacePinned')));
+  rep.push(el('li', '', tr('replaceUndo')));
   $('replace-list').replaceChildren(...rep);
 
   $('preview').hidden = false;

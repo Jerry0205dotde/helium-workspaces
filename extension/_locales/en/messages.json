@@ -263,6 +263,30 @@
   "confirmDelete": {
     "message": "Really delete?"
   },
+  "deletedOne": {
+    "message": "Deleted “$1”"
+  },
+  "deletedMany": {
+    "message": "Deleted $1"
+  },
+  "undo": {
+    "message": "Undo"
+  },
+  "undoTitle": {
+    "message": "Brings back what was deleted, tabs included, until the browser restarts"
+  },
+  "undoing": {
+    "message": "Restoring …"
+  },
+  "undoFailed": {
+    "message": "Could not restore the deleted workspaces."
+  },
+  "forgetDeleted": {
+    "message": "Hide; afterwards the deletion can no longer be undone"
+  },
+  "forgetFailed": {
+    "message": "Could not hide the notice."
+  },
   "saving": {
     "message": "Saving …"
   },
@@ -397,6 +421,9 @@
   },
   "replacePinned": {
     "message": "Pinned tabs stay open, missing ones from the file are added."
+  },
+  "replaceUndo": {
+    "message": "Until the browser restarts, you can undo this in the popup."
   },
   "quoted": {
     "message": "“$1”"

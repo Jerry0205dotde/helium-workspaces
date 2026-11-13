@@ -144,6 +144,7 @@ Good to know:
 - If you pick a tab from a stash window, for example via the tab search, the last used main window shows its workspace with the selected tab.
 - Several windows may show the same workspace, for example after <kbd>Ctrl</kbd>+<kbd>N</kbd>.
 - **Unload stashes after** (default: **never**) unloads the tabs in a stash once they have been there for that long. The time counts from switching away from the workspace. Unloaded tabs free their memory and keep their address, title, group and back history. When you switch back they reload; playing videos, scroll position and unsaved input are gone then. Tabs whose sound can be heard stay loaded; muted ones are unloaded too.
+- A deleted workspace can be brought back with **Undo** at the top of the list until the browser restarts, tabs included. Its tabs then open again from the backup when you switch to it. The same goes for the workspaces removed by **Replace** on import.
 - If the window is closed with the X button, the extension rebuilds all workspaces from its backup on the next start.
 - The export is a JSON file with all workspaces including order, colors, emoji, tabs, tab groups and pinned tabs, for example for another device or a new profile. On import the file is first checked and summarized. **Merge** only adds what is missing: a workspace with the same ID or the same name gets the tabs it does not have yet. **Replace** deletes the existing workspaces including their tabs and therefore asks for confirmation.
 

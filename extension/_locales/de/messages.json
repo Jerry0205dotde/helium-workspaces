@@ -263,6 +263,30 @@
   "confirmDelete": {
     "message": "Wirklich löschen?"
   },
+  "deletedOne": {
+    "message": "„$1“ gelöscht"
+  },
+  "deletedMany": {
+    "message": "$1 gelöscht"
+  },
+  "undo": {
+    "message": "Rückgängig"
+  },
+  "undoTitle": {
+    "message": "Holt das Gelöschte samt Tabs zurück, möglich bis zum nächsten Browserstart"
+  },
+  "undoing": {
+    "message": "Wird wiederhergestellt …"
+  },
+  "undoFailed": {
+    "message": "Gelöschte Workspaces konnten nicht wiederhergestellt werden."
+  },
+  "forgetDeleted": {
+    "message": "Ausblenden, danach lässt sich das Löschen nicht mehr rückgängig machen"
+  },
+  "forgetFailed": {
+    "message": "Hinweis konnte nicht ausgeblendet werden."
+  },
   "saving": {
     "message": "Wird gespeichert …"
   },
@@ -397,6 +421,9 @@
   },
   "replacePinned": {
     "message": "Angeheftete Tabs bleiben offen, fehlende aus der Datei kommen dazu."
+  },
+  "replaceUndo": {
+    "message": "Bis zum nächsten Browserstart lässt sich das im Popup rückgängig machen."
   },
   "quoted": {
     "message": "„$1“"

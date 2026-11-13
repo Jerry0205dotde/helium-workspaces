@@ -220,3 +220,15 @@ footer {
 }
 .failed-text { flex: 1 0 100%; color: var(--danger); }
 .failed .btn { padding: 2px 8px; font-size: 12px; }
+.undo:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  padding: 4px 4px 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.undo-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.undo .btn { padding: 2px 8px; font-size: 12px; }

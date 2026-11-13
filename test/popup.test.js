@@ -129,6 +129,34 @@ popupTest('Doppelklick auf Löschen fragt nur nach und löscht nicht', async ({ 
   assert.deepEqual(types(), ['delete']);
 });
 
+const undoShown = (page) => page.eval('!document.getElementById("undo").hidden');
+
+popupTest('Nach dem Löschen bietet die Liste Rückgängig an, das den Workspace zurückholt (#80)', async ({ env, page, A, types }) => {
+  assert.equal(await undoShown(page), false);
+  await page.click(`[data-focus="del:${A}"]`);
+  await page.click(`[data-focus="del:${A}"]`);
+  assert.equal(await undoShown(page), true);
+  assert.equal(await page.text('#undo .undo-text'), '„A“ gelöscht');
+  // Per Tastatur gleich erreichbar
+  assert.equal(await page.focused(), 'undo');
+  await page.click('[data-focus="undo"]');
+  assert.deepEqual(types(), ['delete', 'undoDelete']);
+  assert.deepEqual(env.b.local.data.workspaces.map((w) => w.name), ['A', 'B', 'C']);
+  assert.equal(await undoShown(page), false);
+  assert.equal(await page.focused(), `ws:${A}`);
+  assert.match(await page.text(`[data-focus="ws:${A}"]`), /1 Tab$/);
+});
+
+popupTest('✕ blendet Rückgängig aus, danach bleibt der Workspace gelöscht', async ({ env, page, A, types }) => {
+  await page.click(`[data-focus="del:${A}"]`);
+  await page.click(`[data-focus="del:${A}"]`);
+  await page.click('[data-focus="forget"]');
+  assert.deepEqual(types(), ['delete', 'forgetDeleted']);
+  assert.equal(await undoShown(page), false);
+  assert.equal(env.b.local.data.deleted, undefined);
+  assert.deepEqual(env.b.local.data.workspaces.map((w) => w.name), ['B', 'C']);
+});
+
 popupTest('Name eingeben und anderen Workspace anklicken speichert und wechselt', async ({ env, page, ws, types }) => {
   await page.type('Uni');
   await page.click(`[data-focus="ws:${env.ids.B}"]`);

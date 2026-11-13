@@ -137,9 +137,11 @@ async function stateFor(windowId) {
     return { ...ws, count, failed, audible, elsewhere: showing.some((w) => w.id !== windowId) };
   });
   const { backupError } = await chrome.storage.session.get('backupError');
-  const { muteStash } = await chrome.storage.local.get('muteStash');
+  const { muteStash, deleted } = await chrome.storage.local.get(['muteStash', 'deleted']);
   return {
     workspaces: list,
+    // Zuletzt gelöscht, für „Rückgängig“
+    deleted: deleted?.length ? deleted.map((d) => d.ws.name) : null,
     current: s.windowWs[windowId] || null,
     colors: COLORS,
     backupError: backupError || null,
@@ -166,6 +168,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return userAction(() => reorderWs(msg.ids));
       case 'delete':
         return userAction(() => deleteWs(msg.wsId));
+      case 'undoDelete':
+        return userAction(undoDelete);
+      case 'forgetDeleted':
+        return serial(() => chrome.storage.local.remove('deleted'));
       case 'moveTab':
         return userAction(() => moveTabToWs(msg.tabId, msg.wsId));
       case 'retry':
@@ -206,8 +212,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 chrome.runtime.onInstalled.addListener(() => serial(buildMenus));
 chrome.runtime.onStartup.addListener(() =>
   serial(async () => {
-    // Fenster- und Tab-IDs gelten nur innerhalb einer Browsersitzung.
-    await chrome.storage.local.remove(['stashWins', 'stashMuted']);
+    // Fenster- und Tab-IDs gelten nur innerhalb einer Browsersitzung. Gelöschte
+    // Workspaces lassen sich nur bis zum nächsten Browserstart zurückholen.
+    await chrome.storage.local.remove(['stashWins', 'stashMuted', 'deleted']);
     const { backupWindows } = await chrome.storage.local.get('backupWindows');
     if (backupWindows) await chrome.storage.local.set({ backupWindows: backupWindows.map(({ id, ...e }) => e) });
     await buildMenus();

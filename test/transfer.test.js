@@ -55,6 +55,7 @@ pageTest('Datei wählen zeigt die Vorschau, ohne etwas zu ändern', async ({ p, 
   assert.equal(await p.eval('document.getElementById("preview").hidden'), false);
   assert.match(await p.text('#summary'), /^Die Datei ist gültig: 1 Workspace, 2 Tabs/);
   assert.match(await p.text('#replace-list'), /Löscht 2 Workspaces \(„A“, „B“\) und schließt 3 Tabs\./);
+  assert.match(await p.text('#replace-list'), /Bis zum nächsten Browserstart lässt sich das im Popup rückgängig machen\./);
   assert.deepEqual(p.sent.filter((m) => m.type !== 'token').map((m) => m.type), ['importPreview']);
   assert.deepEqual(imports(), []);
   assert.deepEqual(names(), ['A', 'B']);
