@@ -190,6 +190,36 @@ for (const [label, wait] of [
   });
 }
 
+// Eine langsame Antwort (Symbol des neuen Tabs, Gruppenabfrage) darf das Abbild der Tabs
+// nicht verzögern: das Fenster schließt, während sie noch aussteht.
+for (const [label, api, change] of [
+  ['Symbol des neuen Tabs', 'action.setIcon', (b, win) => b.chrome.tabs.create({ windowId: win, url: url('a4'), active: false })],
+  ['Gruppenabfrage', 'tabGroups.query', (b, win, env) => b.chrome.tabs.update(where(env, 'a3').tab.id, { url: url('a4') })],
+]) {
+  test(`Letztes Fenster geschlossen, während die Antwort „${label}“ aussteht: die Änderung ist nach dem Start da`, async () => {
+    const env = await setup(SPEC);
+    const { b, w, win } = env;
+    await w.settle();
+    const held = b.fail(api, { hold: true });
+    await change(b, win, env);
+    b.calls = b.calls.filter((c) => !(c.name === 'tabs.update' && c.args[1]?.url === url('a4')));
+    await w.advance(50);
+    assert.equal(held.hits, 1, `${api} wurde nicht aufgerufen`);
+    await b.closeWindowByX(win);
+    held.release();
+    await w.settle();
+    assert.equal(b.windows.length, 0, 'Ablage-Fenster wurden nicht geschlossen');
+
+    const A = api === 'action.setIcon'
+      ? [...SPEC.workspaces.A, 'a4']
+      : ['a1', { url: 'a2', group: 'Mathe', color: 'blue' }, { url: 'a4', group: 'Mathe', color: 'blue' }];
+    b.restart();
+    const w2 = b.startWorker('startup');
+    await w2.settle();
+    check(env, { ...ALL, A });
+  });
+}
+
 // Wie die Tab-Suche: aktiviert den Tab in seiner Ablage und holt deren Fenster nach vorn
 async function pickInStash(env, name) {
   const at = where(env, name);

@@ -125,11 +125,13 @@ const isClosing = (id) => Date.now() - (closing.get(id) ?? -Infinity) < 10000;
 let changes = 0; // Tab-Änderungen seit dem Start des Service Workers
 let savedChanges = 0; // davon in der Sicherung enthalten
 
+// Ohne groups behält ein Fenster die bisher bekannten Gruppen
 function remember(wins, groups, replace = false) {
   if (replace) for (const id of image.keys()) if (!isClosing(id)) image.delete(id);
   for (const w of wins) {
     if (w.incognito || stashWsOf(w) || isClosing(w.id)) continue;
-    image.set(w.id, { win: w, groups: new Map(groups.filter((g) => g.windowId === w.id).map((g) => [g.id, g])) });
+    const own = groups ? groups.filter((g) => g.windowId === w.id).map((g) => [g.id, g]) : [];
+    image.set(w.id, { win: w, groups: new Map([...(groups ? [] : image.get(w.id)?.groups || []), ...own]) });
   }
 }
 
@@ -144,8 +146,10 @@ async function refreshImage() {
   try {
     do {
       imageAgain = false;
-      const [wins, groups] = await Promise.all([chrome.windows.getAll({ populate: true, windowTypes: ['normal'] }), chrome.tabGroups.query({})]);
-      remember(wins, groups);
+      // Die Tabs sofort übernehmen, nicht erst mit der Antwort der Gruppenabfrage
+      const groups = chrome.tabGroups.query({}).catch(() => []);
+      remember(await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] }));
+      for (const g of await groups) if (!isClosing(g.windowId)) image.get(g.windowId)?.groups.set(g.id, g);
     } while (imageAgain);
   } catch (e) {
     console.warn('[workspaces] Abbild der Fenster', e);
@@ -1647,16 +1651,16 @@ chrome.tabs.onDetached.addListener((tabId, { oldWindowId }) => {
 
 chrome.tabs.onAttached.addListener(async (tabId, { newWindowId }) => {
   if (switching) return;
+  scheduleSnapshot();
   const s = await sess();
   if (s.windowWs[newWindowId]) await setTabIcon(tabId, s.windowWs[newWindowId]);
-  scheduleSnapshot();
 });
 
 chrome.tabs.onCreated.addListener(async (tab) => {
   if (switching) return;
+  scheduleSnapshot();
   const s = await sess();
   if (s.windowWs[tab.windowId]) await setTabIcon(tab.id, s.windowWs[tab.windowId]);
-  scheduleSnapshot();
   // Wiederhergestellte Tabs ohne neues Fenster: dropStartCopies prüfen
   if ((await chrome.storage.session.get('startCopies')).startCopies) scheduleReconcile();
 });
