@@ -190,7 +190,9 @@ async function moveTabToWs(tabId, wsId, group = false) {
     if (!left.length || (movesUnpinned && !left.some((t) => !t.pinned))) {
       await chrome.tabs.create({ windowId: tab.windowId, active: true });
     }
-    for (const t of main.tabs) if (ids.has(t.id) && t.pinned) await chrome.tabs.update(t.id, { pinned: false });
+    // Von rechts nach links lösen: Ein gelöster Tab rückt hinter die angehefteten, so
+    // behalten mehrere ihre Reihenfolge
+    for (const t of [...main.tabs].reverse()) if (ids.has(t.id) && t.pinned) await chrome.tabs.update(t.id, { pinned: false });
 
     // Nach dem Lösen haben sich die Positionen verschoben, deshalb frisch lesen
     const all = await chrome.tabs.query({ windowId: tab.windowId });

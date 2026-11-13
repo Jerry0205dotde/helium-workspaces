@@ -137,6 +137,16 @@ test('Markierte Tabs gehen gemeinsam in den Workspace, eine ganz markierte Grupp
   assert.deepEqual(tabIds(env), before, 'Tabs wurden neu angelegt statt verschoben');
 });
 
+test('Markierte angeheftete Tabs kommen in ihrer Reihenfolge an', async () => {
+  const env = await setup(SPEC);
+  const { b, w, ids } = env;
+  await highlight(env, ['p1', 'p2']);
+  b.fire('contextMenus.onClicked', { menuItemId: `move:${ids.C}` }, where(env, 'p1').tab);
+  await w.settle();
+  assert.deepEqual(where(env, 'c1').win.tabs.slice(1).map((t) => t.url), [url('c1'), url('p1'), url('p2')]);
+  assert.equal(where(env, 'p1').tab.pinned, false);
+});
+
 test('„Gruppe in Workspace verschieben“ erscheint nur in einer Gruppe und nimmt sie ganz mit', async () => {
   const env = await setup(SPEC);
   const { b, w, ids } = env;
