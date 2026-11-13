@@ -418,6 +418,9 @@ muteStashEl.addEventListener('change', () => {
     send({ type: 'muteStash', on }), { focus: ['mute-stash'] });
 });
 
+// Zeigt, welcher Stand nach git pull und Neuladen wirklich läuft
+document.getElementById('version').textContent = `v${chrome.runtime.getManifest().version}`;
+
 // Schlüssel zum Kopieren, install.sh trägt ihn für das KWin-Skript ein
 const keyValue = document.getElementById('key-value');
 const keyCopy = document.getElementById('key-copy');
