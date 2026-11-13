@@ -68,6 +68,8 @@ if [ -z "$TOKEN" ]; then
   read -rp "Schlüssel aus dem Popup der Erweiterung${OLD:+ (Enter behält $OLD)}: " TOKEN || true
   TOKEN="${TOKEN:-$OLD}"
 fi
+# Wer den kopierten Befehl aus dem Popup an der Frage einfügt, bekommt trotzdem nur den Schlüssel
+TOKEN="${TOKEN##*install.sh}"
 TOKEN="$(printf '%s' "$TOKEN" | tr -d '[:space:]')"
 [[ "$TOKEN" =~ ^[0-9a-f]{24}$ ]] \
   || { echo "Ungültiger Schlüssel. Im Popup der Erweiterung unter \"Schlüssel für install.sh\" kopieren." >&2; exit 1; }

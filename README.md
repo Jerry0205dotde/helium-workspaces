@@ -77,11 +77,13 @@ Alternatively in System Settings under **Window Management → Window Rules**: c
 2. Open `chrome://extensions` in Helium and turn on **Developer mode** in the top right.
 3. Choose **Load unpacked** and select the folder `extension/` from the repository.
 4. Pin the workspace button to the toolbar.
-5. Click the workspace button, expand **Key for install.sh** at the bottom and click **Copy**. Then set up the KWin script inside the repository and paste the key when the script asks for it:
+5. Click the workspace button, expand **Key for install.sh** at the bottom and click **Copy**. This copies the complete command including the key:
 
    ```bash
-   ./install.sh
+   ./install.sh <key>
    ```
+
+   Paste it into a terminal in the repository folder and run it. It sets up the KWin script.
 
    The last line of output is `Fertig.` ("Done."). The KWin script is then installed, enabled and loaded, and it knows the key.
 6. To check, create a second workspace and switch back and forth. No additional browser window may appear in the taskbar.
@@ -182,14 +184,14 @@ A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its fir
    ```
 
    The output must be the key the popup shows under **Key for install.sh**, and the window title must show it after `HWS-Ablage`. If the title contains no key (`HWS-Ablage · Uni`), reload the extension in `chrome://extensions`.
-3. To repair, run `./install.sh` and paste the key from the popup. The script reloads the KWin script, and after one or two seconds the stashes disappear from the taskbar.
+3. To repair, click **Copy** under **Key for install.sh** in the popup and run the command in the repository folder. The script reloads the KWin script, and after one or two seconds the stashes disappear from the taskbar.
 
 ### `install.sh` aborts
 
 The messages of `install.sh` itself are in German.
 
 - **`command not found`** or **`Kommando nicht gefunden`**: a program from the [requirements](#requirements) is missing.
-- **`Ungültiger Schlüssel`** ("invalid key"): no key or an incomplete key was entered. In the popup, click **Copy** under **Key for install.sh** and paste it again. The key consists of 24 characters `0`–`9` and `a`–`f`.
+- **`Ungültiger Schlüssel`** ("invalid key"): no key or an incomplete key was entered. In the popup, click **Copy** under **Key for install.sh** and run the copied command. The key consists of 24 characters `0`–`9` and `a`–`f`.
 - **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** or **`KWin-Skript wurde nicht geladen`** ("KWin script was not loaded"): `install.sh` cannot reach KWin, for example over SSH or in a text console. The script is then already installed but not loaded. Run it again in a terminal inside the Plasma session.
 
 ### Tabs are missing after a restart

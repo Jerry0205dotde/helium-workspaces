@@ -228,3 +228,17 @@ test('↪ verschiebt alle markierten Tabs und sagt das auch', { skip }, async ()
     await page.close();
   }
 });
+
+popupTest('Kopieren liefert den fertigen Befehl für install.sh samt Schlüssel (#111)', async ({ env, page }) => {
+  const { token } = env.b.local.data;
+  assert.match(token, /^[0-9a-f]{24}$/);
+  assert.equal(await page.eval(`document.getElementById('key-value').textContent`), `./install.sh ${token}`);
+  await page.eval(`(() => {
+    window.__copied = null;
+    navigator.clipboard.writeText = async (t) => { window.__copied = t; };
+  })()`);
+  await page.click('summary');
+  await page.click('#key-copy');
+  assert.equal(await page.eval('window.__copied'), `./install.sh ${token}`);
+  assert.equal(await page.eval(`document.getElementById('key-copy').textContent`), 'Kopiert');
+});

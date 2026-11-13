@@ -454,12 +454,12 @@ muteStashEl.addEventListener('change', () => {
 // Zeigt, welcher Stand nach git pull und Neuladen wirklich läuft
 document.getElementById('version').textContent = `v${chrome.runtime.getManifest().version}`;
 
-// Schlüssel zum Kopieren, install.sh trägt ihn für das KWin-Skript ein
+// Fertiger Befehl zum Kopieren, install.sh trägt den Schlüssel für das KWin-Skript ein
 const keyValue = document.getElementById('key-value');
 const keyCopy = document.getElementById('key-copy');
 send({ type: 'token' }).then(
   (token) => {
-    keyValue.textContent = token;
+    keyValue.textContent = `./install.sh ${token}`;
     keyCopy.disabled = false;
   },
   (e) => (keyValue.textContent = tr('keyUnavailable', errorText(e))),
