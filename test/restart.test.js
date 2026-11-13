@@ -139,6 +139,21 @@ test('Start ohne Sitzungswiederherstellung baut den letzten Workspace aus der Si
   }
 });
 
+test('Nach einem Absturz und „Wiederherstellen“ stehen die aus der Sicherung aufgebauten Tabs nicht doppelt da', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  b.restart({ restore: 'crash' });
+  const w = b.startWorker('startup');
+  await w.settle();
+  check(env, ALL);
+  b.restoreAfterCrash();
+  await w.settle();
+  assert.equal(b.mains().length, 1);
+  assert.equal(shows(env, b.mains()[0].id), 'A');
+  check(env, ALL);
+  await cycle(env);
+});
+
 test('Start ohne Sitzungswiederherstellung: zusammen wiederhergestellte Ablage-Seiten und angeheftete Tabs verdrängen keine gesicherten Tabs', async () => {
   const spec = {
     pinned: ['pin'],

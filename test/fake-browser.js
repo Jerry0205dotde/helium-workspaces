@@ -601,7 +601,8 @@ class Browser {
   // Browser beenden und neu starten. restore: 'now' stellt die letzte Sitzung vor dem
   // Start des Service Workers wieder her, 'later' erst durch finishRestore() danach,
   // 'none' öffnet nur ein Fenster mit neuer Tab-Seite (keepPinned: davor die angehefteten
-  // Tabs aller Fenster). loseTab/loseWindow simulieren, was Chromium beim Wiederherstellen verliert.
+  // Tabs aller Fenster), 'crash' ebenso, bietet aber restoreAfterCrash() an.
+  // loseTab/loseWindow simulieren, was Chromium beim Wiederherstellen verliert.
   restart({ restore = 'now', loseTab = () => false, loseWindow = () => false, keepPinned = false } = {}) {
     this.worker?.kill();
     this.listeners = new Map();
@@ -613,7 +614,8 @@ class Browser {
     this.session.clear();
     this.lastClosed = null;
     this.pendingRestore = null;
-    if (restore === 'none') {
+    this.crashed = restore === 'crash' ? saved : null;
+    if (restore === 'none' || restore === 'crash') {
       // Wie Chromium: die angehefteten Tabs aller Fenster in einem einzigen Fenster, also
       // auch die Ablage-Markierungen
       const pinned = keepPinned ? saved.flatMap((w) => w.tabs.filter((t) => t.pinned)) : [];
@@ -659,9 +661,36 @@ class Browser {
     this.restoreWindows(kept, true);
   }
 
-  restoreWindows(list, events) {
+  // Klick auf „Wiederherstellen“ nach einem Absturz: Wie Chromium hängt es die Tabs des
+  // ersten Fensters an das fokussierte Fenster an und öffnet die übrigen neu.
+  restoreAfterCrash() {
+    const [first, ...rest] = this.crashed;
+    this.crashed = null;
+    const into = this.windows.find((w) => w.focused) || this.windows[0];
+    this.restoreWindows([first], true, into);
+    this.restoreWindows(rest, true);
+  }
+
+  restoreWindows(list, events, into = null) {
     const groupIds = new Map();
     for (const s of list) {
+      if (into) {
+        for (const st of s.tabs) {
+          const t = this.newTab(st.url, st.pinned);
+          if (st.group) {
+            if (!groupIds.has(st.group.key)) {
+              const g = { id: this.next.group++, windowId: into.id, title: st.group.title, color: st.group.color, collapsed: st.group.collapsed };
+              this.groups.set(g.id, g);
+              groupIds.set(st.group.key, g.id);
+            }
+            t.groupId = groupIds.get(st.group.key);
+          }
+          this.insert(into, t);
+          this.fire('tabs.onCreated', this.tabInfo(t, into));
+          if (st.active) this.activate(t, into);
+        }
+        continue;
+      }
       const w = { id: this.next.win++, type: 'normal', state: s.state, focused: false, tabs: [] };
       for (const st of s.tabs) {
         const t = this.newTab(st.url, st.pinned);
