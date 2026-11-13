@@ -214,14 +214,20 @@ node --test test/*.test.js
 
 Braucht nur Node.js ab Version 22, keinen Browser und kein KWin. Die Tests laden `background.js` samt der Dateien, die es lädt, unverändert in eine Nachbildung der Chrome-APIs und spielen damit Wechsel mit Gruppen und angehefteten Tabs, mehrere Fenster, Neustarts mit und ohne Sitzungswiederherstellung, das Neuladen der Erweiterung, gezielt scheiternde API-Aufrufe, schnell aufeinanderfolgende Änderungen sowie Export und Import samt Zusammenführen und Ersetzen durch. Dazu kommen Syntax, Manifest und KWin-Metadaten, außerdem läuft das KWin-Skript gegen eine Nachbildung der KWin-API und zeigt, welche Fenster es versteckt. Dieselben Prüfungen laufen in der CI bei jedem Pull Request.
 
-Die Verbindung zu Helium und KWin prüfen die Tests nicht. Nach Änderungen daran kurz von Hand:
+Mit einem Chromium-Browser laufen die wichtigsten Abläufe zusätzlich in einem echten Browser:
+
+```bash
+CHROME=/usr/bin/chromium node --test test/chromium.test.js
+```
+
+[`chromium.test.js`](./test/chromium.test.js) installiert die Erweiterung in ein frisches Profil und spielt durch: Wechsel mit Tab-Gruppe und angeheftetem Tab, ohne dass eine Seite neu lädt, Neuladen der Erweiterung, Beenden und Neustart mit „Dort weitermachen, wo ich aufgehört habe“ und mit „Neuer Tab“ sowie Schließen per X und Neustart. Ohne `CHROME` wird der Test übersprungen, ohne Bildschirm bleibt der Browser unsichtbar. In der CI läuft er mit Chrome for Testing.
+
+KWin prüfen die Tests nicht. Nach Änderungen daran kurz von Hand:
 
 1. Die Erweiterung unter `chrome://extensions` neu laden und `./install.sh` mit dem Schlüssel aus dem Popup ausführen.
-2. Zwei Workspaces mit einigen Tabs, einer Tab-Gruppe und einem angehefteten Tab einrichten und in einem davon ein Video starten.
-3. Ein paar Mal hin und her wechseln: Das Video läuft weiter, Gruppe und angehefteter Tab bleiben, und kein Ablage-Fenster taucht in Taskleiste, <kbd>Alt</kbd>+<kbd>Tab</kbd> oder Übersicht auf.
-4. Die Erweiterung unter `chrome://extensions` neu laden: Nach etwa einer Sekunde sind die Ablage-Fenster wieder versteckt, Wechseln geht weiter.
-5. Helium beenden und neu starten: Alle Workspaces sind vollständig da, die Ablage-Fenster bleiben versteckt.
-6. Das Fenster per X schließen und Helium neu starten: Alle Workspaces werden wieder aufgebaut.
+2. Zwei Workspaces einrichten und ein paar Mal hin und her wechseln: Kein Ablage-Fenster taucht in Taskleiste, <kbd>Alt</kbd>+<kbd>Tab</kbd> oder Übersicht auf.
+3. Die Erweiterung unter `chrome://extensions` neu laden: Nach etwa einer Sekunde sind die Ablage-Fenster wieder versteckt.
+4. Helium beenden und neu starten: Die Ablage-Fenster bleiben versteckt.
 
 ## Aufbau
 
@@ -237,7 +243,7 @@ Die Verbindung zu Helium und KWin prüfen die Tests nicht. Nach Änderungen dara
   - [`label.js`](./extension/label.js): das Zeichen im Symbol eines Workspace
 - [`kwin/`](./kwin): KWin-Skript, das die Ablage-Fenster versteckt
 - [`install.sh`](./install.sh): KWin-Skript einrichten und den Schlüssel eintragen
-- [`test/`](./test): automatische Tests, [`fake-browser.js`](./test/fake-browser.js) bildet die Chrome-APIs nach
+- [`test/`](./test): automatische Tests, [`fake-browser.js`](./test/fake-browser.js) bildet die Chrome-APIs nach, [`chromium.js`](./test/chromium.js) steuert einen echten Chromium
 
 ## Lizenz
 
