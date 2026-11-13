@@ -223,6 +223,22 @@ for (const [label, api, change] of [
   });
 }
 
+test('Nach einem Neustart des Service Workers: Tab geöffnet, dann gleich das letzte Fenster geschlossen', async () => {
+  const env = await setup(SPEC);
+  const { b, win } = env;
+  const w = b.startWorker();
+  await w.settle();
+  await b.chrome.tabs.create({ windowId: win, url: url('a4'), active: false });
+  await w.advance(50);
+  await b.closeWindowByX(win);
+  await w.settle();
+  assert.equal(b.windows.length, 0, 'Ablage-Fenster wurden nicht geschlossen');
+  b.restart();
+  await b.startWorker('startup').settle();
+  // Die Gruppe „Mathe“ behält Titel und Farbe
+  check(env, { ...ALL, A: [...SPEC.workspaces.A, 'a4'] });
+});
+
 // Wie die Tab-Suche: aktiviert den Tab in seiner Ablage und holt deren Fenster nach vorn
 async function pickInStash(env, name) {
   const at = where(env, name);

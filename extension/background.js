@@ -125,12 +125,14 @@ const isClosing = (id) => Date.now() - (closing.get(id) ?? -Infinity) < 10000;
 let changes = 0; // Tab-Änderungen seit dem Start des Service Workers
 let savedChanges = 0; // davon in der Sicherung enthalten
 
+let knownGroups = []; // letzte Antwort der Gruppenabfrage
+
 // Ohne groups behält ein Fenster die bisher bekannten Gruppen
 function remember(wins, groups, replace = false) {
   if (replace) for (const id of image.keys()) if (!isClosing(id)) image.delete(id);
   for (const w of wins) {
     if (w.incognito || stashWsOf(w) || isClosing(w.id)) continue;
-    const own = groups ? groups.filter((g) => g.windowId === w.id).map((g) => [g.id, g]) : [];
+    const own = (groups || knownGroups).filter((g) => g.windowId === w.id).map((g) => [g.id, g]);
     image.set(w.id, { win: w, groups: new Map([...(groups ? [] : image.get(w.id)?.groups || []), ...own]) });
   }
 }
@@ -148,6 +150,7 @@ async function refreshImage() {
       imageAgain = false;
       // Die Gruppen ergänzen, wenn sie kommen: die Tabs warten nicht auf sie
       chrome.tabGroups.query({}).then((groups) => {
+        knownGroups = groups;
         for (const g of groups) if (!isClosing(g.windowId)) image.get(g.windowId)?.groups.set(g.id, g);
       }, () => {});
       remember(await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] }));
