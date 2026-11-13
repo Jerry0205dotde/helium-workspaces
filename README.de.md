@@ -24,7 +24,7 @@ Drei Teile arbeiten zusammen:
 
 ### Grenzen
 
-- Tabs in Ablagen bleiben geladen. Sie brauchen weiter Arbeitsspeicher, und Videos oder Musik laufen im Hintergrund weiter.
+- Tabs in Ablagen bleiben geladen. Sie brauchen weiter Arbeitsspeicher, und Videos oder Musik laufen im Hintergrund weiter. Mit **Ablagen stummschalten** in der Workspace-Liste sind sie dabei wenigstens stumm.
 - Angeheftete Tabs gehören zu allen Workspaces und bleiben immer im Hauptfenster.
 - Mehrere Fenster können denselben Workspace zeigen, etwa nach <kbd>Strg</kbd>+<kbd>N</kbd>.
 - Inkognito-Fenster werden nicht berücksichtigt.
@@ -112,6 +112,8 @@ Workspaces auf ein anderes Gerät bringt der Export (siehe unten). Er enthält d
 | Reihenfolge ändern | in der Liste ziehen |
 | Tab in einen anderen Workspace schieben | Rechtsklick auf die Seite → **Tab in Workspace verschieben** |
 | Workspaces exportieren oder importieren | in der Liste → **Exportieren / Importieren** |
+| Ton eines Workspace ausschalten | in der Liste auf 🔊 neben dem Workspace klicken (erscheint, solange darin etwas zu hören ist) |
+| Nicht gezeigte Workspaces immer stumm | in der Liste **Ablagen stummschalten** anhaken. Beim Zurückholen bekommen die Tabs ihren Ton wieder, von Hand stummgeschaltete bleiben stumm. |
 
 Gut zu wissen:
 

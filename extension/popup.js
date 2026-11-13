@@ -4,6 +4,7 @@ const controlsEl = document.getElementById('controls');
 const statusEl = document.getElementById('status');
 const errorEl = document.getElementById('error');
 const backupErrorEl = document.getElementById('backup-error');
+const muteStashEl = document.getElementById('mute-stash');
 
 let windowId;
 let activeTabId;
@@ -98,6 +99,7 @@ function renderBackupError() {
 
 function render(focus) {
   renderBackupError();
+  muteStashEl.checked = state.muteStash;
   listEl.replaceChildren();
   state.workspaces.forEach((ws, i) => {
     const li = el('li');
@@ -118,6 +120,16 @@ function render(focus) {
     main.append(icon, el('span', 'name', ws.name), el('span', 'meta', meta));
     main.addEventListener('click', () => switchTo(ws.id));
     row.append(main);
+
+    if (ws.audible) {
+      const snd = btn('icon-btn sound', '🔊', `snd:${ws.id}`);
+      snd.title = 'Ton aus';
+      snd.ariaLabel = `„${ws.name}“ stummschalten`;
+      snd.addEventListener('click', () =>
+        run('Wird stummgeschaltet …', 'Ton konnte nicht ausgeschaltet werden.', () =>
+          send({ type: 'mute', wsId: ws.id }), { focus: [`ws:${ws.id}`] }));
+      row.append(snd);
+    }
 
     const mv = btn('icon-btn', '↪', `mv:${ws.id}`);
     mv.title = 'Aktuellen Tab hierhin verschieben';
@@ -378,6 +390,10 @@ document.getElementById('transfer').addEventListener('click', () =>
     if (tab) await chrome.windows.update(tab.windowId, { focused: true });
     else await chrome.windows.create({ url, type: 'popup', width: 600, height: 720 });
   }, { close: true }));
+
+muteStashEl.addEventListener('change', () =>
+  run('Wird gespeichert …', 'Einstellung konnte nicht gespeichert werden.', () =>
+    send({ type: 'muteStash', on: muteStashEl.checked }), { focus: ['mute-stash'] }));
 
 // Schlüssel zum Kopieren, install.sh trägt ihn für das KWin-Skript ein
 const keyValue = document.getElementById('key-value');

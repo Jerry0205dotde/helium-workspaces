@@ -94,7 +94,11 @@ function userAction(fn) {
   return serial(async () => {
     const { entriesUntil } = await chrome.storage.session.get('entriesUntil');
     if (entriesUntil === undefined) await reconcile();
-    return fn();
+    try {
+      return await fn();
+    } finally {
+      await syncMute();
+    }
   });
 }
 
@@ -624,6 +628,7 @@ async function showStashTab(tabId) {
   }
   await chrome.windows.update(sw.id, { state: 'minimized' }).catch(() => {});
   await chrome.windows.update(main.id, { focused: true }).catch(() => {});
+  await syncMute();
 }
 
 // ---------------------------------------------------------------- Workspaces verwalten
@@ -1186,6 +1191,7 @@ async function reconcile() {
 
   await updateAllIcons();
   if (changed) await snapshot();
+  await syncMute();
 }
 
 // Legt die gesicherten Tabs von wsId und die angehefteten Tabs im ersten Fenster an,
@@ -1590,6 +1596,49 @@ async function updateAllIcons() {
   await Promise.all(Object.keys(s.windowWs).map((id) => updateIcons(Number(id), src)));
 }
 
+// ---------------------------------------------------------------- Ton
+
+// Mit der Option „Ablagen stummschalten“ (muteStash) sind die Tabs in Ablagen stumm.
+// Welche Tabs die Erweiterung dafür stummgeschaltet hat, steht in 'stashMuted', in
+// storage.local, damit es das Neuladen der Erweiterung übersteht (onStartup verwirft es,
+// Tab-IDs gelten nur innerhalb einer Browsersitzung). Nur diese schaltet sie wieder ein, sobald sie in einem Hauptfenster
+// liegen oder die Option aus ist, und nur, solange sie noch von ihr stumm sind: Von Hand
+// stummgeschaltete Tabs bleiben stumm. Läuft nach jeder Aktion und jedem Abgleich.
+const mutedByUs = (t) => !!t.mutedInfo?.muted && t.mutedInfo.reason === 'extension' && t.mutedInfo.extensionId === chrome.runtime.id;
+
+async function syncMute() {
+  try {
+    const { muteStash, stashMuted = [] } = await chrome.storage.local.get(['muteStash', 'stashMuted']);
+    const { stash, mains } = await scan();
+    const ours = new Set(stashMuted);
+    const keep = new Set();
+    for (const t of muteStash ? [...stash.values()].flatMap(stashTabsOf) : []) {
+      if (ours.has(t.id) && mutedByUs(t)) keep.add(t.id);
+      else if (!t.mutedInfo?.muted && (await chrome.tabs.update(t.id, { muted: true }).catch(() => null))) keep.add(t.id);
+    }
+    for (const t of [...stash.values(), ...mains].flatMap((w) => w.tabs)) {
+      if (ours.has(t.id) && !keep.has(t.id) && mutedByUs(t)) await chrome.tabs.update(t.id, { muted: false }).catch(() => {});
+    }
+    if (keep.size || stashMuted.length) await chrome.storage.local.set({ stashMuted: [...keep] });
+  } catch (e) {
+    console.warn('[workspaces] Stummschalten der Ablagen', e);
+  }
+}
+
+// Tabs eines Workspace, die gerade hörbar Ton abspielen (angeheftete gehören zu keinem)
+function audibleOf(wsId, s, stash, mains) {
+  const { sw, showing } = windowsOf(wsId, s, stash, mains);
+  return [...showing.flatMap(movableTabsOf), ...(sw ? stashTabsOf(sw) : [])].filter((t) => t.audible && !t.mutedInfo?.muted);
+}
+
+// Klick auf das Lautsprecher-Zeichen im Popup: bleibt stumm, bis man den Tab von Hand
+// wieder einschaltet, auch nach dem Zurückholen aus der Ablage
+async function muteWs(wsId) {
+  const s = await sess();
+  const { stash, mains } = await scan();
+  for (const t of audibleOf(wsId, s, stash, mains)) await chrome.tabs.update(t.id, { muted: true });
+}
+
 // ---------------------------------------------------------------- Kontextmenü
 
 async function buildMenus() {
@@ -1711,10 +1760,12 @@ async function stateFor(windowId) {
       count = savedOf(backup[ws.id]).length;
     }
     const failed = backup[ws.id]?.failed?.length || 0;
-    return { ...ws, count, failed, elsewhere: showing.some((w) => w.id !== windowId) };
+    const audible = audibleOf(ws.id, s, stash, mains).length;
+    return { ...ws, count, failed, audible, elsewhere: showing.some((w) => w.id !== windowId) };
   });
   const { backupError } = await chrome.storage.session.get('backupError');
-  return { workspaces: list, current: s.windowWs[windowId] || null, colors: COLORS, backupError: backupError || null };
+  const { muteStash } = await chrome.storage.local.get('muteStash');
+  return { workspaces: list, current: s.windowWs[windowId] || null, colors: COLORS, backupError: backupError || null, muteStash: !!muteStash };
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
@@ -1740,6 +1791,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return userAction(() => retryFailed(msg.windowId, msg.wsId));
       case 'dismiss':
         return userAction(() => dismissFailed(msg.wsId));
+      case 'mute':
+        return userAction(() => muteWs(msg.wsId));
+      case 'muteStash':
+        return userAction(() => chrome.storage.local.set({ muteStash: !!msg.on }));
       case 'export':
         return userAction(exportAll);
       case 'importPreview':
@@ -1769,7 +1824,7 @@ chrome.runtime.onInstalled.addListener(() => serial(buildMenus));
 chrome.runtime.onStartup.addListener(() =>
   serial(async () => {
     // Fenster- und Tab-IDs gelten nur innerhalb einer Browsersitzung.
-    await chrome.storage.local.remove('stashWins');
+    await chrome.storage.local.remove(['stashWins', 'stashMuted']);
     const { backupWindows } = await chrome.storage.local.get('backupWindows');
     if (backupWindows) await chrome.storage.local.set({ backupWindows: backupWindows.map(({ id, ...e }) => e) });
     await buildMenus();

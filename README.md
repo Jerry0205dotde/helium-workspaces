@@ -24,7 +24,7 @@ Three parts work together:
 
 ### Limitations
 
-- Tabs in stashes stay loaded. They keep using memory, and videos or music keep playing in the background.
+- Tabs in stashes stay loaded. They keep using memory, and videos or music keep playing in the background. With **Ablagen stummschalten** ("mute stashes") in the workspace list they at least play silently.
 - Pinned tabs belong to all workspaces and always stay in the main window.
 - Several windows can show the same workspace, for example after <kbd>Ctrl</kbd>+<kbd>N</kbd>.
 - Incognito windows are not handled.
@@ -114,6 +114,8 @@ The extension's interface is in German. This README quotes its labels as they ap
 | Change the order | drag in the list |
 | Move a tab to another workspace | Right-click the page → **Tab in Workspace verschieben** ("Move tab to workspace") |
 | Export or import workspaces | in the list → **Exportieren / Importieren** ("Export / Import") |
+| Mute a workspace | in the list, click 🔊 next to the workspace (shown while something in it is audible) |
+| Always mute workspaces that are not shown | in the list, tick **Ablagen stummschalten** ("mute stashes"). Tabs get their sound back when they return; tabs muted by hand stay muted. |
 
 Good to know:
 
