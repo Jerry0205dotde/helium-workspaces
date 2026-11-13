@@ -485,3 +485,35 @@ test('Ersetzen durch den eigenen Export legt jeden Tab genau einmal neu an', asy
   check(now, ALL, { allowNewTab: false });
   await cycle(now, ['A', 'B', 'C'], ALL);
 });
+
+// Fenster 1 hat p1 einmal angeheftet, ein zweites Hauptfenster mit C zweimal
+async function pinnedTwiceInSecondWindow() {
+  const env = await setup(SPEC);
+  const { b } = env;
+  const win2 = (await b.chrome.windows.create({ focused: true })).id;
+  await env.w.settle();
+  await ok(env.w.request({ type: 'switch', windowId: win2, wsId: env.ids.C }));
+  for (let i = 0; i < 2; i++) {
+    const t = await b.chrome.tabs.create({ windowId: win2, url: url('p1'), active: false });
+    await b.chrome.tabs.update(t.id, { pinned: true });
+  }
+  await env.w.settle();
+  assert.deepEqual(b.local.data.backupPinned.map((e) => e.url), ['p1', 'p2', 'p1'].map(url));
+  return env;
+}
+
+test('Export zählt angeheftete Tabs wie die Sicherung: doppelte in einem Fenster bleiben erhalten', async () => {
+  const env = await pinnedTwiceInSecondWindow();
+  const file = await request(env, { type: 'export' });
+  assert.deepEqual(file.pinned.map((e) => e.url), ['p1', 'p2', 'p1'].map(url));
+});
+
+test('Import ergänzt angeheftete Tabs, bis die Sicherung sie so oft enthält wie die Datei', async () => {
+  for (const mode of ['merge', 'replace']) {
+    const env = await pinnedTwiceInSecondWindow();
+    await importFile(env, fileOf([{ name: 'N', color: '#abcdef', tabs: [tab('n1')] }], [tab('p1'), tab('p1'), tab('p1')]), mode, true);
+    await env.w.settle();
+    const saved = env.b.local.data.backupPinned.map((e) => e.url);
+    assert.equal(saved.filter((u) => u === url('p1')).length, 3, mode);
+  }
+});

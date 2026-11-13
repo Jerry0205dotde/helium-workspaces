@@ -1220,7 +1220,8 @@ async function collectAll() {
       pinnedFailed: failed.filter((e) => e.p),
     };
   });
-  // Angeheftete Tabs aller Hauptfenster; was ein früheres Fenster schon hat, zählt einmal
+  // Angeheftete Tabs aller Hauptfenster; was ein früheres Fenster schon hat, zählt einmal.
+  // So rechnet der Import: addPinned ergänzt nur im ersten Fenster.
   let pinnedOpen = backupPinned;
   if (mains.length) {
     pinnedOpen = [];
@@ -1232,14 +1233,17 @@ async function collectAll() {
     }
   }
   pinnedOpen = pinnedOpen.filter((e) => e.url);
-  const pinned = [...pinnedOpen, ...list.flatMap((x) => x.pinnedFailed).filter((e) => e.url)];
-  return { cfg, mains, list, pinned, pinnedOpen };
+  const pinnedFailed = list.flatMap((x) => x.pinnedFailed).filter((e) => e.url);
+  const pinned = [...pinnedOpen, ...pinnedFailed];
+  // Der Export zählt wie die Sicherung, damit ein Rundlauf den Bestand bewahrt
+  const exported = [...(mains.length ? pinnedOf(mains, groups) : backupPinned).filter((e) => e.url), ...pinnedFailed];
+  return { cfg, mains, list, pinned, pinnedOpen, exported };
 }
 
 async function exportAll() {
   await resumeSwitch();
-  const { list, pinned } = await collectAll();
-  return buildExchange(list, pinned, chrome.runtime.getURL(''));
+  const { list, exported } = await collectAll();
+  return buildExchange(list, exported, chrome.runtime.getURL(''));
 }
 
 // Ordnet beim Zusammenführen jedem importierten Workspace einen vorhandenen zu: zuerst
