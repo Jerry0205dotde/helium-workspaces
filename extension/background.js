@@ -146,10 +146,11 @@ async function refreshImage() {
   try {
     do {
       imageAgain = false;
-      // Die Tabs sofort übernehmen, nicht erst mit der Antwort der Gruppenabfrage
-      const groups = chrome.tabGroups.query({}).catch(() => []);
+      // Die Gruppen ergänzen, wenn sie kommen: die Tabs warten nicht auf sie
+      chrome.tabGroups.query({}).then((groups) => {
+        for (const g of groups) if (!isClosing(g.windowId)) image.get(g.windowId)?.groups.set(g.id, g);
+      }, () => {});
       remember(await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] }));
-      for (const g of await groups) if (!isClosing(g.windowId)) image.get(g.windowId)?.groups.set(g.id, g);
     } while (imageAgain);
   } catch (e) {
     console.warn('[workspaces] Abbild der Fenster', e);

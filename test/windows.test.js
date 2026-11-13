@@ -202,8 +202,11 @@ for (const [label, api, change] of [
     await w.settle();
     const held = b.fail(api, { hold: true });
     await change(b, win, env);
-    b.calls = b.calls.filter((c) => !(c.name === 'tabs.update' && c.args[1]?.url === url('a4')));
-    await w.advance(50);
+    await w.advance(20);
+    // Eine zweite Änderung, solange die Antwort noch aussteht
+    await b.chrome.tabs.update(where(env, 'a1').tab.id, { url: url('a5') });
+    b.calls = b.calls.filter((c) => !(c.name === 'tabs.update' && ['a4', 'a5'].map(url).includes(c.args[1]?.url)));
+    await w.advance(20);
     assert.equal(held.hits, 1, `${api} wurde nicht aufgerufen`);
     await b.closeWindowByX(win);
     held.release();
@@ -211,8 +214,8 @@ for (const [label, api, change] of [
     assert.equal(b.windows.length, 0, 'Ablage-Fenster wurden nicht geschlossen');
 
     const A = api === 'action.setIcon'
-      ? [...SPEC.workspaces.A, 'a4']
-      : ['a1', { url: 'a2', group: 'Mathe', color: 'blue' }, { url: 'a4', group: 'Mathe', color: 'blue' }];
+      ? ['a5', ...SPEC.workspaces.A.slice(1), 'a4']
+      : ['a5', { url: 'a2', group: 'Mathe', color: 'blue' }, { url: 'a4', group: 'Mathe', color: 'blue' }];
     b.restart();
     const w2 = b.startWorker('startup');
     await w2.settle();
