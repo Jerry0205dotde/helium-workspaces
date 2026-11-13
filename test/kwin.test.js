@@ -32,13 +32,14 @@ function kwinWindow(resourceClass, caption, extra = {}) {
   };
 }
 
-function run(windows, token = TOKEN) {
+function run(windows, token = TOKEN, config = {}) {
   let added;
   const workspace = {
     windowList: () => windows,
     windowAdded: { connect: (f) => (added = f) },
   };
-  vm.runInNewContext(SCRIPT, { workspace, readConfig: (key, def) => (key === 'token' ? token : def) });
+  const values = { token, ...config };
+  vm.runInNewContext(SCRIPT, { workspace, readConfig: (key, def) => (key in values ? values[key] : def) });
   return { add: (w) => added(w) };
 }
 
@@ -84,4 +85,33 @@ test('Verliert eine Chrome-Ablage die Markierung, kommt sie zurück in die Taskl
   w.caption = `HWS-Ablage ${TOKEN} · Uni`;
   w.captionChanged.emit();
   assert.ok(isHidden(w));
+});
+
+test('Die Browserliste aus kwinrc ersetzt die Standardliste', () => {
+  const brave = stash('Brave-browser');
+  const flatpak = stash('com.brave.Browser');
+  const helium = stash('helium');
+  const chrome = stash('google-chrome');
+  run([brave, flatpak, helium, chrome], TOKEN, { browsers: ' Helium, brave-browser,,com.brave.browser ' });
+  assert.ok(isHidden(brave) && isHidden(flatpak) && isHidden(helium));
+  assert.ok(!chrome.skipTaskbar && !chrome.minimized, 'google-chrome steht nicht in der Liste');
+});
+
+test('Ohne oder mit leerer Browserliste gilt die Standardliste', () => {
+  for (const browsers of [undefined, '']) {
+    const chrome = stash('google-chrome');
+    const brave = stash('brave-browser');
+    run([chrome, brave], TOKEN, browsers === undefined ? {} : { browsers });
+    assert.ok(isHidden(chrome), `browsers=${browsers}: Chrome nicht versteckt`);
+    assert.ok(!brave.skipTaskbar && !brave.minimized, `browsers=${browsers}: Brave versteckt`);
+  }
+});
+
+test('Fällt ein Browser aus der Liste, kommen seine versteckten Ablagen zurück in die Taskleiste', () => {
+  const brave = stash('brave-browser');
+  run([brave], TOKEN, { browsers: 'helium,brave-browser' });
+  assert.ok(isHidden(brave));
+  // install.sh --browsers '' lädt das Skript mit der Standardliste neu, das Fenster bleibt bestehen
+  run([brave], TOKEN, { browsers: '' });
+  assert.ok(!brave.skipTaskbar && !brave.skipSwitcher && !brave.skipPager);
 });

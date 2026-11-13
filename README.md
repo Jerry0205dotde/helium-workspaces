@@ -43,7 +43,25 @@ Three parts work together:
 The extension also runs in Google Chrome and Chromium. It is installed the same way under `chrome://extensions`, and the startup setting above applies there too. Two parts have to be told apart:
 
 - **Extension:** creating, renaming, switching and deleting workspaces, moving tabs, pinned tabs and the keyboard shortcuts. This works the same as in Helium. Tested with Google Chrome 157.0.8103.78 and Chromium 160.0.8158.0.
-- **Desktop integration:** the KWin script only hides stash windows of browsers it knows by their window class (X11) or app ID (Wayland): `helium`, `google-chrome`, `chromium` and `chromium-browser`. Tested with Google Chrome 157.0.8103.78 and Chromium 157.0.8103.38 under KWin 6.8.2, as native Wayland windows and as X11 windows via XWayland. Other browsers such as Brave, Vivaldi or Edge are not recognized. Their stash windows stay visible as minimized windows.
+- **Desktop integration:** the KWin script only hides stash windows of browsers it knows by their window class (X11) or app ID (Wayland): `helium`, `google-chrome`, `chromium` and `chromium-browser`. Tested with Google Chrome 157.0.8103.78 and Chromium 157.0.8103.38 under KWin 6.8.2, as native Wayland windows and as X11 windows via XWayland. Other browsers such as Brave, Vivaldi or Edge are only recognized once they are added to the list, see below. Until then their stash windows stay visible as minimized windows.
+
+### Other browsers
+
+`install.sh --browsers` sets which window classes (X11) or app IDs (Wayland) the KWin script recognizes, separated by commas and not case-sensitive. The list replaces the default list `helium,google-chrome,chromium,chromium-browser`, so it has to name every browser you use:
+
+```bash
+./install.sh --browsers helium,brave-browser
+```
+
+The setting is kept for later runs of `install.sh` without `--browsers`. `--browsers ''` restores the default list.
+
+To find a browser's window class, run this in a terminal inside the Plasma session and then click a window of the browser:
+
+```bash
+qdbus6 org.kde.KWin /KWin org.kde.KWin.queryWindowInfo | grep resourceClass
+```
+
+Alternatively in System Settings under **Window Management → Window Rules**: click **Add New…**, then **Detect Window Properties** and click a window of the browser. **Window class (application)** shows the same value. Flatpak versions may report a different class than the system package.
 
 ## Installation
 
@@ -203,6 +221,7 @@ Without the extension the stash windows lose their marker, but their tabs stay i
    kpackagetool6 --type=KWin/Script -r helium-workspaces
    kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete
    kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
+   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers --delete
    ```
 
    If the script was removed too early, quit Helium and start it again. After that the windows are visible normally again.
