@@ -1,6 +1,7 @@
 'use strict';
-// install.sh --uninstall gegen nachgebildete KDE-Befehle: Jeder Aufruf landet mit seinen
-// Argumenten in einer Logdatei, so lassen sich Reihenfolge und Abbruch prüfen.
+// install.sh gegen nachgebildete KDE-Befehle: Jeder Aufruf landet mit seinen Argumenten in
+// einer Logdatei, so lassen sich Reihenfolge und Abbruch prüfen. --update holt dabei mit
+// echtem git aus einem Upstream-Repo im Temp-Ordner.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -9,28 +10,76 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const INSTALL = path.join(__dirname, '..', 'install.sh');
+const ROOT = path.join(__dirname, '..');
+const INSTALL = path.join(ROOT, 'install.sh');
+const TOKEN = '0123456789abcdef01234567';
+// Ohne Einstellungen des Nutzers, damit Signieren o. Ä. die Commits im Test nicht stört
+const GIT_ENV = {
+  GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.invalid',
+  GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.invalid',
+};
 
-// installed: ob kpackagetool6 -s das Paket findet, dbus: ob qdbus6 KWin erreicht
-function uninstall({ installed = true, dbus = true } = {}) {
+// installed: ob kpackagetool6 -s das Paket findet, dbus: ob qdbus6 KWin erreicht,
+// token: was kreadconfig6 als eingetragenen Schlüssel liefert, setup(dir): vorbereiten,
+// gibt den Pfad des auszuführenden install.sh zurück
+function run(args, { installed = true, dbus = true, token = '', setup } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-install-'));
+  const bin = path.join(dir, 'bin');
+  fs.mkdirSync(bin);
   const log = path.join(dir, 'log');
   const fake = (name, body) =>
-    fs.writeFileSync(path.join(dir, name), `#!/bin/bash\necho "${name} $*" >> "${log}"\n${body}\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, name), `#!/bin/bash\necho "${name} $*" >> "${log}"\n${body}\n`, { mode: 0o755 });
   fake('qdbus6', dbus ? 'echo true' : 'echo "Could not connect to D-Bus server" >&2; exit 1');
   fake('kpackagetool6', `[ "$2" = -s ] && exit ${installed ? 0 : 3}; exit 0`);
   fake('kwriteconfig6', 'exit 0');
-  fake('kreadconfig6', 'exit 0');
+  fake('kreadconfig6', `[ "$6" = token ] && echo "${token}"; exit 0`);
   try {
-    const r = spawnSync('bash', [INSTALL, '--uninstall'], {
+    const script = setup ? setup(dir) : INSTALL;
+    const r = spawnSync('bash', [script, ...args], {
       encoding: 'utf8',
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}` },
+      input: '',
+      env: { ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}` },
     });
-    const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : [];
-    return { status: r.status, stdout: r.stdout, stderr: r.stderr, calls };
+    const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean) : [];
+    return { status: r.status, stdout: r.stdout, stderr: r.stderr, calls, dir };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+}
+
+const uninstall = (opts) => run(['--uninstall'], opts);
+
+function git(cwd, ...args) {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, ...GIT_ENV } });
+  assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+  return r.stdout.trim();
+}
+
+// Upstream-Repo mit install.sh, kwin/ und dem Manifest, davon ein Klon als Installation.
+// Danach bekommt upstream einen neuen Stand: höhere Version und ein install.sh, das sich
+// am Ende zu erkennen gibt. Liefert das install.sh des Klons.
+function repos(dir, { diverge = false } = {}) {
+  const up = path.join(dir, 'up');
+  fs.mkdirSync(path.join(up, 'extension'), { recursive: true });
+  fs.copyFileSync(INSTALL, path.join(up, 'install.sh'));
+  fs.cpSync(path.join(ROOT, 'kwin'), path.join(up, 'kwin'), { recursive: true });
+  const manifest = path.join(up, 'extension', 'manifest.json');
+  fs.writeFileSync(manifest, '{\n  "manifest_version": 3,\n  "version": "1.0.0"\n}\n');
+  git(up, 'init', '-q', '-b', 'main');
+  git(up, 'add', '-A');
+  git(up, 'commit', '-q', '-m', 'alt');
+  const local = path.join(dir, 'local');
+  git(dir, 'clone', '-q', up, local);
+  fs.writeFileSync(manifest, '{\n  "manifest_version": 3,\n  "version": "1.1.0"\n}\n');
+  fs.appendFileSync(path.join(up, 'install.sh'), 'echo "Neue Fassung von install.sh"\n');
+  git(up, 'commit', '-q', '-am', 'neu');
+  if (diverge) {
+    fs.writeFileSync(path.join(local, 'eigenes'), 'x\n');
+    git(local, 'add', '-A');
+    git(local, 'commit', '-q', '-m', 'eigener Commit');
+  }
+  return path.join(local, 'install.sh');
 }
 
 test('--uninstall entlädt erst, entfernt dann Paket und kwinrc-Einträge', () => {
@@ -58,4 +107,47 @@ test('--uninstall entfernt nichts, wenn KWin nicht erreichbar ist', () => {
   const r = uninstall({ dbus: false });
   assert.notEqual(r.status, 0);
   assert.deepEqual(r.calls, ['qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces']);
+});
+
+test('--update holt den neuen Stand und richtet ihn mit dem eingetragenen Schlüssel ein', () => {
+  let local;
+  const r = run(['--update'], {
+    token: TOKEN,
+    setup: (dir) => {
+      const script = repos(dir);
+      local = path.dirname(script);
+      return script;
+    },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  // Die geholte Fassung von install.sh lief, nicht die alte
+  assert.match(r.stdout, /Fertig\.\nNeue Fassung von install\.sh\n/);
+  assert.match(r.stdout, /chrome:\/\/extensions.*Neu laden.*Version 1\.1\.0\./);
+  assert.ok(r.calls.includes(`kpackagetool6 --type=KWin/Script -u ${local}/kwin`), r.calls.join('\n'));
+  assert.ok(r.calls.includes(`kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token ${TOKEN}`));
+  assert.ok(!r.calls.some((c) => c.includes('--key browsers')), 'fasst die Browserliste an');
+  assert.equal(r.calls.at(-1), 'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces');
+});
+
+test('--update ändert nichts, wenn git pull nicht vorspulen kann', () => {
+  const r = run(['--update'], { token: TOKEN, setup: (dir) => repos(dir, { diverge: true }) });
+  assert.notEqual(r.status, 0);
+  assert.ok(!r.calls.some((c) => !c.startsWith('kreadconfig6')), r.calls.join('\n'));
+  assert.doesNotMatch(r.stdout, /Neu laden/);
+});
+
+test('--update bricht ohne eingetragenen Schlüssel vor git pull ab', () => {
+  const r = run(['--update'], { setup: (dir) => repos(dir) });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /Noch kein Schlüssel eingetragen/);
+  assert.deepEqual(r.calls, ['kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token']);
+});
+
+test('--update nimmt keinen Schlüssel und keine Browserliste dazu', () => {
+  for (const args of [['--update', TOKEN], ['--update', '--browsers', 'helium'], ['--update', '--uninstall']]) {
+    const r = run(args, { token: TOKEN });
+    assert.notEqual(r.status, 0, args.join(' '));
+    assert.match(r.stderr, /--update nimmt keine weiteren Angaben/);
+    assert.deepEqual(r.calls, []);
+  }
 });

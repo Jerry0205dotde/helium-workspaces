@@ -7,6 +7,8 @@
 # fest, deren Ablagen versteckt werden, z. B. --browsers helium,brave-browser. Eine leere
 # Liste stellt die Standardliste wieder her, ohne --browsers bleibt die bisherige Einstellung.
 # ./install.sh --uninstall entlädt und entfernt das KWin-Skript samt seiner Einträge in kwinrc.
+# ./install.sh --update holt mit git pull den neuen Stand und richtet das KWin-Skript ohne
+# Rückfrage neu ein, Schlüssel und Browserliste bleiben.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -14,6 +16,7 @@ TOKEN=""
 BROWSERS=""
 SET_BROWSERS=""
 UNINSTALL=""
+UPDATE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --browsers)
@@ -21,10 +24,24 @@ while [ $# -gt 0 ]; do
       BROWSERS="$2"; SET_BROWSERS=1; shift 2 ;;
     --browsers=*) BROWSERS="${1#*=}"; SET_BROWSERS=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
+    --update) UPDATE=1; shift ;;
     -*) echo "Unbekannte Option: $1" >&2; exit 1 ;;
     *) TOKEN="$1"; shift ;;
   esac
 done
+
+if [ -n "$UPDATE" ]; then
+  [ -z "$TOKEN$SET_BROWSERS$UNINSTALL" ] \
+    || { echo "--update nimmt keine weiteren Angaben, Schlüssel und Browserliste bleiben wie eingetragen." >&2; exit 1; }
+  OLD="$(kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token)"
+  [ -n "$OLD" ] || { echo "Noch kein Schlüssel eingetragen. Zuerst ./install.sh ohne --update ausführen." >&2; exit 1; }
+  git -C "$DIR" pull --ff-only
+  # Die eben geholte Fassung von install.sh richtet das KWin-Skript ein, sie kann neuer sein als diese
+  bash "$DIR/install.sh" "$OLD"
+  VERSION="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$DIR/extension/manifest.json")"
+  echo "Jetzt in chrome://extensions bei „Workspaces“ auf Neu laden klicken. Danach zeigt das Popup unten rechts die Version $VERSION."
+  exit 0
+fi
 
 if [ -n "$UNINSTALL" ]; then
   # Zuerst entladen, sonst läuft das Skript bis zum nächsten Start von KWin weiter. Erreicht
