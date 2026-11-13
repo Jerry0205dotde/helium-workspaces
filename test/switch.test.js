@@ -67,6 +67,16 @@ test('Tastenkürzel wechseln reihum zum nächsten und vorherigen Workspace', asy
   check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
 });
 
+test('Das Kontextmenü erscheint auch auf Links, Bildern, Videos und markiertem Text', async () => {
+  const { b, ids } = await setup(SPEC);
+  assert.deepEqual(b.menus.map((m) => m.id), ['move', ...Object.values(ids).map((id) => `move:${id}`)]);
+  for (const m of b.menus) {
+    for (const c of ['page', 'link', 'image', 'video', 'audio', 'selection', 'frame', 'editable', 'action']) {
+      assert.ok(m.contexts.includes(c), `${m.id} fehlt im Kontext ${c}`);
+    }
+  }
+});
+
 test('Tab über das Kontextmenü in einen anderen Workspace verschieben', async () => {
   const env = await setup(SPEC);
   const { b, w, ids } = env;

@@ -110,7 +110,7 @@ Workspaces auf ein anderes Gerät bringt der Export (siehe unten). Er enthält d
 | Nächster / vorheriger Workspace | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>↓</kbd> / <kbd>↑</kbd>, oder in der Liste <kbd>↓</kbd> / <kbd>↑</kbd> und <kbd>Enter</kbd> |
 | Workspace anlegen, umbenennen, Farbe oder Emoji ändern, löschen | in der Liste |
 | Reihenfolge ändern | in der Liste ziehen |
-| Tab in einen anderen Workspace schieben | Rechtsklick auf die Seite → **Tab in Workspace verschieben** |
+| Tab in einen anderen Workspace schieben | Rechtsklick irgendwo auf die Seite, auch auf einen Link, ein Bild oder markierten Text → **Tab in Workspace verschieben** |
 | Workspaces exportieren oder importieren | in der Liste → **Exportieren / Importieren** |
 | Ton eines Workspace ausschalten | in der Liste auf 🔊 neben dem Workspace klicken (erscheint, solange darin etwas zu hören ist) |
 | Nicht gezeigte Workspaces immer stumm | in der Liste **Ablagen stummschalten** anhaken. Beim Zurückholen bekommen die Tabs ihren Ton wieder, von Hand stummgeschaltete bleiben stumm. |
