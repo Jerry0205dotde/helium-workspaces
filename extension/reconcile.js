@@ -379,6 +379,9 @@ async function onWindowRemoved(winId) {
         return;
       }
     }
+    // Läuft der Browser weiter (Inkognito-, Popup- oder App-Fenster), gilt das nächste
+    // Fenster als Start ohne Sitzungswiederherstellung: restoreStart baut es auf.
+    await chrome.storage.session.remove('startChecked');
     for (const w of stash.values()) await chrome.windows.remove(w.id).catch(() => {});
     return;
   }
