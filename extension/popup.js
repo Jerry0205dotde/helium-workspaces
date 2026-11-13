@@ -382,9 +382,27 @@ keyCopy.addEventListener('click', () =>
 
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || !state) return;
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') return moveSelection(e);
   const n = Number(e.key);
   if (n >= 1 && n <= 9 && state.workspaces[n - 1]) switchTo(state.workspaces[n - 1].id);
 });
+
+// ↑ / ↓ wählt in der Liste den vorherigen oder nächsten Workspace aus, Enter wechselt
+// dorthin. Ohne Auswahl geht es vom aktuellen Workspace aus; am Ende geht es oben
+// weiter. Im Editor bleiben die Pfeiltasten unberührt.
+function moveSelection(e) {
+  if (busy || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const row = e.target.closest?.('.row');
+  if (e.target !== document.body && !row) return;
+  const mains = [...listEl.querySelectorAll('.main')];
+  if (!mains.length) return;
+  e.preventDefault();
+  const from = row ? row.querySelector('.main') : listEl.querySelector('li.current .main');
+  const i = mains.indexOf(from);
+  const step = e.key === 'ArrowDown' ? 1 : -1;
+  const next = i < 0 ? (step > 0 ? 0 : mains.length - 1) : (i + step + mains.length) % mains.length;
+  mains[next].focus();
+}
 
 function start() {
   return run('Wird geladen …', 'Workspaces konnten nicht geladen werden.', async () => {

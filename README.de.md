@@ -107,7 +107,7 @@ Workspaces auf ein anderes Gerät bringt der Export (siehe unten). Er enthält d
 | Aktion | So geht's |
 | --- | --- |
 | Workspace-Liste öffnen | Button in der Symbolleiste oder <kbd>Alt</kbd>+<kbd>W</kbd> |
-| Nächster / vorheriger Workspace | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>→</kbd> / <kbd>←</kbd> |
+| Nächster / vorheriger Workspace | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>↓</kbd> / <kbd>↑</kbd>, oder in der Liste <kbd>↓</kbd> / <kbd>↑</kbd> und <kbd>Enter</kbd> |
 | Workspace anlegen, umbenennen, Farbe oder Emoji ändern, löschen | in der Liste |
 | Reihenfolge ändern | in der Liste ziehen |
 | Tab in einen anderen Workspace schieben | Rechtsklick auf die Seite → **Tab in Workspace verschieben** |
@@ -115,7 +115,7 @@ Workspaces auf ein anderes Gerät bringt der Export (siehe unten). Er enthält d
 
 Gut zu wissen:
 
-- Die Liste lässt sich komplett per Tastatur bedienen: <kbd>Tab</kbd> zum Springen, <kbd>Enter</kbd> zum Auswählen, <kbd>1</kbd>–<kbd>9</kbd> wechselt direkt, <kbd>Esc</kbd> schließt den Editor. Umsortieren geht im Editor mit ↑ / ↓.
+- Die Liste lässt sich komplett per Tastatur bedienen: <kbd>Tab</kbd> zum Springen, <kbd>↑</kbd> / <kbd>↓</kbd> wählt einen Workspace, <kbd>Enter</kbd> wechselt dorthin, <kbd>1</kbd>–<kbd>9</kbd> wechselt direkt, <kbd>Esc</kbd> schließt den Editor. Umsortieren geht im Editor mit ↑ / ↓.
 - Angeheftete Tabs gehören zu allen Workspaces und bleiben immer im Fenster.
 - Tab-Gruppen bleiben beim Wechseln erhalten.
 - Wählst du einen Tab aus einer Ablage, etwa über die Tab-Suche, zeigt das zuletzt benutzte Hauptfenster dessen Workspace mit dem gewählten Tab.
