@@ -218,14 +218,20 @@ node --test test/*.test.js
 
 This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. The same checks run in CI on every pull request.
 
-The tests do not check the connection to Helium and KWin. After changing that, briefly check by hand:
+With a Chromium-based browser, the most important flows also run in a real browser:
+
+```bash
+CHROME=/usr/bin/chromium node --test test/chromium.test.js
+```
+
+[`chromium.test.js`](./test/chromium.test.js) installs the extension into a fresh profile and runs through: switching with a tab group and a pinned tab without reloading any page, reloading the extension, quitting and restarting with "Continue where you left off" and with "Open the New Tab page", and closing with the X button and restarting. Without `CHROME` the test is skipped, and without a display the browser stays invisible. In CI it runs with Chrome for Testing.
+
+The tests do not check KWin. After changing that, briefly check by hand:
 
 1. Reload the extension in `chrome://extensions` and run `./install.sh` with the key from the popup.
-2. Set up two workspaces with a few tabs, a tab group and a pinned tab, and start a video in one of them.
-3. Switch back and forth a few times: the video keeps playing, the group and the pinned tab stay, and no stash window appears in the taskbar, <kbd>Alt</kbd>+<kbd>Tab</kbd> or the overview.
-4. Reload the extension in `chrome://extensions`: after about a second the stash windows are hidden again, and switching still works.
-5. Quit Helium and start it again: all workspaces are complete, and the stash windows stay hidden.
-6. Close the window with the X button and restart Helium: all workspaces are rebuilt.
+2. Set up two workspaces and switch back and forth a few times: no stash window appears in the taskbar, <kbd>Alt</kbd>+<kbd>Tab</kbd> or the overview.
+3. Reload the extension in `chrome://extensions`: after about a second the stash windows are hidden again.
+4. Quit Helium and start it again: the stash windows stay hidden.
 
 ## Structure
 
@@ -241,7 +247,7 @@ The tests do not check the connection to Helium and KWin. After changing that, b
   - [`label.js`](./extension/label.js): the character shown in a workspace's icon
 - [`kwin/`](./kwin): KWin script that hides the stash windows
 - [`install.sh`](./install.sh): set up the KWin script and write the key
-- [`test/`](./test): automated tests, [`fake-browser.js`](./test/fake-browser.js) replicates the Chrome APIs
+- [`test/`](./test): automated tests, [`fake-browser.js`](./test/fake-browser.js) replicates the Chrome APIs, [`chromium.js`](./test/chromium.js) drives a real Chromium
 
 ## License
 
