@@ -92,8 +92,10 @@ test('Ein verlorener Tab lässt sich nicht ergänzen: wird samt Gruppe aufbewahr
   const B = SPEC.workspaces.B.filter((e) => e.url !== 'b1');
   check(env, { ...ALL, B });
   // Weitere Abgleiche während des Starts legen den Eintrag nicht doppelt ab
-  await w.advance(5000);
+  const calls = b.calls.length;
+  await w.eval('reconcile()');
   await w.settle();
+  assert.ok(b.calls.slice(calls).some((c) => c.name === 'storage.session.get'), 'kein weiterer Abgleich');
   assert.equal(b.local.data.backup[env.ids.B].failed.length, 1);
   const main = b.mains()[0].id;
   const st = await ok(w.request({ type: 'state', windowId: main }));
