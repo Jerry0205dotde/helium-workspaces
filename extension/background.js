@@ -1110,7 +1110,11 @@ async function reconcile() {
       }
     }
   }
-  if (starting && (await moving(() => repairFromBackup(cfg, s, stash, mains)))) changed = true;
+  // Hat Chromium die Sitzung nachträglich wiederhergestellt, enthält die Sicherung womöglich
+  // schon die doppelten Tabs. repairFromBackup würde die geschlossenen Kopien dann als
+  // verloren ergänzen; der Snapshot am Ende bringt sie auf den Stand.
+  if (await dropStartCopies(s, stash)) changed = true;
+  else if (starting && (await moving(() => repairFromBackup(cfg, s, stash, mains)))) changed = true;
   s.tabOrigin = {};
   await saveSess(s);
 
@@ -1141,8 +1145,39 @@ async function restoreStart(wins, wsId) {
       await chrome.tabs.update(ids[0], { active: true });
       await chrome.tabs.remove(blank.id);
     }
+    // Für dropStartCopies: die angelegten Kopien und alle Tabs, die es jetzt schon gibt
+    const copies = [...p.ids, ...ids];
+    const all = await chrome.tabs.query({});
+    await chrome.storage.session.set({
+      startCopies: all.filter((t) => copies.includes(t.id)).map((t) => ({ id: t.id, url: urlOf(t) })),
+      startSeen: all.map((t) => t.id),
+    });
   });
   console.info('[workspaces] Workspace nach dem Start aus der Sicherung aufgebaut');
+  return true;
+}
+
+// Nach einem Absturz startet Chromium mit neuer Tab-Seite und bietet „Wiederherstellen“
+// an. restoreStart hat den Workspace dann schon aus der Sicherung aufgebaut; ein Klick
+// darauf holt dieselben Tabs noch einmal (die des ersten Fensters hängt Chromium an das
+// vorhandene Fenster an). Sind alle noch unveränderten Kopien danach im selben Workspace
+// ein weiteres Mal offen, werden die Kopien geschlossen; Chromiums Tabs behalten ihren
+// Verlauf. Landen sie in einem anderen Workspace (vorher gewechselt), bleiben die Kopien.
+async function dropStartCopies(s, stash) {
+  const { startCopies, startSeen } = await chrome.storage.session.get(['startCopies', 'startSeen']);
+  if (!startCopies) return false;
+  const tabs = await chrome.tabs.query({});
+  const wsOf = (t) => s.windowWs[t.windowId] || [...stash].find(([, w]) => w.id === t.windowId)?.[0];
+  const key = (t) => `${wsOf(t)} ${urlOf(t)}`;
+  const live = startCopies.filter((c) => tabs.some((t) => t.id === c.id && urlOf(t) === c.url));
+  const seen = new Set(startSeen);
+  const have = tabs.filter((t) => !seen.has(t.id)).map((t) => ({ url: key(t) }));
+  const want = live.map((c) => ({ url: key(tabs.find((t) => t.id === c.id)) }));
+  if (live.length && missingIn(want, have).length) return false; // noch nicht (alle) wiederhergestellt
+  await chrome.storage.session.remove(['startCopies', 'startSeen']);
+  if (!live.length) return false;
+  await moving(() => chrome.tabs.remove(live.map((c) => c.id)));
+  console.info('[workspaces] Kopien aus der Sicherung geschlossen, Chromium hat die Sitzung wiederhergestellt');
   return true;
 }
 
@@ -1559,6 +1594,8 @@ chrome.tabs.onCreated.addListener(async (tab) => {
   const s = await sess();
   if (s.windowWs[tab.windowId]) await setTabIcon(tab.id, s.windowWs[tab.windowId]);
   scheduleSnapshot();
+  // Wiederhergestellte Tabs ohne neues Fenster: dropStartCopies prüfen
+  if ((await chrome.storage.session.get('startCopies')).startCopies) scheduleReconcile();
 });
 
 chrome.tabs.onRemoved.addListener((tabId, info) => {

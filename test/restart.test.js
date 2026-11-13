@@ -139,6 +139,43 @@ test('Start ohne Sitzungswiederherstellung baut den letzten Workspace aus der Si
   }
 });
 
+test('Nach einem Absturz und „Wiederherstellen“ stehen die aus der Sicherung aufgebauten Tabs nicht doppelt da', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  b.restart({ restore: 'crash' });
+  const w = b.startWorker('startup');
+  await w.settle();
+  check(env, ALL);
+  b.restoreAfterCrash();
+  await w.settle();
+  assert.equal(b.mains().length, 1);
+  assert.equal(shows(env, b.mains()[0].id), 'A');
+  check(env, ALL);
+  await cycle(env);
+});
+
+test('Nach einem Absturz: Wurde vor „Wiederherstellen“ gewechselt, bleiben die Kopien im ursprünglichen Workspace', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  b.restart({ restore: 'crash' });
+  const w = b.startWorker('startup');
+  await w.settle();
+  const main = b.mains()[0].id;
+  await ok(w.request({ type: 'switch', windowId: main, wsId: env.ids.B }));
+  b.restoreAfterCrash();
+  await w.settle();
+  // Chromiums Tabs von A landen im Fenster von B; A behält seine Tabs in der Ablage
+  const stashA = b.windows.find((x) => b.stashOf(x) === env.ids.A);
+  assert.deepEqual(
+    stashA.tabs.filter((t) => !t.url.startsWith(b.origin)).map((t) => t.url),
+    SPEC.workspaces.A.map((e) => url(e.url || e)),
+  );
+  assert.deepEqual(
+    b.local.data.backup[env.ids.A].stash.map((e) => e.url),
+    SPEC.workspaces.A.map((e) => url(e.url || e)),
+  );
+});
+
 test('Start ohne Sitzungswiederherstellung: zusammen wiederhergestellte Ablage-Seiten und angeheftete Tabs verdrängen keine gesicherten Tabs', async () => {
   const spec = {
     pinned: ['pin'],
