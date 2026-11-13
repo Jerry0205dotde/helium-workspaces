@@ -4,7 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { setup, check, ok, where, shows, tabIds, openTabs, NEWTAB } = require('./harness');
+const { setup, check, ok, url, where, shows, tabIds, openTabs, NEWTAB } = require('./harness');
 
 const SPEC = {
   pinned: ['p1'],
@@ -99,6 +99,35 @@ test('Schließen eines von zwei Fenstern verwirft nur dessen Tabs', async () => 
   await b.chrome.windows.remove(win3);
   await w.settle();
   check(env, { ...ALL, B: [] });
+});
+
+test('Geschlossenes Zweitfenster mit Strg+Shift+T zurückgeholt: es zeigt wieder seinen Workspace', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const win2 = await newWindow(env);
+  await ok(w.request({ type: 'switch', windowId: win2, wsId: ids.B }));
+  // Neue Tab-Seiten zählen beim Abgleich nicht mit
+  for (let i = 0; i < 2; i++) await b.chrome.tabs.create({ windowId: win2, url: NEWTAB });
+  await w.settle();
+  await b.chrome.windows.remove(win2);
+  await w.settle();
+  check(env, { ...ALL, B: [] });
+
+  // Etwas später, außerhalb der Frist nach dem Start
+  b.now += 60000;
+  const win3 = b.reopenClosed();
+  await w.settle();
+  assert.equal(shows(env, win3), 'B');
+  assert.equal(shows(env, win), 'A');
+  check(env, ALL);
+
+  // Ein Link aus B in einem neuen Fenster ist kein zurückgeholtes Fenster
+  await b.chrome.windows.remove(win3);
+  await w.settle();
+  const win4 = (await b.chrome.windows.create({ url: url('b2'), focused: true })).id;
+  await w.settle();
+  assert.equal(shows(env, win4), 'A');
+  check(env, { ...ALL, A: [...SPEC.workspaces.A, 'b2'], B: [] });
 });
 
 test('Letztes Fenster per X geschlossen: nach dem Start ist alles wieder da', async () => {
