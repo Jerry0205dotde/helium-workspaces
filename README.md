@@ -4,7 +4,7 @@
 
 Helium Workspaces brings Opera-style workspaces to the [Helium browser](https://github.com/imputnet/helium-linux): several sets of tabs in the same window, switchable by click or keyboard shortcut. Nothing reloads when you switch, so videos and logins simply keep going.
 
-It consists of a browser extension and a small KWin script for KDE Plasma.
+It consists of a browser extension and a small KWin script for KDE Plasma. The extension speaks English and German and follows the language of the browser. The UI names in this README are the English ones.
 
 ## "Why not just use profiles?"
 
@@ -24,7 +24,7 @@ Three parts work together:
 
 ### Limitations
 
-- Tabs in stashes stay loaded. They keep using memory, and videos or music keep playing in the background. With **Ablagen stummschalten** ("mute stashes") in the workspace list they at least play silently. With **Ablagen entladen nach** ("unload stashes after") they are unloaded after a chosen time (see below).
+- Tabs in stashes stay loaded. They keep using memory, and videos or music keep playing in the background. With **Mute stashes** in the workspace list they at least play silently. With **Unload stashes after** they are unloaded after a chosen time (see below).
 - Pinned tabs belong to all workspaces and always stay in the main window.
 - Several windows can show the same workspace, for example after <kbd>Ctrl</kbd>+<kbd>N</kbd>.
 - Incognito windows are not handled.
@@ -77,7 +77,7 @@ Alternatively in System Settings under **Window Management → Window Rules**: c
 2. Open `chrome://extensions` in Helium and turn on **Developer mode** in the top right.
 3. Choose **Load unpacked** and select the folder `extension/` from the repository.
 4. Pin the workspace button to the toolbar.
-5. Click the workspace button, expand **Schlüssel für install.sh** ("key for install.sh") at the bottom and click **Kopieren** ("Copy"). Then set up the KWin script inside the repository and paste the key when the script asks for it:
+5. Click the workspace button, expand **Key for install.sh** at the bottom and click **Copy**. Then set up the KWin script inside the repository and paste the key when the script asks for it:
 
    ```bash
    ./install.sh
@@ -116,13 +116,11 @@ Once, when updating from a version that kept the key in `extension/token.js`: af
 
 ### The key
 
-On its first start the extension generates a random key and keeps it in its storage in the Helium profile. Websites cannot read it there. The popup shows it under **Schlüssel für install.sh**, and `install.sh` writes it to `kwinrc`. That way every device has its own key. If the key in `kwinrc` does not match the one in the popup, the stash windows stay visible.
+On its first start the extension generates a random key and keeps it in its storage in the Helium profile. Websites cannot read it there. The popup shows it under **Key for install.sh**, and `install.sh` writes it to `kwinrc`. That way every device has its own key. If the key in `kwinrc` does not match the one in the popup, the stash windows stay visible.
 
 To bring workspaces to another device, use the export (see below). It does not contain the key.
 
 ## Usage
-
-The extension's interface is in German. This README quotes its labels as they appear on screen, followed by a translation.
 
 | Action | How |
 | --- | --- |
@@ -130,13 +128,13 @@ The extension's interface is in German. This README quotes its labels as they ap
 | Next / previous workspace | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>↓</kbd> / <kbd>↑</kbd>, or in the list <kbd>↓</kbd> / <kbd>↑</kbd> and <kbd>Enter</kbd> |
 | Create a workspace, rename it, change its color or emoji, delete it | in the list |
 | Change the order | drag in the list |
-| Move a tab to another workspace | Right-click anywhere on the page, including a link, an image or selected text → **Tab in Workspace verschieben** ("Move tab to workspace"), or click ↪ next to the target in the list |
+| Move a tab to another workspace | Right-click anywhere on the page, including a link, an image or selected text → **Move tab to workspace**, or click ↪ next to the target in the list |
 | Move several tabs at once | Select the tabs with <kbd>Ctrl</kbd> / <kbd>Shift</kbd>, then as above. Fully selected groups keep their title and color. |
-| Move a whole tab group | In a tab of the group, right-click the page → **Gruppe in Workspace verschieben** ("Move group to workspace") |
-| Export or import workspaces | in the list → **Exportieren / Importieren** ("Export / Import") |
+| Move a whole tab group | In a tab of the group, right-click the page → **Move group to workspace** |
+| Export or import workspaces | in the list → **Export / import** |
 | Mute a workspace | in the list, click 🔊 next to the workspace (shown while something in it is audible) |
-| Always mute workspaces that are not shown | in the list, tick **Ablagen stummschalten** ("mute stashes"). Tabs get their sound back when they return; tabs muted by hand stay muted. |
-| Unload the tabs of workspaces not shown | in the list → **Ablagen entladen nach** ("unload stashes after") |
+| Always mute workspaces that are not shown | in the list, tick **Mute stashes**. Tabs get their sound back when they return; tabs muted by hand stay muted. |
+| Unload the tabs of workspaces not shown | in the list → **Unload stashes after** |
 
 Good to know:
 
@@ -145,9 +143,9 @@ Good to know:
 - Tab groups survive switching.
 - If you pick a tab from a stash window, for example via the tab search, the last used main window shows its workspace with the selected tab.
 - Several windows may show the same workspace, for example after <kbd>Ctrl</kbd>+<kbd>N</kbd>.
-- **Ablagen entladen nach** ("unload stashes after", default: **nie**, "never") unloads the tabs in a stash once they have been there for that long. The time counts from switching away from the workspace. Unloaded tabs free their memory and keep their address, title, group and back history. When you switch back they reload; playing videos, scroll position and unsaved input are gone then. Tabs whose sound can be heard stay loaded; muted ones are unloaded too.
+- **Unload stashes after** (default: **never**) unloads the tabs in a stash once they have been there for that long. The time counts from switching away from the workspace. Unloaded tabs free their memory and keep their address, title, group and back history. When you switch back they reload; playing videos, scroll position and unsaved input are gone then. Tabs whose sound can be heard stay loaded; muted ones are unloaded too.
 - If the window is closed with the X button, the extension rebuilds all workspaces from its backup on the next start.
-- The export is a JSON file with all workspaces including order, colors, emoji, tabs, tab groups and pinned tabs, for example for another device or a new profile. On import the file is first checked and summarized. **Zusammenführen** ("Merge") only adds what is missing: a workspace with the same ID or the same name gets the tabs it does not have yet. **Ersetzen** ("Replace") deletes the existing workspaces including their tabs and therefore asks for confirmation.
+- The export is a JSON file with all workspaces including order, colors, emoji, tabs, tab groups and pinned tabs, for example for another device or a new profile. On import the file is first checked and summarized. **Merge** only adds what is missing: a workspace with the same ID or the same name gets the tabs it does not have yet. **Replace** deletes the existing workspaces including their tabs and therefore asks for confirmation.
 
 ## What is preserved
 
@@ -171,7 +169,7 @@ Helium (or rather Chromium) occasionally loses a tab on restart if it was being 
 
 ### Stash windows are visible in the taskbar or Alt+Tab
 
-A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its first tab is the page "Workspace-Ablage" ("workspace stash"). Do not close it, or the tabs of that workspace are closed. Check in this order:
+A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its first tab is the page "Workspace stash". Do not close it, or the tabs of that workspace are closed. Check in this order:
 
 1. Is the KWin script running?
 
@@ -186,7 +184,7 @@ A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its fir
    kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token
    ```
 
-   The output must be the key the popup shows under **Schlüssel für install.sh**, and the window title must show it after `HWS-Ablage`. If the title contains no key (`HWS-Ablage · Uni`), reload the extension in `chrome://extensions`.
+   The output must be the key the popup shows under **Key for install.sh**, and the window title must show it after `HWS-Ablage`. If the title contains no key (`HWS-Ablage · Uni`), reload the extension in `chrome://extensions`.
 3. To repair, run `./install.sh` and paste the key from the popup. The script reloads the KWin script, and after one or two seconds the stashes disappear from the taskbar.
 
 ### `install.sh` aborts
@@ -194,12 +192,12 @@ A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its fir
 The messages of `install.sh` itself are in German.
 
 - **`command not found`** or **`Kommando nicht gefunden`**: a program from the [requirements](#requirements) is missing.
-- **`Ungültiger Schlüssel`** ("invalid key"): no key or an incomplete key was entered. In the popup, click **Kopieren** under **Schlüssel für install.sh** and paste it again. The key consists of 24 characters `0`–`9` and `a`–`f`.
+- **`Ungültiger Schlüssel`** ("invalid key"): no key or an incomplete key was entered. In the popup, click **Copy** under **Key for install.sh** and paste it again. The key consists of 24 characters `0`–`9` and `a`–`f`.
 - **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** or **`KWin-Skript wurde nicht geladen`** ("KWin script was not loaded"): `install.sh` cannot reach KWin, for example over SSH or in a text console. The script is then already installed but not loaded. Run it again in a terminal inside the Plasma session.
 
 ### Tabs are missing after a restart
 
-If the workspace list shows "… Tabs nicht wiederhergestellt" ("… tabs not restored"), Helium could not recreate these tabs. **Erneut versuchen** ("Try again") switches to the workspace and creates them once more. If tabs are missing without this notice, wait a moment. The assignment after startup takes up to 20 seconds.
+If the workspace list shows "… tabs not restored", Helium could not recreate these tabs. **Try again** switches to the workspace and creates them once more. If tabs are missing without this notice, wait a moment. The assignment after startup takes up to 20 seconds.
 
 ### The extension is disabled or does not respond
 
@@ -211,8 +209,8 @@ Otherwise click **Errors** or **service worker** on "Workspaces". Messages of th
 
 Without the extension the stash windows lose their marker, but their tabs stay in the windows. Only the running KWin script brings these windows back to the taskbar. To make sure no tabs keep running invisibly, follow this order:
 
-1. **Back up.** In the workspace list, open **Exportieren / Importieren** ("Export / Import") and save the export.
-2. **Show every workspace once.** Switch through all workspaces once so that each one exists as a window. Workspaces that only exist in the backup (for example after a start with the new tab page) are created in the process. Resolve "Tabs nicht wiederhergestellt" notices with **Erneut versuchen**.
+1. **Back up.** In the workspace list, open **Export / import** and save the export.
+2. **Show every workspace once.** Switch through all workspaces once so that each one exists as a window. Workspaces that only exist in the backup (for example after a start with the new tab page) are created in the process. Resolve "tabs not restored" notices with **Try again**.
 3. **Make the stashes visible.** In `chrome://extensions`, **disable** the extension with the toggle; do not remove it yet. The KWin script then brings the stash windows back to the taskbar and Alt+Tab. They stay minimized until you click them. Each window contains the tabs of one workspace. Merge or close the tabs as you like. Leftover tabs with the address `chrome-extension://…/stash.html#…` are empty and can be closed.
 4. **Remove the KWin script.** Only now, because hidden windows do not reappear without the running script:
 

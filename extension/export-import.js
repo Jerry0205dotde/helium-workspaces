@@ -156,8 +156,8 @@ async function addPinned(list) {
 // und löscht danach die bisherigen samt ihren Tabs, deshalb nur mit Bestätigung.
 async function importExchange(text, mode, confirmed) {
   const data = parseExchange(text, chrome.runtime.getURL(''));
-  if (mode !== 'merge' && mode !== 'replace') throw new Error('Unbekannte Import-Art.');
-  if (mode === 'replace' && !confirmed) throw new Error('Ersetzen schließt Tabs und muss bestätigt werden.');
+  if (mode !== 'merge' && mode !== 'replace') throw new Error(tr('importModeUnknown'));
+  if (mode === 'replace' && !confirmed) throw new Error(tr('importReplaceUnconfirmed'));
   await resumeSwitch();
   const all = await collectAll();
   const plan = planImport(data, all, mode);

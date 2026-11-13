@@ -39,8 +39,7 @@ async function setTabIcon(tabId, wsId, src) {
   if (!ws) return;
   // Unvollständig wiederhergestellt: Zahl der fehlenden Tabs als Plakette
   const missing = src.backup[wsId]?.failed?.length || 0;
-  let title = `Workspace: ${ws.name}`;
-  if (missing) title += ` – ${missing} ${missing === 1 ? 'Tab' : 'Tabs'} nicht wiederhergestellt`;
+  const title = missing ? tr('iconTitleMissing', ws.name, plural(missing, 'tabsNotRestored')) : tr('iconTitle', ws.name);
   await chrome.action.setIcon({ tabId, imageData: iconFor(ws) }).catch(() => {});
   await chrome.action.setTitle({ tabId, title }).catch(() => {});
   await chrome.action.setBadgeText({ tabId, text: missing ? String(missing) : '' }).catch(() => {});

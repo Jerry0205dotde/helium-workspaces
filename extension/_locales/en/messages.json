@@ -1,0 +1,572 @@
+{
+  "lang": {
+    "message": "en"
+  },
+  "extName": {
+    "message": "Workspaces"
+  },
+  "extDescription": {
+    "message": "Opera-style workspaces: several sets of tabs in the same window, without reloading."
+  },
+  "cmdOpen": {
+    "message": "Open the workspace list"
+  },
+  "cmdNext": {
+    "message": "Next workspace"
+  },
+  "cmdPrev": {
+    "message": "Previous workspace"
+  },
+  "tabs_one": {
+    "message": "$1 tab"
+  },
+  "tabs_other": {
+    "message": "$1 tabs"
+  },
+  "workspaces_one": {
+    "message": "$1 workspace"
+  },
+  "workspaces_other": {
+    "message": "$1 workspaces"
+  },
+  "groups_one": {
+    "message": "$1 group"
+  },
+  "groups_other": {
+    "message": "$1 groups"
+  },
+  "tabGroups_one": {
+    "message": "$1 tab group"
+  },
+  "tabGroups_other": {
+    "message": "$1 tab groups"
+  },
+  "pinnedTabs_one": {
+    "message": "$1 pinned tab"
+  },
+  "pinnedTabs_other": {
+    "message": "$1 pinned tabs"
+  },
+  "pinnedTabsDative_one": {
+    "message": "$1 pinned tab"
+  },
+  "pinnedTabsDative_other": {
+    "message": "$1 pinned tabs"
+  },
+  "oldWorkspaces_one": {
+    "message": "$1 old workspace"
+  },
+  "oldWorkspaces_other": {
+    "message": "$1 old workspaces"
+  },
+  "tabsNotRestored_one": {
+    "message": "$1 tab not restored"
+  },
+  "tabsNotRestored_other": {
+    "message": "$1 tabs not restored"
+  },
+  "notRestoredTabs_one": {
+    "message": "$1 tab that was not restored"
+  },
+  "notRestoredTabs_other": {
+    "message": "$1 tabs that were not restored"
+  },
+  "closeTabs_one": {
+    "message": "Close $1 tab?"
+  },
+  "closeTabs_other": {
+    "message": "Close $1 tabs?"
+  },
+  "error": {
+    "message": "Error"
+  },
+  "newWorkspace": {
+    "message": "＋ New workspace"
+  },
+  "openTransfer": {
+    "message": "⇅ Export / import"
+  },
+  "muteStash": {
+    "message": "Mute stashes"
+  },
+  "muteStashTitle": {
+    "message": "Tabs in workspaces that are not shown play no sound"
+  },
+  "unloadAfter": {
+    "message": "Unload stashes after"
+  },
+  "unloadNever": {
+    "message": "never"
+  },
+  "unloadMinutes": {
+    "message": "$1 minutes"
+  },
+  "unloadHour": {
+    "message": "1 hour"
+  },
+  "unloadHours": {
+    "message": "$1 hours"
+  },
+  "keySummary": {
+    "message": "Key for install.sh"
+  },
+  "copy": {
+    "message": "Copy"
+  },
+  "copied": {
+    "message": "Copied"
+  },
+  "copyFailed": {
+    "message": "Failed"
+  },
+  "keyUnavailable": {
+    "message": "Not available: $1"
+  },
+  "popupHint": {
+    "message": "↑ / ↓ and Enter or Alt+Shift+↑ / ↓ switch · Right-click on a page: move tab"
+  },
+  "versionTitle": {
+    "message": "Version of the extension"
+  },
+  "reload": {
+    "message": "Reload"
+  },
+  "backupFailingSince": {
+    "message": "Backup failing since $1"
+  },
+  "backupFailingHint": {
+    "message": "If a window is lost, all changes since then are missing."
+  },
+  "colorBlue": {
+    "message": "Blue"
+  },
+  "colorRed": {
+    "message": "Red"
+  },
+  "colorGreen": {
+    "message": "Green"
+  },
+  "colorOrange": {
+    "message": "Orange"
+  },
+  "colorPurple": {
+    "message": "Purple"
+  },
+  "colorPink": {
+    "message": "Pink"
+  },
+  "colorTeal": {
+    "message": "Teal"
+  },
+  "colorGray": {
+    "message": "Gray"
+  },
+  "keyN": {
+    "message": "Key $1"
+  },
+  "otherWindow": {
+    "message": "other window"
+  },
+  "muteTitle": {
+    "message": "Mute"
+  },
+  "muteLabel": {
+    "message": "Mute “$1”"
+  },
+  "muting": {
+    "message": "Muting …"
+  },
+  "muteFailed": {
+    "message": "Could not mute the sound."
+  },
+  "moveTabTitle": {
+    "message": "Move the current tab here"
+  },
+  "moveTabsTitle": {
+    "message": "Move $1 selected tabs here"
+  },
+  "moveTabLabel": {
+    "message": "Move the current tab to “$1”"
+  },
+  "moveTabsLabel": {
+    "message": "Move $1 selected tabs to “$2”"
+  },
+  "movingTab": {
+    "message": "Moving tab …"
+  },
+  "movingTabs": {
+    "message": "Moving tabs …"
+  },
+  "moveTabFailed": {
+    "message": "Could not move the tab."
+  },
+  "moveTabsFailed": {
+    "message": "Could not move the tabs."
+  },
+  "edit": {
+    "message": "Edit"
+  },
+  "editLabel": {
+    "message": "Edit “$1”"
+  },
+  "retry": {
+    "message": "Try again"
+  },
+  "retryTitle": {
+    "message": "Switches to this workspace"
+  },
+  "discard": {
+    "message": "Discard"
+  },
+  "discardTitle": {
+    "message": "Remove the missing tabs from the backup"
+  },
+  "confirm": {
+    "message": "Sure?"
+  },
+  "restoring": {
+    "message": "Restoring tabs …"
+  },
+  "restoreFailed": {
+    "message": "Could not restore the tabs."
+  },
+  "discarding": {
+    "message": "Discarding …"
+  },
+  "discardFailed": {
+    "message": "Could not discard the tabs."
+  },
+  "emojiTitle": {
+    "message": "Emoji (empty = first letter)"
+  },
+  "emojiLabel": {
+    "message": "Emoji, empty for the first letter"
+  },
+  "name": {
+    "message": "Name"
+  },
+  "color": {
+    "message": "Color"
+  },
+  "moveUp": {
+    "message": "Move up"
+  },
+  "moveDown": {
+    "message": "Move down"
+  },
+  "delete": {
+    "message": "Delete"
+  },
+  "deleteLastTitle": {
+    "message": "The last workspace cannot be deleted"
+  },
+  "confirmDelete": {
+    "message": "Really delete?"
+  },
+  "saving": {
+    "message": "Saving …"
+  },
+  "saveFailed": {
+    "message": "Could not save the change."
+  },
+  "settingFailed": {
+    "message": "Could not save the setting."
+  },
+  "deleting": {
+    "message": "Deleting workspace …"
+  },
+  "deleteFailed": {
+    "message": "Could not delete the workspace."
+  },
+  "reordering": {
+    "message": "Saving order …"
+  },
+  "reorderFailed": {
+    "message": "Could not change the order."
+  },
+  "switching": {
+    "message": "Switching workspace …"
+  },
+  "switchFailed": {
+    "message": "Could not switch the workspace."
+  },
+  "creating": {
+    "message": "Creating workspace …"
+  },
+  "createFailed": {
+    "message": "Could not create the workspace."
+  },
+  "opening": {
+    "message": "Opening …"
+  },
+  "openTransferFailed": {
+    "message": "Could not open export and import."
+  },
+  "loading": {
+    "message": "Loading …"
+  },
+  "loadFailed": {
+    "message": "Could not load the workspaces."
+  },
+  "transferTitle": {
+    "message": "Export and import workspaces"
+  },
+  "exportHeading": {
+    "message": "Export"
+  },
+  "exportText": {
+    "message": "Saves all workspaces with name, color, emoji, order, tabs and tab groups as well as the pinned tabs as a JSON file. Window IDs and the device key are left out."
+  },
+  "exportButton": {
+    "message": "Save as file"
+  },
+  "importHeading": {
+    "message": "Import"
+  },
+  "importText": {
+    "message": "The file is checked completely first. Nothing changes until you confirm below."
+  },
+  "modesLegend": {
+    "message": "What should happen?"
+  },
+  "mergeName": {
+    "message": "Merge"
+  },
+  "mergeText": {
+    "message": "existing workspaces and tabs stay, nothing is closed."
+  },
+  "replaceName": {
+    "message": "Replace"
+  },
+  "replaceText": {
+    "message": "the existing workspaces are deleted and replaced by the ones from the file."
+  },
+  "importButton": {
+    "message": "Import"
+  },
+  "exporting": {
+    "message": "Exporting …"
+  },
+  "exportDone": {
+    "message": "Exported $1 with $2."
+  },
+  "exportDonePinned": {
+    "message": "Exported $1 with $2 and $3."
+  },
+  "exportFailed": {
+    "message": "Export failed: $1"
+  },
+  "fileValid": {
+    "message": "The file is valid: $1."
+  },
+  "fileValidDate": {
+    "message": "The file is valid: $1 (exported on $2)."
+  },
+  "pinnedPlan": {
+    "message": "Pinned tabs: $1 new"
+  },
+  "pinnedPlanSkip": {
+    "message": "Pinned tabs: $1 new, $2 already there"
+  },
+  "mergeById": {
+    "message": "same workspace"
+  },
+  "mergeByName": {
+    "message": "same name"
+  },
+  "mergeNew": {
+    "message": "“$1” is created ($2)."
+  },
+  "mergeNothing": {
+    "message": "“$1” ($2): all $3 already there, nothing to do."
+  },
+  "mergeAdd": {
+    "message": "“$1” ($2): $3 new."
+  },
+  "mergeAddSkip": {
+    "message": "“$1” ($2): $3 new, $4 already there."
+  },
+  "replaceDelete": {
+    "message": "Deletes $1 ($2) and closes $3."
+  },
+  "replaceDiscard": {
+    "message": "Discards $1."
+  },
+  "replaceCreate": {
+    "message": "Creates $1 from the file."
+  },
+  "replacePinned": {
+    "message": "Pinned tabs stay open, missing ones from the file are added."
+  },
+  "quoted": {
+    "message": "“$1”"
+  },
+  "checkingFile": {
+    "message": "Checking file …"
+  },
+  "fileTooLarge": {
+    "message": "The file is too large."
+  },
+  "fileRejected": {
+    "message": "This file cannot be imported. Nothing was changed."
+  },
+  "confirmReplaceTabs": {
+    "message": "Close $1 and replace?"
+  },
+  "confirmReplace": {
+    "message": "Really replace?"
+  },
+  "importing": {
+    "message": "Importing …"
+  },
+  "resCreated": {
+    "message": "$1 created"
+  },
+  "resMerged": {
+    "message": "$1 extended"
+  },
+  "resAdded": {
+    "message": "$1 imported"
+  },
+  "resSkipped": {
+    "message": "$1 duplicates skipped"
+  },
+  "resPinned": {
+    "message": "$1 added"
+  },
+  "resRemoved": {
+    "message": "$1 with $2 removed"
+  },
+  "importDone": {
+    "message": "Import complete: $1."
+  },
+  "importDoneFailed": {
+    "message": "Import complete: $1. $2 could not be opened, the popup lists them as “not restored”."
+  },
+  "importFailed": {
+    "message": "Import failed."
+  },
+  "stashHeading": {
+    "message": "Workspace stash"
+  },
+  "stashText": {
+    "message": "This hidden window belongs to the “Workspaces” extension. It holds the tabs of a workspace that is not shown right now. Please do not close it – use the workspace button in the toolbar to switch."
+  },
+  "defaultWorkspace": {
+    "message": "Default"
+  },
+  "recoveredWorkspace": {
+    "message": "Recovered"
+  },
+  "iconTitle": {
+    "message": "Workspace: $1"
+  },
+  "iconTitleMissing": {
+    "message": "Workspace: $1 – $2"
+  },
+  "menuMove": {
+    "message": "Move tab to workspace"
+  },
+  "menuMoveMarked": {
+    "message": "Move $1 selected tabs to workspace"
+  },
+  "menuGroup": {
+    "message": "Move group to workspace"
+  },
+  "unloadInvalid": {
+    "message": "Invalid time for unloading."
+  },
+  "importModeUnknown": {
+    "message": "Unknown kind of import."
+  },
+  "importReplaceUnconfirmed": {
+    "message": "Replacing closes tabs and has to be confirmed."
+  },
+  "exNotJson": {
+    "message": "The file is not valid JSON."
+  },
+  "exNotText": {
+    "message": "“$1” is missing or not text."
+  },
+  "exTooLong": {
+    "message": "“$1” is too long."
+  },
+  "exNotList": {
+    "message": "“$1” is missing or not a list."
+  },
+  "exBadUrl": {
+    "message": "“$1” is not a valid address."
+  },
+  "exJavascript": {
+    "message": "javascript: addresses are not imported."
+  },
+  "exOwnPage": {
+    "message": "Pages of the extension itself do not belong in the file."
+  },
+  "exNotExport": {
+    "message": "This is not an export file of Helium Workspaces."
+  },
+  "exBadVersion": {
+    "message": "The version number of the format is missing or invalid."
+  },
+  "exNewerVersion": {
+    "message": "The file has format version $1, this extension only knows version $2."
+  },
+  "exNotObject": {
+    "message": "Entry is not an object."
+  },
+  "exNoWorkspaces": {
+    "message": "The file contains no workspaces."
+  },
+  "exTooManyWorkspaces": {
+    "message": "The file contains too many workspaces."
+  },
+  "exTooManyTabs": {
+    "message": "The file contains too many tabs."
+  },
+  "exBadColor": {
+    "message": "“$1” is not a color of the form #rrggbb."
+  },
+  "exBadId": {
+    "message": "“id” may only contain letters and digits."
+  },
+  "exDupId": {
+    "message": "The ID “$1” occurs more than once."
+  },
+  "exEmptyId": {
+    "message": "“id” is empty."
+  },
+  "exDupGroupId": {
+    "message": "The group ID “$1” occurs more than once."
+  },
+  "exBadGroupColor": {
+    "message": "“$1” is not a group color ($2)."
+  },
+  "exBadCollapsed": {
+    "message": "“collapsed” must be true or false."
+  },
+  "exUnknownGroup": {
+    "message": "Group “$1” is not listed under “groups”."
+  },
+  "exWherePinned": {
+    "message": "Pinned tab $1"
+  },
+  "exWhereWs": {
+    "message": "Workspace $1"
+  },
+  "exWhereWsNamed": {
+    "message": "Workspace $1 (“$2”)"
+  },
+  "exWhereGroup": {
+    "message": "$1, group $2"
+  },
+  "exWhereTab": {
+    "message": "$1, tab $2"
+  },
+  "workspaceName": {
+    "message": "Workspace"
+  },
+  "workspaceN": {
+    "message": "Workspace $1"
+  }
+}

@@ -1,23 +1,29 @@
 {
   "manifest_version": 3,
-  "name": "Workspaces",
-  "version": "0.2.0",
-  "description": "Arbeitsbereiche wie in Opera: mehrere Tab-Sätze im selben Fenster, ohne Neuladen.",
+  "name": "__MSG_extName__",
+  "version": "0.2.1",
+  "description": "__MSG_extDescription__",
+  "default_locale": "en",
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
   "permissions": ["tabs", "tabGroups", "storage", "unlimitedStorage", "contextMenus", "alarms"],
   "background": { "service_worker": "background.js" },
-  "action": { "default_popup": "popup.html", "default_title": "Workspaces" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "__MSG_extName__",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png" }
+  },
   "commands": {
     "_execute_action": {
       "suggested_key": { "default": "Alt+W" },
-      "description": "Workspace-Liste öffnen"
+      "description": "__MSG_cmdOpen__"
     },
     "next-workspace": {
       "suggested_key": { "default": "Alt+Shift+Down" },
-      "description": "Nächster Workspace"
+      "description": "__MSG_cmdNext__"
     },
     "prev-workspace": {
       "suggested_key": { "default": "Alt+Shift+Up" },
-      "description": "Vorheriger Workspace"
+      "description": "__MSG_cmdPrev__"
     }
   }
 }

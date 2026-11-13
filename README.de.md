@@ -4,7 +4,7 @@
 
 Helium Workspaces bringt Arbeitsbereiche wie in Opera in den [Helium-Browser](https://github.com/imputnet/helium-linux): mehrere Tab-Sätze im selben Fenster, umschaltbar per Klick oder Tastenkürzel. Beim Wechseln wird nichts neu geladen, Videos und Logins laufen einfach weiter.
 
-Besteht aus einer Browser-Erweiterung und einem kleinen KWin-Skript für KDE Plasma.
+Besteht aus einer Browser-Erweiterung und einem kleinen KWin-Skript für KDE Plasma. Die Erweiterung spricht Deutsch und Englisch und richtet sich nach der Sprache des Browsers.
 
 ## „Warum nicht einfach Profile?“
 

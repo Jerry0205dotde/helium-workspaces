@@ -76,21 +76,21 @@ function parseExchange(text, extOrigin) {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error('Die Datei ist kein gültiges JSON.');
+    throw new Error(tr('exNotJson'));
   }
   const fail = (where, msg) => {
     throw new Error(where ? `${where}: ${msg}` : msg);
   };
   const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
   const str = (v, where, field, max = EXCHANGE_LIMITS.text) => {
-    if (typeof v !== 'string') fail(where, `„${field}“ fehlt oder ist kein Text.`);
-    if (v.length > max) fail(where, `„${field}“ ist zu lang.`);
+    if (typeof v !== 'string') fail(where, tr('exNotText', field));
+    if (v.length > max) fail(where, tr('exTooLong', field));
     return v;
   };
   const optStr = (v, where, field) => (v === undefined ? '' : str(v, where, field));
   const arr = (v, where, field, optional) => {
     if (v === undefined && optional) return [];
-    if (!Array.isArray(v)) fail(where, `„${field}“ fehlt oder ist keine Liste.`);
+    if (!Array.isArray(v)) fail(where, tr('exNotList', field));
     return v;
   };
   const url = (v, where) => {
@@ -99,76 +99,76 @@ function parseExchange(text, extOrigin) {
     try {
       u = new URL(v);
     } catch {
-      fail(where, `„${v.slice(0, 80)}“ ist keine gültige Adresse.`);
+      fail(where, tr('exBadUrl', v.slice(0, 80)));
     }
-    if (u.protocol === 'javascript:') fail(where, 'javascript:-Adressen werden nicht importiert.');
-    if (isOwnPage(v, extOrigin)) fail(where, 'Seiten der Erweiterung selbst gehören nicht in die Datei.');
+    if (u.protocol === 'javascript:') fail(where, tr('exJavascript'));
+    if (isOwnPage(v, extOrigin)) fail(where, tr('exOwnPage'));
     return v;
   };
 
   if (!isObj(data) || data.format !== EXCHANGE_FORMAT) {
-    fail('', 'Das ist keine Export-Datei von Helium Workspaces.');
+    fail('', tr('exNotExport'));
   }
   if (!Number.isInteger(data.version) || data.version < 1) {
-    fail('', 'Die Versionsnummer des Formats fehlt oder ist ungültig.');
+    fail('', tr('exBadVersion'));
   }
   if (data.version > EXCHANGE_VERSION) {
-    fail('', `Die Datei hat Format-Version ${data.version}, diese Erweiterung kennt nur Version ${EXCHANGE_VERSION}.`);
+    fail('', tr('exNewerVersion', data.version, EXCHANGE_VERSION));
   }
   const exported = typeof data.exported === 'string' ? data.exported : '';
 
   const pinned = arr(data.pinned, '', 'pinned', true).map((t, i) => {
-    const where = `Angehefteter Tab ${i + 1}`;
-    if (!isObj(t)) fail(where, 'Eintrag ist kein Objekt.');
+    const where = tr('exWherePinned', i + 1);
+    if (!isObj(t)) fail(where, tr('exNotObject'));
     return { url: url(t.url, where), title: optStr(t.title, where, 'title') };
   });
 
   const list = arr(data.workspaces, '', 'workspaces');
-  if (!list.length) fail('', 'Die Datei enthält keine Workspaces.');
-  if (list.length > EXCHANGE_LIMITS.workspaces) fail('', 'Die Datei enthält zu viele Workspaces.');
+  if (!list.length) fail('', tr('exNoWorkspaces'));
+  if (list.length > EXCHANGE_LIMITS.workspaces) fail('', tr('exTooManyWorkspaces'));
   const wsIds = new Set();
   let total = pinned.length;
   const workspaces = list.map((w, wi) => {
-    let where = `Workspace ${wi + 1}`;
-    if (!isObj(w)) fail(where, 'Eintrag ist kein Objekt.');
+    let where = tr('exWhereWs', wi + 1);
+    if (!isObj(w)) fail(where, tr('exNotObject'));
     const name = wsName(str(w.name, where, 'name'));
-    where = `Workspace ${wi + 1} („${name}“)`;
+    where = tr('exWhereWsNamed', wi + 1, name);
     const color = str(w.color, where, 'color');
-    if (!/^#[0-9a-f]{6}$/i.test(color)) fail(where, `„${color}“ ist keine Farbe der Form #rrggbb.`);
+    if (!/^#[0-9a-f]{6}$/i.test(color)) fail(where, tr('exBadColor', color));
     const emoji = firstChar(optStr(w.emoji, where, 'emoji'));
     let id = null;
     if (w.id !== undefined) {
       id = str(w.id, where, 'id', 64);
-      if (!/^[a-z0-9]+$/i.test(id)) fail(where, '„id“ darf nur Buchstaben und Ziffern enthalten.');
-      if (wsIds.has(id)) fail(where, `Die ID „${id}“ kommt mehrfach vor.`);
+      if (!/^[a-z0-9]+$/i.test(id)) fail(where, tr('exBadId'));
+      if (wsIds.has(id)) fail(where, tr('exDupId', id));
       wsIds.add(id);
     }
 
     const groups = new Map();
     arr(w.groups, where, 'groups', true).forEach((g, gi) => {
-      const gw = `${where}, Gruppe ${gi + 1}`;
-      if (!isObj(g)) fail(gw, 'Eintrag ist kein Objekt.');
+      const gw = tr('exWhereGroup', where, gi + 1);
+      if (!isObj(g)) fail(gw, tr('exNotObject'));
       const gid = str(g.id, gw, 'id', 64);
-      if (!gid) fail(gw, '„id“ ist leer.');
-      if (groups.has(gid)) fail(gw, `Die Gruppen-ID „${gid}“ kommt mehrfach vor.`);
-      if (!GROUP_COLORS.includes(g.color)) fail(gw, `„${g.color}“ ist keine Gruppenfarbe (${GROUP_COLORS.join(', ')}).`);
-      if (g.collapsed !== undefined && typeof g.collapsed !== 'boolean') fail(gw, '„collapsed“ muss true oder false sein.');
+      if (!gid) fail(gw, tr('exEmptyId'));
+      if (groups.has(gid)) fail(gw, tr('exDupGroupId', gid));
+      if (!GROUP_COLORS.includes(g.color)) fail(gw, tr('exBadGroupColor', g.color, GROUP_COLORS.join(', ')));
+      if (g.collapsed !== undefined && typeof g.collapsed !== 'boolean') fail(gw, tr('exBadCollapsed'));
       groups.set(gid, { gt: optStr(g.title, gw, 'title'), gc: g.color, gx: !!g.collapsed });
     });
 
     const tabs = arr(w.tabs, where, 'tabs').map((t, ti) => {
-      const tw = `${where}, Tab ${ti + 1}`;
-      if (!isObj(t)) fail(tw, 'Eintrag ist kein Objekt.');
+      const tw = tr('exWhereTab', where, ti + 1);
+      if (!isObj(t)) fail(tw, tr('exNotObject'));
       const e = { url: url(t.url, tw), title: optStr(t.title, tw, 'title') };
       if (t.group !== undefined && t.group !== null) {
         const g = groups.get(t.group);
-        if (!g) fail(tw, `Gruppe „${t.group}“ ist nicht unter „groups“ aufgeführt.`);
+        if (!g) fail(tw, tr('exUnknownGroup', t.group));
         Object.assign(e, { g: `${wi}:${t.group}` }, g);
       }
       return e;
     });
     total += tabs.length;
-    if (total > EXCHANGE_LIMITS.tabs) fail('', 'Die Datei enthält zu viele Tabs.');
+    if (total > EXCHANGE_LIMITS.tabs) fail('', tr('exTooManyTabs'));
     return { id, name, color, emoji, groups: new Set(tabs.map((e) => e.g).filter(Boolean)).size, tabs };
   });
   return { exported, pinned, workspaces };

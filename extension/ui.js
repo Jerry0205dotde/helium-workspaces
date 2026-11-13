@@ -1,9 +1,9 @@
-// Gemeinsame Helfer der Seiten (Popup, Export und Import). Braucht label.js.
+// Gemeinsame Helfer der Seiten (Popup, Export und Import). Braucht i18n.js und label.js.
 
 // Nachricht an die Hintergrundlogik; deren Fehler kommt als Error zurück
 const send = (msg) =>
   chrome.runtime.sendMessage(msg).then((r) => {
-    if (!r?.ok) throw new Error(r?.error || 'Fehler');
+    if (!r?.ok) throw new Error(r?.error || tr('error'));
     return r.result;
   });
 

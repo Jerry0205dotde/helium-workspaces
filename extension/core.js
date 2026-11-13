@@ -24,7 +24,7 @@ function newId() {
 async function getConfig() {
   let { workspaces, lastWs } = await chrome.storage.local.get(['workspaces', 'lastWs']);
   if (!Array.isArray(workspaces) || workspaces.length === 0) {
-    workspaces = [{ id: newId(), name: 'Standard', color: COLORS[0], emoji: '' }];
+    workspaces = [{ id: newId(), name: tr('defaultWorkspace'), color: COLORS[0], emoji: '' }];
     await chrome.storage.local.set({ workspaces });
   }
   if (!workspaces.some((w) => w.id === lastWs)) lastWs = workspaces[0].id;

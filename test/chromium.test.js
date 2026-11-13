@@ -17,6 +17,7 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { Chromium, EXT_ID, waitFor } = require('./chromium');
+const { messages } = require('./i18n');
 
 const STASH = `chrome-extension://${EXT_ID}/stash.html#`;
 const NEWTAB = /^chrome:\/\/(newtab|new-tab-page)\//;
@@ -263,6 +264,13 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     await env.launch('last');
     const st = await env.state();
     assert.equal(st.workspaces.length, 1);
+    // Texte aus _locales in der Sprache des Browsers, sonst Englisch; $1 und $2 ersetzt
+    const lang = await b.sw('return chrome.i18n.getUILanguage();');
+    const msgs = messages(lang.startsWith('de') ? 'de' : 'en');
+    assert.equal(st.workspaces[0].name, msgs.defaultWorkspace.message, `erster Workspace (${lang})`);
+    const where = await b.sw("return tr('exWhereWsNamed', 2, 'X');");
+    assert.equal(where, msgs.exWhereWsNamed.message.replace('$1', '2').replace('$2', 'X'));
+    assert.equal(await b.sw('return chrome.action.getTitle({});'), 'Workspaces', 'Titel aus dem Manifest');
     const win = st.windows[0].id;
     await openTabs(env, win, SPEC.pinned.map(norm), true);
     await openTabs(env, win, SPEC.workspaces.A);

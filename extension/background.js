@@ -14,6 +14,7 @@
 // Gültigkeitsbereich, und bevor das erste Ereignis kommt, sind alle geladen.
 
 importScripts(
+  'i18n.js',
   'label.js',
   'exchange.js',
   'core.js',

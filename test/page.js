@@ -14,6 +14,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
+const i18n = require('./i18n');
 
 const EXT_DIR = path.join(__dirname, '..', 'extension');
 const plain = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
@@ -103,7 +104,7 @@ class Chromium {
 }
 
 // Ersetzt window.chrome in der Seite. Jeder Aufruf geht als JSON an __bridge (Node),
-// die Antwort kommt über __reply zurück. getManifest liefert manifest.json. window.close
+// die Antwort kommt über __reply zurück. getManifest liefert manifest.json, i18n die deutschen Texte. window.close
 // schließt nicht, sondern merkt sich das.
 const STUB = `(() => {
   const waiting = new Map();
@@ -128,6 +129,7 @@ const STUB = `(() => {
         getURL: (p) => 'chrome-extension://test/' + p,
         getManifest: () => (${fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8').trim()}),
       },
+      i18n: { getMessage: ${i18n.pageSource()} },
       tabs: api('tabs', ['query']),
       windows: api('windows', ['getCurrent', 'update', 'create']),
     },
