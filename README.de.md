@@ -213,12 +213,10 @@ Ohne die Erweiterung verlieren die Ablage-Fenster ihre Markierung, ihre Tabs ble
 4. **KWin-Skript entfernen.** Erst jetzt, denn ohne laufendes Skript tauchen versteckte Fenster nicht wieder auf:
 
    ```bash
-   qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces
-   kpackagetool6 --type=KWin/Script -r helium-workspaces
-   kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete
-   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
-   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers --delete
+   ./install.sh --uninstall
    ```
+
+   Das entlädt das Skript, entfernt es und löscht seine Einträge aus `kwinrc`. Wie beim Installieren in einem Terminal in der Plasma-Sitzung ausführen. Erreicht es KWin nicht, bricht es ab, ohne etwas zu entfernen.
 
    Wurde das Skript zu früh entfernt, Helium beenden und neu starten. Danach sind die Fenster wieder normal sichtbar.
 5. **Erweiterung entfernen.** In `chrome://extensions` bei „Workspaces“ auf **Entfernen** klicken. Das löscht die Workspaces und die Sicherung aus dem Profil. Danach kann der Repository-Ordner gelöscht werden.
@@ -233,7 +231,7 @@ Das ist ein privates Bastelprojekt. Rechne mit Fehlern.
 node --test test/*.test.js
 ```
 
-Braucht nur Node.js ab Version 22, keinen Browser und kein KWin. Die Tests laden `background.js` samt der Dateien, die es lädt, unverändert in eine Nachbildung der Chrome-APIs und spielen damit Wechsel mit Gruppen und angehefteten Tabs, mehrere Fenster, Neustarts mit und ohne Sitzungswiederherstellung, das Neuladen der Erweiterung, gezielt scheiternde API-Aufrufe, schnell aufeinanderfolgende Änderungen sowie Export und Import samt Zusammenführen und Ersetzen durch. Dazu kommen Syntax, Manifest und KWin-Metadaten, außerdem läuft das KWin-Skript gegen eine Nachbildung der KWin-API und zeigt, welche Fenster es versteckt. Dieselben Prüfungen laufen in der CI bei jedem Pull Request.
+Braucht nur Node.js ab Version 22, keinen Browser und kein KWin. Die Tests laden `background.js` samt der Dateien, die es lädt, unverändert in eine Nachbildung der Chrome-APIs und spielen damit Wechsel mit Gruppen und angehefteten Tabs, mehrere Fenster, Neustarts mit und ohne Sitzungswiederherstellung, das Neuladen der Erweiterung, gezielt scheiternde API-Aufrufe, schnell aufeinanderfolgende Änderungen sowie Export und Import samt Zusammenführen und Ersetzen durch. Dazu kommen Syntax, Manifest und KWin-Metadaten, außerdem läuft das KWin-Skript gegen eine Nachbildung der KWin-API und zeigt, welche Fenster es versteckt. `install.sh --uninstall` läuft gegen Nachbildungen der KDE-Befehle. Dieselben Prüfungen laufen in der CI bei jedem Pull Request.
 
 Ändert sich etwas in `extension/`, muss die Version in [`manifest.json`](./extension/manifest.json) höher sein als auf `main`, sonst schlägt `static.test.js` fehl. Die Version steht unten rechts im Popup, so sieht man nach einem Update, ob der neue Stand läuft. Verglichen wird mit `origin/main`, mit `VERSION_BASE` lässt sich eine andere Ref angeben. Fehlt die Ref, wird die Prüfung übersprungen.
 
@@ -269,7 +267,7 @@ KWin prüfen die Tests nicht. Nach Änderungen daran kurz von Hand:
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): die Seite, die ein Fenster als Ablage markiert
   - [`label.js`](./extension/label.js): das Zeichen im Symbol eines Workspace
 - [`kwin/`](./kwin): KWin-Skript, das die Ablage-Fenster versteckt
-- [`install.sh`](./install.sh): KWin-Skript einrichten und den Schlüssel eintragen
+- [`install.sh`](./install.sh): KWin-Skript einrichten und den Schlüssel eintragen, mit `--uninstall` wieder entfernen
 - [`test/`](./test): automatische Tests, [`fake-browser.js`](./test/fake-browser.js) bildet die Chrome-APIs nach, [`page.js`](./test/page.js) bedient Popup und Importseite in Chromium, [`chromium.js`](./test/chromium.js) steuert einen echten Chromium
 
 ## Lizenz
