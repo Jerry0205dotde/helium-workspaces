@@ -48,23 +48,21 @@ async function deleteWs(id, batch = []) {
   const { stash } = await scan();
   const w = stash.get(id);
   const { backup } = await getBackup();
-  // Die Tabs der Ablage selbst aufbewahren: Die Sicherung kann ihnen bis zu zwei Sekunden
-  // hinterherhinken. Nicht wiederhergestellte Einträge kommen aus der Sicherung mit.
-  let saved = backup[id];
+  // Die Sicherung kann der Ablage bis zu zwei Sekunden hinterherhinken: ihren Stand vor dem
+  // Schließen sichern. Nicht wiederhergestellte Einträge bleiben dabei erhalten.
   if (w) {
     const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
     const failed = backup[id]?.failed;
-    saved = { stash: stashTabsOf(w).map((t) => serTab(t, groups)), shown: [], ...(failed?.length ? { failed } : {}) };
-  }
-  // Nur ein schon geschlossenes Fenster gilt als Erfolg. Bliebe die Ablage offen, holte
-  // der nächste Abgleich sie als Workspace „Wiederhergestellt“ zurück.
-  if (w) {
+    backup[id] = { stash: stashTabsOf(w).map((t) => serTab(t, groups)), shown: [], ...(failed?.length ? { failed } : {}) };
+    await chrome.storage.local.set({ backup });
+    // Nur ein schon geschlossenes Fenster gilt als Erfolg. Bliebe die Ablage offen, holte
+    // der nächste Abgleich sie als Workspace „Wiederhergestellt“ zurück.
     await whenIdle(() => chrome.windows.remove(w.id)).catch((err) => {
       if (!GONE.test(err?.message || '')) throw err;
     });
   }
 
-  batch.push({ ws: cfg.workspaces[idx], index: idx, backup: saved || { stash: [], shown: [] } });
+  batch.push({ ws: cfg.workspaces[idx], index: idx, backup: backup[id] || { stash: [], shown: [] } });
   await chrome.storage.local.set({ deleted: batch });
   cfg.workspaces.splice(idx, 1);
   await saveWorkspaces(cfg.workspaces);

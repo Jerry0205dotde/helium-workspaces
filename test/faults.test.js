@@ -337,6 +337,21 @@ test('Ablage lässt sich beim Löschen nicht schließen: Workspace bleibt, kein 
   check(env, { A: SPEC.workspaces.A, B: SPEC.workspaces.B, pinned: SPEC.pinned });
 });
 
+test('Scheitert beim Löschen das Aufbewahren für Rückgängig, bleiben auch ungesicherte Tabs erhalten (#80)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, ids, win } = env;
+  // Ohne abzuwarten: Die verzögerte Sicherung kennt c2 noch nicht
+  await b.chrome.tabs.create({ windowId: stashOf(env, 'C').id, url: url('c2'), active: false });
+  b.fail('storage.local.set', { when: (items) => 'deleted' in items, message: 'Speichern gescheitert (Test)' });
+  const reply = await w.request({ type: 'delete', wsId: ids.C });
+  assert.equal(reply.ok, false);
+  assert.deepEqual(b.local.data.workspaces.map((x) => x.name), ['A', 'B', 'C']);
+  const expected = { ...ALL, C: ['c1', 'c2'] };
+  check(env, expected);
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.C }));
+  check(env, expected);
+});
+
 test('Während ein Tab gezogen wird: Schließen der Ablage beim Löschen wird wiederholt', async () => {
   const env = await setup(SPEC);
   const { b, w, ids } = env;
