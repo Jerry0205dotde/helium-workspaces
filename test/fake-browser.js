@@ -335,6 +335,22 @@ class Browser {
     this.closeIfEmpty(w);
   }
 
+  // Schließen per X wie in Chromium: die Tabs verschwinden einzeln, das Fenster bleibt
+  // bis zuletzt abfragbar. between() läuft nach jedem Tab, etwa um die Zeit laufen zu
+  // lassen oder andere Ereignisse auszulösen.
+  async closeWindowByX(id, between = async () => {}) {
+    const w = this.findWin(id);
+    this.lastClosed = this.snap(w);
+    while (w.tabs.length) {
+      const t = w.tabs.pop();
+      t.active = false;
+      this.fire('tabs.onRemoved', t.id, { windowId: w.id, isWindowClosing: true });
+      this.dropEmptyGroup(t.groupId);
+      await between();
+    }
+    this.closeIfEmpty(w);
+  }
+
   // Verschiebt einen einzelnen Tab (verlässt dabei seine Gruppe, außer keepGroup).
   moveTab(t, from, to, index, keepGroup = false) {
     const oldIndex = this.detach(t, from);

@@ -112,7 +112,53 @@ function debounce(name, ms, fn, maxMs = Infinity) {
 }
 
 const scheduleReconcile = () => debounce('reconcile', 800, reconcile);
-const scheduleSnapshot = () => debounce('snapshot', 300, snapshot, 2000);
+
+// Tab-Änderungen werden verzögert gesichert. Wird vorher das letzte Hauptfenster
+// geschlossen, sind seine Tabs nicht mehr abfragbar. Deshalb wird bei jeder Änderung
+// sofort ein Abbild der Hauptfenster (Tabs und ihre Gruppen) aufgefrischt, aus dem
+// onWindowRemoved die fällige Sicherung nachholt.
+const image = new Map(); // Fenster-ID → { win, groups }
+// Fenster, die gerade schließen (Zeitpunkt): ihr Abbild bleibt, wie es war. Wird das
+// Schließen abgebrochen (etwa im Dialog „Seite verlassen?“), gilt das nach 10 s nicht mehr.
+const closing = new Map();
+const isClosing = (id) => Date.now() - (closing.get(id) ?? -Infinity) < 10000;
+let changes = 0; // Tab-Änderungen seit dem Start des Service Workers
+let savedChanges = 0; // davon in der Sicherung enthalten
+
+function remember(wins, groups, replace = false) {
+  if (replace) for (const id of image.keys()) if (!isClosing(id)) image.delete(id);
+  for (const w of wins) {
+    if (w.incognito || stashWsOf(w) || isClosing(w.id)) continue;
+    image.set(w.id, { win: w, groups: new Map(groups.filter((g) => g.windowId === w.id).map((g) => [g.id, g])) });
+  }
+}
+
+let imaging = false;
+let imageAgain = false;
+async function refreshImage() {
+  if (imaging) {
+    imageAgain = true;
+    return;
+  }
+  imaging = true;
+  try {
+    do {
+      imageAgain = false;
+      const [wins, groups] = await Promise.all([chrome.windows.getAll({ populate: true, windowTypes: ['normal'] }), chrome.tabGroups.query({})]);
+      remember(wins, groups);
+    } while (imageAgain);
+  } catch (e) {
+    console.warn('[workspaces] Abbild der Fenster', e);
+  } finally {
+    imaging = false;
+  }
+}
+
+function scheduleSnapshot() {
+  changes++;
+  refreshImage();
+  debounce('snapshot', 300, () => snapshot(), 2000);
+}
 
 // ---------------------------------------------------------------- Fenster erkennen
 
@@ -676,17 +722,28 @@ function pinnedOf(mains, groups) {
 }
 
 // Sichert den Inhalt aller Workspaces, falls ein Fenster verloren geht
-// (z. B. wenn das Hauptfenster per X geschlossen wird).
-async function snapshot() {
+// (z. B. wenn das Hauptfenster per X geschlossen wird). gone: das gerade geschlossene
+// letzte Hauptfenster aus dem Abbild ({ win, groups, ws }), das noch mitgesichert wird.
+async function snapshot(gone) {
   if (await getPending()) return; // Wechsel noch nicht abgeschlossen
+  const at = changes;
   const cfg = await getConfig();
   const s = await sess();
-  const { stash, mains } = await scan();
+  const { stash, mains: live } = await scan();
+  const groupList = await chrome.tabGroups.query({});
+  // Ein schließendes Fenster verliert seine Tabs einzeln: stattdessen sein Abbild sichern
+  const mains = live.map((w) => (isClosing(w.id) && image.get(w.id)?.win) || w);
+  const imageGroups = live.filter((w) => isClosing(w.id)).flatMap((w) => [...(image.get(w.id)?.groups || [])]);
+  if (gone) {
+    mains.push(gone.win);
+    s.windowWs[gone.win.id] = gone.ws;
+  }
   // Ohne (zugeordnete) Hauptfenster ist der Zustand im Übergang (Start, Beenden,
   // neues Fenster): alte Sicherung behalten, reconcile sichert danach.
   if (!mains.length || mains.some((w) => !s.windowWs[w.id])) return;
+  if (!gone) remember(live, groupList, true);
   const { backup } = await getBackup();
-  const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
+  const groups = new Map([...(gone?.groups || []), ...imageGroups, ...groupList.map((g) => [g.id, g])]);
 
   for (const ws of cfg.workspaces) {
     const { sw, showing } = windowsOf(ws.id, s, stash, mains);
@@ -720,6 +777,7 @@ async function snapshot() {
     await chrome.storage.session.set({ backupError: { since: backupError?.since ?? Date.now(), message: String(e?.message || e) } });
     throw e;
   }
+  savedChanges = Math.max(savedChanges, at);
   await chrome.storage.session.remove('backupError');
 }
 
@@ -1182,6 +1240,9 @@ async function dropStartCopies(s, stash) {
 }
 
 async function onWindowRemoved(winId) {
+  const img = image.get(winId);
+  image.delete(winId);
+  closing.delete(winId);
   const s = await sess();
   const ws = s.windowWs[winId];
   if ((await getPending())?.windowId === winId) scheduleReconcile();
@@ -1204,7 +1265,9 @@ async function onWindowRemoved(winId) {
 
   if (!mains.length) {
     // Letztes sichtbares Fenster geschlossen → Ablagen auch schließen, damit der
-    // Browser wirklich beendet wird. Die Tabs stehen in der Sicherung.
+    // Browser wirklich beendet wird. Die Tabs stehen in der Sicherung; eine noch
+    // ausstehende Sicherung vorher mit dem Abbild des Fensters nachholen.
+    if (changes > savedChanges && img) await snapshot({ ...img, ws }).catch((e) => console.warn('[workspaces] Sicherung beim Schließen', e));
     for (const w of stash.values()) await chrome.windows.remove(w.id).catch(() => {});
     return;
   }
@@ -1599,7 +1662,10 @@ chrome.tabs.onCreated.addListener(async (tab) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId, info) => {
-  if (info.isWindowClosing) return;
+  if (info.isWindowClosing) {
+    if (!isClosing(info.windowId)) closing.set(info.windowId, Date.now());
+    return;
+  }
   scheduleReconcile(); // falls eine Ablage-Seite geschlossen wurde
   scheduleSnapshot();
 });
