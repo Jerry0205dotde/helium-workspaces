@@ -12,11 +12,11 @@
       "description": "Workspace-Liste öffnen"
     },
     "next-workspace": {
-      "suggested_key": { "default": "Alt+Shift+Right" },
+      "suggested_key": { "default": "Alt+Shift+Down" },
       "description": "Nächster Workspace"
     },
     "prev-workspace": {
-      "suggested_key": { "default": "Alt+Shift+Left" },
+      "suggested_key": { "default": "Alt+Shift+Up" },
       "description": "Vorheriger Workspace"
     }
   }

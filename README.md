@@ -109,7 +109,7 @@ The extension's interface is in German. This README quotes its labels as they ap
 | Action | How |
 | --- | --- |
 | Open the workspace list | Toolbar button or <kbd>Alt</kbd>+<kbd>W</kbd> |
-| Next / previous workspace | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>→</kbd> / <kbd>←</kbd> |
+| Next / previous workspace | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>↓</kbd> / <kbd>↑</kbd>, or in the list <kbd>↓</kbd> / <kbd>↑</kbd> and <kbd>Enter</kbd> |
 | Create a workspace, rename it, change its color or emoji, delete it | in the list |
 | Change the order | drag in the list |
 | Move a tab to another workspace | Right-click the page → **Tab in Workspace verschieben** ("Move tab to workspace") |
@@ -117,7 +117,7 @@ The extension's interface is in German. This README quotes its labels as they ap
 
 Good to know:
 
-- The list can be used entirely by keyboard: <kbd>Tab</kbd> to move, <kbd>Enter</kbd> to select, <kbd>1</kbd>–<kbd>9</kbd> switches directly, <kbd>Esc</kbd> closes the editor. Reordering works in the editor with ↑ / ↓.
+- The list can be used entirely by keyboard: <kbd>Tab</kbd> to move, <kbd>↑</kbd> / <kbd>↓</kbd> picks a workspace, <kbd>Enter</kbd> switches to it, <kbd>1</kbd>–<kbd>9</kbd> switches directly, <kbd>Esc</kbd> closes the editor. Reordering works in the editor with ↑ / ↓.
 - Pinned tabs belong to all workspaces and always stay in the window.
 - Tab groups survive switching.
 - If you pick a tab from a stash window, for example via the tab search, the last used main window shows its workspace with the selected tab.
