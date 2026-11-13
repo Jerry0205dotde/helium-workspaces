@@ -9,6 +9,8 @@
 # ./install.sh --uninstall entlädt und entfernt das KWin-Skript samt seiner Einträge in kwinrc.
 # ./install.sh --update holt mit git pull den neuen Stand und richtet das KWin-Skript ohne
 # Rückfrage neu ein, Schlüssel und Browserliste bleiben.
+# Nach der Installation weist das Skript auf Profile von Helium, Google Chrome und Chromium hin,
+# die nicht mit „Dort weitermachen, wo ich aufgehört habe“ starten. Es ändert dort nichts.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -87,4 +89,27 @@ qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-worksp
 qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null
 [ "$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces)" = true ] \
   || { echo "KWin-Skript wurde nicht geladen" >&2; exit 1; }
+
+# session.restore_on_startup ist 1 bei „Dort weitermachen, wo ich aufgehört habe“. Fehlt der
+# Wert, gilt der Standard „Neuer Tab“ (5). Die gleichnamigen Prüfsummen unter protection.macs
+# sind Zeichenketten und passen deshalb nicht auf das Muster.
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
+RESTORE_RE='"restore_on_startup":([0-9]+)'
+NOT_RESTORING=()
+for entry in "net.imput.helium:Helium" "google-chrome:Google Chrome" "chromium:Chromium"; do
+  dir="$CONFIG/${entry%%:*}"
+  for prefs in "$dir/Default/Preferences" "$dir"/Profile\ */Preferences; do
+    [ -f "$prefs" ] || continue
+    [[ "$(<"$prefs")" =~ $RESTORE_RE && "${BASH_REMATCH[1]}" = 1 ]] && continue
+    profile="${prefs%/Preferences}"
+    NOT_RESTORING+=("${entry#*:}: ${profile/#"$HOME"/\~}")
+  done
+done
+if [ ${#NOT_RESTORING[@]} -gt 0 ]; then
+  echo "Hinweis: Diese Profile starten nicht mit „Dort weitermachen, wo ich aufgehört habe“:"
+  printf '  %s\n' "${NOT_RESTORING[@]}"
+  echo "Dann stellt der Browser die Ablage-Fenster beim Start nicht wieder her, und ihre Tabs laden"
+  echo "neu und verlieren ihren Verlauf. Nutzt du die Erweiterung in einem dieser Profile, dort unter"
+  echo "Einstellungen → Beim Start die Option wählen."
+fi
 echo "Fertig."
