@@ -6,7 +6,8 @@
 // deaktiviert), taucht es wieder in der Taskleiste auf, damit keine Tabs unsichtbar
 // verloren gehen.
 const TOKEN = String(readConfig("token", ""));
-const MARK = "HWS-Ablage " + TOKEN + " ";
+const PREFIX = "HWS-Ablage ";
+const MARK = PREFIX + TOKEN + " ";
 const hidden = {};
 // Fensterklasse (X11) bzw. App-ID (Wayland) der Browser, deren Ablagen versteckt werden.
 // install.sh --browsers setzt die Liste in kwinrc, kommagetrennt; ohne Eintrag gilt die
@@ -21,15 +22,17 @@ function isBrowser(w) {
 function check(w) {
     if (!TOKEN || !w || !w.normalWindow) return;
     const id = String(w.internalId);
-    const marked = (w.caption || "").indexOf(MARK) !== -1;
+    const caption = w.caption || "";
+    const marked = caption.indexOf(MARK) !== -1;
     if (marked && isBrowser(w)) {
         hidden[id] = true;
         if (!w.skipTaskbar) w.skipTaskbar = true;
         if (!w.skipSwitcher) w.skipSwitcher = true;
         if (!w.skipPager) w.skipPager = true;
         if (!w.minimized) w.minimized = true;
-    } else if (hidden[id] || (marked && w.skipTaskbar)) {
-        // Auch Ablagen eines Browsers, der nicht mehr in der Liste steht, kommen zurück
+    } else if (hidden[id] || (caption.indexOf(PREFIX) !== -1 && w.skipTaskbar)) {
+        // Auch Ablagen eines Browsers, der nicht mehr in der Liste steht, und Ablagen mit
+        // einem alten Schlüssel (install.sh hat einen neuen eingetragen) kommen zurück
         delete hidden[id];
         w.skipTaskbar = false;
         w.skipSwitcher = false;

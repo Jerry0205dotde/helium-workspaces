@@ -115,3 +115,14 @@ test('Fällt ein Browser aus der Liste, kommen seine versteckten Ablagen zurück
   run([brave], TOKEN, { browsers: '' });
   assert.ok(!brave.skipTaskbar && !brave.skipSwitcher && !brave.skipPager);
 });
+
+test('Ändert sich der Schlüssel, kommen die mit dem alten Schlüssel versteckten Ablagen zurück', () => {
+  const helium = stash('helium');
+  const brave = stash('brave-browser');
+  run([helium, brave], TOKEN, { browsers: 'helium,brave-browser' });
+  assert.ok(isHidden(helium) && isHidden(brave));
+  // install.sh trägt einen neuen Schlüssel ein und lädt das Skript neu; die Fenster tragen noch den alten.
+  // Brave fällt dabei zugleich aus der Liste.
+  run([helium, brave], 'ffffffffffffffffffffffff');
+  for (const w of [helium, brave]) assert.ok(!w.skipTaskbar && !w.skipSwitcher && !w.skipPager, `${w.resourceClass} bleibt versteckt`);
+});
