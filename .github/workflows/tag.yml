@@ -1,0 +1,25 @@
+name: Tag
+
+# Steigt die Version in extension/manifest.json, bekommt der Commit auf main das Tag
+# v<Version>. Gibt es das Tag schon, passiert nichts.
+on:
+  push:
+    branches: [main]
+    paths: [extension/manifest.json]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          tag="v$(node -p "require('./extension/manifest.json').version")"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "$tag gibt es schon"
+          else
+            git tag "$tag"
+            git push origin "$tag"
+          fi

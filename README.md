@@ -222,6 +222,8 @@ This only needs Node.js 22 or later, no browser and no KWin. The tests load `bac
 
 If anything in `extension/` changes, the version in [`manifest.json`](./extension/manifest.json) must be higher than on `main`, otherwise `static.test.js` fails. The version is shown in the bottom right of the popup, so after an update you can see whether the new code is running. The comparison is against `origin/main`; `VERSION_BASE` selects a different ref. If the ref is missing, the check is skipped.
 
+When a higher version lands on `main`, [`tag.yml`](./.github/workflows/tag.yml) tags that commit as `v<version>`, for example `v0.2.0`.
+
 With a Chromium-based browser, the most important flows also run in a real browser:
 
 ```bash
