@@ -217,12 +217,10 @@ Without the extension the stash windows lose their marker, but their tabs stay i
 4. **Remove the KWin script.** Only now, because hidden windows do not reappear without the running script:
 
    ```bash
-   qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces
-   kpackagetool6 --type=KWin/Script -r helium-workspaces
-   kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete
-   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
-   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers --delete
+   ./install.sh --uninstall
    ```
+
+   This unloads the script, removes it and deletes its entries from `kwinrc`. As with installing, run it in a terminal inside the Plasma session. If it cannot reach KWin, it stops without removing anything.
 
    If the script was removed too early, quit Helium and start it again. After that the windows are visible normally again.
 5. **Remove the extension.** In `chrome://extensions`, click **Remove** on "Workspaces". This deletes the workspaces and the backup from the profile. After that the repository folder can be deleted.
@@ -237,7 +235,7 @@ This is a private hobby project. Expect bugs.
 node --test test/*.test.js
 ```
 
-This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. The same checks run in CI on every pull request.
+This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. `install.sh --uninstall` runs against stand-ins for the KDE commands. The same checks run in CI on every pull request.
 
 If anything in `extension/` changes, the version in [`manifest.json`](./extension/manifest.json) must be higher than on `main`, otherwise `static.test.js` fails. The version is shown in the bottom right of the popup, so after an update you can see whether the new code is running. The comparison is against `origin/main`; `VERSION_BASE` selects a different ref. If the ref is missing, the check is skipped.
 
@@ -273,7 +271,7 @@ The tests do not check KWin. After changing that, briefly check by hand:
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): the page that marks a window as a stash
   - [`label.js`](./extension/label.js): the character shown in a workspace's icon
 - [`kwin/`](./kwin): KWin script that hides the stash windows
-- [`install.sh`](./install.sh): set up the KWin script and write the key
+- [`install.sh`](./install.sh): set up the KWin script and write the key, remove it again with `--uninstall`
 - [`test/`](./test): automated tests, [`fake-browser.js`](./test/fake-browser.js) replicates the Chrome APIs, [`page.js`](./test/page.js) drives the popup and the import page in Chromium, [`chromium.js`](./test/chromium.js) drives a real Chromium
 
 ## License

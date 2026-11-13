@@ -6,22 +6,40 @@
 # --browsers legt kommagetrennt die Fensterklassen (X11) bzw. App-IDs (Wayland) der Browser
 # fest, deren Ablagen versteckt werden, z. B. --browsers helium,brave-browser. Eine leere
 # Liste stellt die Standardliste wieder her, ohne --browsers bleibt die bisherige Einstellung.
+# ./install.sh --uninstall entlädt und entfernt das KWin-Skript samt seiner Einträge in kwinrc.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 TOKEN=""
 BROWSERS=""
 SET_BROWSERS=""
+UNINSTALL=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --browsers)
       [ $# -ge 2 ] || { echo "--browsers braucht eine Liste, z. B. --browsers helium,brave-browser" >&2; exit 1; }
       BROWSERS="$2"; SET_BROWSERS=1; shift 2 ;;
     --browsers=*) BROWSERS="${1#*=}"; SET_BROWSERS=1; shift ;;
+    --uninstall) UNINSTALL=1; shift ;;
     -*) echo "Unbekannte Option: $1" >&2; exit 1 ;;
     *) TOKEN="$1"; shift ;;
   esac
 done
+
+if [ -n "$UNINSTALL" ]; then
+  # Zuerst entladen, sonst läuft das Skript bis zum nächsten Start von KWin weiter. Erreicht
+  # qdbus6 KWin nicht, bricht das Skript hier ab, bevor etwas entfernt ist.
+  qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
+  if kpackagetool6 --type=KWin/Script -s helium-workspaces >/dev/null 2>&1; then
+    kpackagetool6 --type=KWin/Script -r helium-workspaces >/dev/null
+  fi
+  kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete
+  kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
+  kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers --delete
+  echo "KWin-Skript entfernt."
+  exit 0
+fi
+
 BROWSERS="$(printf '%s' "$BROWSERS" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
 [[ -z "$BROWSERS" || "$BROWSERS" =~ ^[a-z0-9._-]+(,[a-z0-9._-]+)*$ ]] \
   || { echo "Ungültige Browserliste: $BROWSERS. Erwartet werden Fensterklassen mit Kommas dazwischen, z. B. helium,brave-browser." >&2; exit 1; }
