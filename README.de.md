@@ -144,6 +144,7 @@ Gut zu wissen:
 - Wählst du einen Tab aus einer Ablage, etwa über die Tab-Suche, zeigt das zuletzt benutzte Hauptfenster dessen Workspace mit dem gewählten Tab.
 - Mehrere Fenster dürfen denselben Workspace zeigen, etwa nach <kbd>Strg</kbd>+<kbd>N</kbd>.
 - **Ablagen entladen nach** (Standard: nie) entlädt die Tabs in einer Ablage, sobald sie so lange dort liegen. Die Zeit läuft ab dem Wegwechseln vom Workspace. Entladene Tabs geben ihren Arbeitsspeicher frei und behalten Adresse, Titel, Gruppe und Zurück-Verlauf. Beim Zurückwechseln laden sie neu; laufende Videos, Scrollposition und ungespeicherte Eingaben sind dann weg. Tabs, deren Ton gerade zu hören ist, bleiben geladen; stummgeschaltete werden mit entladen.
+- Einen gelöschten Workspace holt **Rückgängig** oben in der Liste bis zum nächsten Browserstart samt Tabs zurück. Seine Tabs öffnen sich dann beim Wechseln dorthin neu aus der Sicherung. Dasselbe gilt für die Workspaces, die **Ersetzen** beim Import entfernt.
 - Wird das Fenster per X geschlossen, baut die Erweiterung beim nächsten Start alle Workspaces aus ihrer Sicherung wieder auf.
 - Der Export ist eine JSON-Datei mit allen Workspaces samt Reihenfolge, Farben, Emoji, Tabs, Tab-Gruppen und angehefteten Tabs, etwa für ein anderes Gerät oder ein neues Profil. Beim Import wird die Datei erst geprüft und zusammengefasst. **Zusammenführen** ergänzt nur, was fehlt: Ein Workspace mit derselben ID oder demselben Namen bekommt die Tabs dazu, die er noch nicht hat. **Ersetzen** löscht die bisherigen Workspaces samt Tabs und fragt deshalb nach.
 

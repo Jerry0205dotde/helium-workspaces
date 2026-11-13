@@ -443,6 +443,23 @@ test('Ersetzen mit Bestätigung: alte Workspaces samt Ablagen sind weg, die neue
   await cycle(now, ['Y', 'X'], expected);
 });
 
+test('Rückgängig nach dem Ersetzen holt alle alten Workspaces vorn zurück, die importierten bleiben (#80)', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  const before = plain(b.local.data.workspaces);
+  await importFile(env, REPLACEMENT, 'replace', true);
+  const now = envOf(b);
+  assert.deepEqual(plain((await request(now, { type: 'state', windowId: now.win })).deleted), ['A', 'B', 'C']);
+
+  await request(now, { type: 'undoDelete' });
+  assert.deepEqual(plain(b.local.data.workspaces.slice(0, 3)), before);
+  assert.deepEqual(b.local.data.workspaces.map((w) => w.name), ['A', 'B', 'C', 'X', 'Y']);
+  assert.equal(shows(now, now.win), 'X');
+  const expected = { ...ALL, X: ['x1', { url: 'x2', group: 'G', color: 'pink' }, { url: 'x3', group: 'G', color: 'pink' }], Y: ['y1'], pinned: ['p1', 'p2', 'p9'] };
+  check(now, expected);
+  await cycle(now, ['A', 'B', 'C'], expected);
+});
+
 test('Nach dem Ersetzen hat das Importfenster wieder den Fokus, seine Meldung bleibt sichtbar', async () => {
   // Frisches Profil: Der angezeigte Workspace hat noch keine Ablage
   const env = await fresh();

@@ -5,6 +5,7 @@ const statusEl = document.getElementById('status');
 const errorEl = document.getElementById('error');
 const backupErrorEl = document.getElementById('backup-error');
 const muteStashEl = document.getElementById('mute-stash');
+const undoEl = document.getElementById('undo');
 
 let windowId;
 let activeTabId;
@@ -119,8 +120,33 @@ unloadEl.addEventListener('change', () => {
   run(tr('saving'), tr('settingFailed'), () => send({ type: 'unloadAfter', minutes }), { focus: ['unload'] });
 });
 
+// „Rückgängig“ für die zuletzt gelöschten Workspaces
+function renderUndo() {
+  const names = state.deleted;
+  undoEl.hidden = !names;
+  if (!names) return undoEl.replaceChildren();
+  const text = names.length === 1 ? tr('deletedOne', names[0]) : tr('deletedMany', plural(names.length, 'workspaces'));
+  const undo = btn('btn', tr('undo'), 'undo');
+  undo.title = tr('undoTitle');
+  undo.addEventListener('click', () => {
+    const focus = ['undo'];
+    run(tr('undoing'), tr('undoFailed'), async () => {
+      const id = await send({ type: 'undoDelete' });
+      if (id) focus.unshift(`ws:${id}`);
+    }, { focus });
+  });
+  const hide = btn('btn', '✕', 'forget');
+  hide.title = hide.ariaLabel = tr('forgetDeleted');
+  hide.addEventListener('click', () =>
+    run(tr('discarding'), tr('forgetFailed'), () => send({ type: 'forgetDeleted' })));
+  const label = el('span', 'undo-text', text);
+  label.title = names.join(', ');
+  undoEl.replaceChildren(label, undo, hide);
+}
+
 function render(focus) {
   renderBackupError();
+  renderUndo();
   muteStashEl.checked = state.muteStash;
   renderUnload();
   listEl.replaceChildren();
@@ -364,7 +390,7 @@ function editor(ws, index) {
     run(tr('deleting'), tr('deleteFailed'), async () => {
       await send({ type: 'delete', wsId: ws.id });
       editing = null;
-    }));
+    }, { focus: ['undo'] }));
   actions.append(moveBox, del);
 
   box.addEventListener('keydown', (e) => {

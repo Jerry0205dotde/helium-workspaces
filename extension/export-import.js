@@ -187,7 +187,9 @@ async function importExchange(text, mode, confirmed) {
     await saveWorkspaces(cfg.workspaces);
     // Erst alle Fenster zum ersten neuen Workspace wechseln, dann die alten löschen
     for (const w of all.mains) await switchTo(w.id, ids[0]);
-    for (const id of oldIds) await deleteWs(id);
+    // Alle alten Workspaces lassen sich gemeinsam zurückholen
+    const deleted = [];
+    for (const id of oldIds) await deleteWs(id, deleted);
     await chrome.storage.local.set({ lastWs: ids[0] });
     res.removed = oldIds.length;
     res.closed = all.list.reduce((n, x) => n + x.open, 0);

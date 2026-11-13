@@ -327,6 +327,8 @@ test('Ablage lässt sich beim Löschen nicht schließen: Workspace bleibt, kein 
   assert.equal(reply.ok, false, 'Fehler beim Schließen der Ablage wurde verschluckt');
   assert.deepEqual(b.local.data.workspaces.map((x) => x.name), ['A', 'B', 'C']);
   assert.equal(backupJson(env), saved);
+  // Rückgängig böte sonst einen Workspace an, den es noch gibt
+  assert.equal(b.local.data.deleted, undefined);
   check(env, ALL);
   // Ein erneuter Versuch löscht den Workspace
   await ok(w.request({ type: 'delete', wsId: ids.C }));

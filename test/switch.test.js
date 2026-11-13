@@ -185,6 +185,77 @@ test('Löschen eines angezeigten Workspace wechselt vorher weg und entfernt sein
   assert.equal(env.b.local.data.workspaces.length, 2);
 });
 
+const plain = (v) => JSON.parse(JSON.stringify(v));
+const names = (env) => env.b.local.data.workspaces.map((x) => x.name);
+const deletedOf = async (env) => (await ok(env.w.request({ type: 'state', windowId: env.win }))).deleted;
+
+test('Rückgängig holt einen gelöschten Workspace samt Tabs und Gruppen an seinen Platz zurück (#80)', async () => {
+  const env = await setup(SPEC);
+  const { w, win, ids, b } = env;
+  const before = plain(b.local.data.workspaces);
+  await ok(w.request({ type: 'delete', wsId: ids.B }));
+  assert.deepEqual(names(env), ['A', 'C']);
+  assert.deepEqual(plain(await deletedOf(env)), ['B']);
+
+  assert.equal(await ok(w.request({ type: 'undoDelete' })), ids.B);
+  assert.deepEqual(plain(b.local.data.workspaces), before, 'Name, Farbe, Emoji, ID oder Platz weichen ab');
+  assert.equal(await deletedOf(env), null, 'Rückgängig wird weiter angeboten');
+  // B hat kein Fenster mehr, check vergleicht mit seiner Sicherung
+  check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
+  const state = await ok(w.request({ type: 'state', windowId: win }));
+  assert.equal(state.workspaces.find((x) => x.id === ids.B).count, 4);
+
+  // Beim Wechsel öffnen sich die Tabs aus der Sicherung, die Gruppe eingeklappt wie vorher
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  assert.equal(shows(env, win), 'B');
+  check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
+});
+
+test('Gelöschter angezeigter Workspace: Rückgängig bringt ihn zurück, das Fenster bleibt beim Ersatz', async () => {
+  const env = await setup(SPEC);
+  const { w, win, ids } = env;
+  await ok(w.request({ type: 'delete', wsId: ids.A }));
+  assert.equal(shows(env, win), 'B');
+  await ok(w.request({ type: 'undoDelete' }));
+  assert.deepEqual(names(env), ['A', 'B', 'C']);
+  assert.equal(shows(env, win), 'B');
+  check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.A }));
+  check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
+});
+
+test('Rückgängig nimmt die Tabs der Ablage, auch wenn die Sicherung sie noch nicht kennt', async () => {
+  const env = await setup(SPEC);
+  const { b, w, ids } = env;
+  const stashC = b.windows.find((x) => b.stashOf(x) === ids.C);
+  // Ohne abzuwarten löschen: Die verzögerte Sicherung ist dann noch nicht gelaufen
+  await b.chrome.tabs.create({ windowId: stashC.id, url: url('c2'), active: false });
+  assert.equal(JSON.stringify(b.local.data.backup[ids.C]).includes('c2'), false, 'Testfehler: c2 ist schon gesichert');
+  await ok(w.request({ type: 'delete', wsId: ids.C }));
+  await ok(w.request({ type: 'undoDelete' }));
+  check(env, { ...SPEC.workspaces, C: ['c1', 'c2'], pinned: SPEC.pinned });
+});
+
+test('Nur das zuletzt Gelöschte lässt sich zurückholen; ✕ verwirft auch das', async () => {
+  const env = await setup(SPEC);
+  const { b, w, ids } = env;
+  await ok(w.request({ type: 'delete', wsId: ids.B }));
+  await ok(w.request({ type: 'delete', wsId: ids.C }));
+  assert.deepEqual(plain(await deletedOf(env)), ['C']);
+  await ok(w.request({ type: 'undoDelete' }));
+  assert.deepEqual(names(env), ['A', 'C']);
+  // Ein zweites Rückgängig hat nichts mehr zu tun
+  assert.equal(await ok(w.request({ type: 'undoDelete' })), null);
+  assert.deepEqual(names(env), ['A', 'C']);
+
+  await ok(w.request({ type: 'delete', wsId: ids.C }));
+  await ok(w.request({ type: 'forgetDeleted' }));
+  assert.equal(await deletedOf(env), null);
+  assert.equal(b.local.data.deleted, undefined);
+  assert.equal(await ok(w.request({ type: 'undoDelete' })), null);
+  assert.deepEqual(names(env), ['A']);
+});
+
 test('Tab in einer Ablage aktivieren (z. B. über die Tab-Suche) wechselt das Hauptfenster dorthin', async () => {
   const env = await setup(SPEC);
   const { b, w, win } = env;

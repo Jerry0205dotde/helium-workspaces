@@ -29,7 +29,10 @@ async function reorderWs(ids) {
   await saveWorkspaces(next);
 }
 
-async function deleteWs(id) {
+// Ein gelöschter Workspace bleibt samt seinen Tabs in 'deleted' (storage.local), bis zum
+// nächsten Löschen, bis „Rückgängig“ oder bis zum Browserstart. Beim Ersetzen per Import
+// sammelt batch alle gelöschten Workspaces, damit sich der ganze Vorgang zurücknehmen lässt.
+async function deleteWs(id, batch = []) {
   await resumeSwitch();
   const cfg = await getConfig();
   if (cfg.workspaces.length < 2) return;
@@ -44,6 +47,15 @@ async function deleteWs(id) {
   }
   const { stash } = await scan();
   const w = stash.get(id);
+  const { backup } = await getBackup();
+  // Die Tabs der Ablage selbst aufbewahren: Die Sicherung kann ihnen bis zu zwei Sekunden
+  // hinterherhinken. Nicht wiederhergestellte Einträge kommen aus der Sicherung mit.
+  let saved = backup[id];
+  if (w) {
+    const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
+    const failed = backup[id]?.failed;
+    saved = { stash: stashTabsOf(w).map((t) => serTab(t, groups)), shown: [], ...(failed?.length ? { failed } : {}) };
+  }
   // Nur ein schon geschlossenes Fenster gilt als Erfolg. Bliebe die Ablage offen, holte
   // der nächste Abgleich sie als Workspace „Wiederhergestellt“ zurück.
   if (w) {
@@ -52,12 +64,35 @@ async function deleteWs(id) {
     });
   }
 
+  batch.push({ ws: cfg.workspaces[idx], index: idx, backup: saved || { stash: [], shown: [] } });
+  await chrome.storage.local.set({ deleted: batch });
   cfg.workspaces.splice(idx, 1);
   await saveWorkspaces(cfg.workspaces);
-  const { backup } = await getBackup();
   delete backup[id];
   await chrome.storage.local.set({ backup });
   if (cfg.lastWs === id) await chrome.storage.local.set({ lastWs: fallback });
+}
+
+// Holt die zuletzt gelöschten Workspaces an ihren alten Platz zurück. Ihre Tabs stehen in
+// der Sicherung und öffnen sich beim Wechseln dorthin. Ergibt die ID des ersten.
+async function undoDelete() {
+  const { deleted } = await chrome.storage.local.get('deleted');
+  if (!deleted?.length) return null;
+  const cfg = await getConfig();
+  const { backup } = await getBackup();
+  let first = null;
+  // Rückwärts: Jeder Eintrag kennt seinen Platz in der Liste, wie sie vor ihm aussah.
+  // Gibt es den Workspace noch (Löschen abgebrochen), bleibt er, wie er ist.
+  for (const d of [...deleted].reverse()) {
+    if (cfg.workspaces.some((w) => w.id === d.ws.id)) continue;
+    cfg.workspaces.splice(Math.min(d.index, cfg.workspaces.length), 0, d.ws);
+    backup[d.ws.id] = d.backup;
+    first = d.ws.id;
+  }
+  await chrome.storage.local.set({ backup });
+  await saveWorkspaces(cfg.workspaces);
+  await chrome.storage.local.remove('deleted');
+  return first;
 }
 
 async function clearBackup(wsId) {
