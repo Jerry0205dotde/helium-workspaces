@@ -226,6 +226,8 @@ CHROME=/usr/bin/chromium node --test test/chromium.test.js
 
 [`chromium.test.js`](./test/chromium.test.js) installs the extension into a fresh profile and runs through: switching with a tab group and a pinned tab without reloading any page, reloading the extension, quitting and restarting with "Continue where you left off" and with "Open the New Tab page", and closing with the X button and restarting. Without `CHROME` the test is skipped, and without a display the browser stays invisible. In CI it runs with Chrome for Testing.
 
+The same `CHROME` also runs [`popup.test.js`](./test/popup.test.js) and [`transfer.test.js`](./test/transfer.test.js): the popup and the import page in headless Chromium, driven with real mouse and keyboard events. They check leaving a field by click, <kbd>Tab</kbd>, <kbd>Enter</kbd> and <kbd>Esc</kbd>, confirmations and double clicks. The pages' messages go to the replica of the Chrome APIs, not to an installed extension.
+
 The tests do not check KWin. After changing that, briefly check by hand:
 
 1. Reload the extension in `chrome://extensions` and run `./install.sh` with the key from the popup.
@@ -247,7 +249,7 @@ The tests do not check KWin. After changing that, briefly check by hand:
   - [`label.js`](./extension/label.js): the character shown in a workspace's icon
 - [`kwin/`](./kwin): KWin script that hides the stash windows
 - [`install.sh`](./install.sh): set up the KWin script and write the key
-- [`test/`](./test): automated tests, [`fake-browser.js`](./test/fake-browser.js) replicates the Chrome APIs, [`chromium.js`](./test/chromium.js) drives a real Chromium
+- [`test/`](./test): automated tests, [`fake-browser.js`](./test/fake-browser.js) replicates the Chrome APIs, [`page.js`](./test/page.js) drives the popup and the import page in Chromium, [`chromium.js`](./test/chromium.js) drives a real Chromium
 
 ## License
 

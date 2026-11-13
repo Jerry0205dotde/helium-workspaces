@@ -16,7 +16,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      # Für test/chromium.test.js: die Erweiterung in einem echten Browser
+      # Für test/chromium.test.js (die Erweiterung in einem echten Browser) sowie
+      # test/popup.test.js und test/transfer.test.js (die Seiten im Browser)
       - uses: browser-actions/setup-chrome@v2
         id: chrome
         with:
