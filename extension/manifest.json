@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Workspaces",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Arbeitsbereiche wie in Opera: mehrere Tab-Sätze im selben Fenster, ohne Neuladen.",
   "permissions": ["tabs", "tabGroups", "storage", "unlimitedStorage", "contextMenus", "alarms"],
   "background": { "service_worker": "background.js" },
