@@ -112,7 +112,9 @@ The extension's interface is in German. This README quotes its labels as they ap
 | Next / previous workspace | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>↓</kbd> / <kbd>↑</kbd>, or in the list <kbd>↓</kbd> / <kbd>↑</kbd> and <kbd>Enter</kbd> |
 | Create a workspace, rename it, change its color or emoji, delete it | in the list |
 | Change the order | drag in the list |
-| Move a tab to another workspace | Right-click anywhere on the page, including a link, an image or selected text → **Tab in Workspace verschieben** ("Move tab to workspace") |
+| Move a tab to another workspace | Right-click anywhere on the page, including a link, an image or selected text → **Tab in Workspace verschieben** ("Move tab to workspace"), or click ↪ next to the target in the list |
+| Move several tabs at once | Select the tabs with <kbd>Ctrl</kbd> / <kbd>Shift</kbd>, then as above. Fully selected groups keep their title and color. |
+| Move a whole tab group | In a tab of the group, right-click the page → **Gruppe in Workspace verschieben** ("Move group to workspace") |
 | Export or import workspaces | in the list → **Exportieren / Importieren** ("Export / Import") |
 | Mute a workspace | in the list, click 🔊 next to the workspace (shown while something in it is audible) |
 | Always mute workspaces that are not shown | in the list, tick **Ablagen stummschalten** ("mute stashes"). Tabs get their sound back when they return; tabs muted by hand stay muted. |
