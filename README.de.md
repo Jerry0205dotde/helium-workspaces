@@ -230,3 +230,7 @@ Die Verbindung zu Helium und KWin prüfen die Tests nicht. Nach Änderungen dara
 - [`kwin/`](./kwin): KWin-Skript, das die Ablage-Fenster versteckt
 - [`install.sh`](./install.sh): KWin-Skript einrichten und den Schlüssel eintragen
 - [`test/`](./test): automatische Tests, [`fake-browser.js`](./test/fake-browser.js) bildet die Chrome-APIs nach
+
+## Lizenz
+
+[GPL-3.0-or-later](./LICENSE). Du darfst Helium Workspaces benutzen, ändern und weitergeben, solange alles, was du darauf aufbauend weitergibst, ebenfalls unter der GPL steht und mit Quellcode kommt.
