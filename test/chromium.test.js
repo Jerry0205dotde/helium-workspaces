@@ -32,13 +32,15 @@ const SPEC = {
 
 const norm = (e) => (typeof e === 'string' ? { name: e } : e);
 
-// Testseiten von 127.0.0.1. Jeder Abruf wird gezählt: Lädt die Erweiterung einen Tab
-// neu, steigt die Zahl.
+// Testseiten von 127.0.0.1. Jeder Abruf einer Testseite wird gezählt (nicht etwa
+// /favicon.ico): Lädt die Erweiterung einen Tab neu, steigt die Zahl.
+const PAGES = new Set([...SPEC.pinned, ...Object.values(SPEC.workspaces).flat()].map((e) => norm(e).name));
+
 function startServer() {
   const hits = new Map();
   const server = http.createServer((req, res) => {
     const name = req.url.slice(1);
-    hits.set(name, (hits.get(name) || 0) + 1);
+    if (PAGES.has(name)) hits.set(name, (hits.get(name) || 0) + 1);
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
     res.end(`<!doctype html><title>${name}</title><p>${name}</p>`);
   });
@@ -91,9 +93,9 @@ class Env {
     return e.name + g;
   }
 
-  // Prüft den ganzen Bestand gegen SPEC: Ein Workspace besteht aus den Tabs im
-  // Hauptfenster, das ihn zeigt, und denen in seiner Ablage (die bleibt beim Zeigen leer
-  // bestehen). Jeder Workspace muss so in der Sicherung stehen. Workspaces ohne Fenster
+  // Prüft den ganzen Bestand gegen SPEC: Der angezeigte Workspace hat alle Tabs im
+  // Hauptfenster (seine Ablage bleibt leer bestehen), die übrigen in ihrer Ablage. Jeder
+  // Workspace muss so in der Sicherung stehen. Workspaces ohne Fenster
   // gibt es nur in der Sicherung, außer live: true verlangt für jeden ein Fenster.
   check(st, { live = false } = {}) {
     assert.equal(st.pending, false, 'ein Wechsel ist noch nicht abgeschlossen');
@@ -134,8 +136,11 @@ class Env {
       const saved = [...(b?.shown || []), ...(b?.stash || [])].filter((e) => !NEWTAB.test(e.url));
       const got = saved.map((e) => this.label({ name: this.name(e.url), group: e.gt, color: e.gc, collapsed: e.gx }));
       assert.deepEqual(got, want, `Sicherung von ${w.name}`);
-      if (shown[w.name] || stashed[w.name]) {
-        assert.deepEqual([...(shown[w.name] || []), ...(stashed[w.name] || [])], want, `Tabs von ${w.name}`);
+      if (shown[w.name]) {
+        assert.deepEqual(shown[w.name], want, `Tabs von ${w.name} im Hauptfenster`);
+        assert.deepEqual(stashed[w.name] || [], [], `Ablage des angezeigten Workspace ${w.name} ist nicht leer`);
+      } else if (stashed[w.name]) {
+        assert.deepEqual(stashed[w.name], want, `Tabs von ${w.name} in der Ablage`);
       } else {
         assert.ok(!live, `${w.name} hat kein Fenster`);
       }
