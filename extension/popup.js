@@ -97,9 +97,28 @@ function renderBackupError() {
   );
 }
 
+// Wie lange ein Workspace nicht gezeigt sein muss, bis seine Tabs entladen werden
+const unloadEl = document.getElementById('unload');
+const unloadLabel = (m) => (!m ? 'nie' : m < 60 ? `${m} Minuten` : m === 60 ? '1 Stunde' : `${m / 60} Stunden`);
+
+function renderUnload() {
+  unloadEl.replaceChildren(...state.unloadChoices.map((m) => {
+    const o = el('option', null, unloadLabel(m));
+    o.value = String(m);
+    return o;
+  }));
+  unloadEl.value = String(state.unloadAfter);
+}
+
+unloadEl.addEventListener('change', () => {
+  const minutes = Number(unloadEl.value);
+  run('Wird gespeichert …', 'Einstellung konnte nicht gespeichert werden.', () => send({ type: 'unloadAfter', minutes }), { focus: ['unload'] });
+});
+
 function render(focus) {
   renderBackupError();
   muteStashEl.checked = state.muteStash;
+  renderUnload();
   listEl.replaceChildren();
   state.workspaces.forEach((ws, i) => {
     const li = el('li');
@@ -416,7 +435,7 @@ keyCopy.addEventListener('click', () =>
   ));
 
 document.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT' || !state) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || !state) return;
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') return moveSelection(e);
   const n = Number(e.key);
   if (n >= 1 && n <= 9 && state.workspaces[n - 1]) switchTo(state.workspaces[n - 1].id);

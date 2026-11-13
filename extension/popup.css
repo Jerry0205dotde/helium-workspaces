@@ -179,6 +179,22 @@ fieldset:disabled .add:hover, fieldset:disabled .option:hover { color: var(--mut
 .error .detail { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .error p:last-child { margin-bottom: 0; }
 body.busy footer .hint { display: none; }
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 8px;
+  color: var(--muted);
+}
+.setting select {
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input);
+  color: var(--fg);
+  font: inherit;
+}
 .key { margin-top: 4px; padding: 0 8px; color: var(--muted); font-size: 12px; }
 .key summary { padding: 4px 0; cursor: pointer; }
 .key-line { display: flex; align-items: center; gap: 6px; padding-bottom: 4px; }

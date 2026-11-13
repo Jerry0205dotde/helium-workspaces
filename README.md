@@ -24,7 +24,7 @@ Three parts work together:
 
 ### Limitations
 
-- Tabs in stashes stay loaded. They keep using memory, and videos or music keep playing in the background. With **Ablagen stummschalten** ("mute stashes") in the workspace list they at least play silently.
+- Tabs in stashes stay loaded. They keep using memory, and videos or music keep playing in the background. With **Ablagen stummschalten** ("mute stashes") in the workspace list they at least play silently. With **Ablagen entladen nach** ("unload stashes after") they are unloaded after a chosen time (see below).
 - Pinned tabs belong to all workspaces and always stay in the main window.
 - Several windows can show the same workspace, for example after <kbd>Ctrl</kbd>+<kbd>N</kbd>.
 - Incognito windows are not handled.
@@ -116,6 +116,7 @@ The extension's interface is in German. This README quotes its labels as they ap
 | Export or import workspaces | in the list → **Exportieren / Importieren** ("Export / Import") |
 | Mute a workspace | in the list, click 🔊 next to the workspace (shown while something in it is audible) |
 | Always mute workspaces that are not shown | in the list, tick **Ablagen stummschalten** ("mute stashes"). Tabs get their sound back when they return; tabs muted by hand stay muted. |
+| Unload the tabs of workspaces not shown | in the list → **Ablagen entladen nach** ("unload stashes after") |
 
 Good to know:
 
@@ -124,6 +125,7 @@ Good to know:
 - Tab groups survive switching.
 - If you pick a tab from a stash window, for example via the tab search, the last used main window shows its workspace with the selected tab.
 - Several windows may show the same workspace, for example after <kbd>Ctrl</kbd>+<kbd>N</kbd>.
+- **Ablagen entladen nach** ("unload stashes after", default: **nie**, "never") unloads the tabs in a stash once they have been there for that long. The time counts from switching away from the workspace. Unloaded tabs free their memory and keep their address, title, group and back history. When you switch back they reload; playing videos, scroll position and unsaved input are gone then. Tabs whose sound can be heard stay loaded; muted ones are unloaded too.
 - If the window is closed with the X button, the extension rebuilds all workspaces from its backup on the next start.
 - The export is a JSON file with all workspaces including order, colors, emoji, tabs, tab groups and pinned tabs, for example for another device or a new profile. On import the file is first checked and summarized. **Zusammenführen** ("Merge") only adds what is missing: a workspace with the same ID or the same name gets the tabs it does not have yet. **Ersetzen** ("Replace") deletes the existing workspaces including their tabs and therefore asks for confirmation.
 
@@ -141,7 +143,7 @@ Only within the running browser session:
 
 After a restart with "Continue where you left off", Helium itself restores all windows including the stashes, with history. During the first 20 seconds the extension assigns the windows back to the workspaces based on their addresses. The pages reload as they do after any browser restart.
 
-A workspace is rebuilt from the backup when its window is missing: after a start with a different startup setting, after closing the last window with the X button, or on import. Then only address, title, group and pinned tabs come back. The pages reload, have no back history, and unsaved input is gone. Logins stay, because cookies belong to the profile.
+A workspace is rebuilt from the backup when its window is missing: after a start with a different startup setting, after closing the last window with the X button, or on import. Then only address, title, group and pinned tabs come back. The pages reload, have no back history, and unsaved input is gone. So that not all of these pages stay loaded, the extension unloads every tab created this way as soon as it has finished loading, except the active one. It reloads when you click it. Logins stay, because cookies belong to the profile.
 
 Helium (or rather Chromium) occasionally loses a tab on restart if it was being moved between two windows at the very moment the session file was rewritten. The extension detects this on startup and recreates missing tabs in the same position. Such tabs then reload and no longer have a back history.
 
