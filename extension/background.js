@@ -203,6 +203,9 @@ async function whenIdle(fn, tries = 15) {
   }
 }
 
+// So meldet der Browser ein Fenster, das es nicht mehr gibt
+const GONE = /no window with id/i;
+
 const groupProps = (e) => ({ title: e.gt || '', color: e.gc || 'grey', collapsed: !!e.gx });
 
 // Legt einen Tab im Hintergrund an, solange der Browser wegen Ziehens ablehnt erneut
@@ -615,7 +618,13 @@ async function deleteWs(id) {
   }
   const { stash } = await scan();
   const w = stash.get(id);
-  if (w) await chrome.windows.remove(w.id).catch(() => {});
+  // Nur ein schon geschlossenes Fenster gilt als Erfolg. Bliebe die Ablage offen, holte
+  // der nächste Abgleich sie als Workspace „Wiederhergestellt“ zurück.
+  if (w) {
+    await whenIdle(() => chrome.windows.remove(w.id)).catch((err) => {
+      if (!GONE.test(err?.message || '')) throw err;
+    });
+  }
 
   cfg.workspaces.splice(idx, 1);
   await saveWorkspaces(cfg.workspaces);

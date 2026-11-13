@@ -316,3 +316,43 @@ test('Scheitert das Speichern der Sicherung, meldet das Popup es, bis es wieder 
   assert.equal((await ok(w.request({ type: 'state', windowId: win }))).backupError, null);
   assert.match(backupJson(env), /x1\.test.*x2\.test.*x3\.test/);
 });
+
+test('Ablage lässt sich beim Löschen nicht schließen: Workspace bleibt, kein „Wiederhergestellt“', async () => {
+  const env = await setup(SPEC);
+  const { b, w, ids } = env;
+  const stashC = stashOf(env, 'C').id;
+  const saved = backupJson(env);
+  b.fail('windows.remove', { when: (id) => id === stashC, message: 'Fenster gescheitert (Test)' });
+  const reply = await w.request({ type: 'delete', wsId: ids.C });
+  assert.equal(reply.ok, false, 'Fehler beim Schließen der Ablage wurde verschluckt');
+  assert.deepEqual(b.local.data.workspaces.map((x) => x.name), ['A', 'B', 'C']);
+  assert.equal(backupJson(env), saved);
+  check(env, ALL);
+  // Ein erneuter Versuch löscht den Workspace
+  await ok(w.request({ type: 'delete', wsId: ids.C }));
+  assert.deepEqual(b.local.data.workspaces.map((x) => x.name), ['A', 'B']);
+  delete env.ids.C;
+  check(env, { A: SPEC.workspaces.A, B: SPEC.workspaces.B, pinned: SPEC.pinned });
+});
+
+test('Während ein Tab gezogen wird: Schließen der Ablage beim Löschen wird wiederholt', async () => {
+  const env = await setup(SPEC);
+  const { b, w, ids } = env;
+  const remove = b.fail('windows.remove', { times: 3, message: DRAGGING });
+  await ok(w.request({ type: 'delete', wsId: ids.C }));
+  assert.equal(remove.hits, 3);
+  assert.deepEqual(b.local.data.workspaces.map((x) => x.name), ['A', 'B']);
+  delete env.ids.C;
+  check(env, { A: SPEC.workspaces.A, B: SPEC.workspaces.B, pinned: SPEC.pinned });
+});
+
+test('Ist die Ablage beim Löschen schon geschlossen, gilt das als Erfolg', async () => {
+  const env = await setup(SPEC);
+  const { b, w, ids } = env;
+  const stashC = stashOf(env, 'C').id;
+  b.during('windows.remove', (id) => b.removeWindow(id), { when: (id) => id === stashC });
+  await ok(w.request({ type: 'delete', wsId: ids.C }));
+  assert.deepEqual(b.local.data.workspaces.map((x) => x.name), ['A', 'B']);
+  delete env.ids.C;
+  check(env, { A: SPEC.workspaces.A, B: SPEC.workspaces.B, pinned: SPEC.pinned });
+});
