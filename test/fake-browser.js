@@ -10,6 +10,8 @@
 // - Ein einzeln in ein anderes Fenster verschobener Tab verlässt seine Gruppe,
 //   tabGroups.move nimmt die ganze Gruppe samt ID mit.
 // - Ein Tab, der zwischen zwei Tabs derselben Gruppe landet, tritt ihr bei.
+// - Markiert (highlighted) ist der aktive Tab und, was tabs.highlight dazunimmt.
+//   Aktivieren eines anderen Tabs oder Verschieben hebt die Markierung auf.
 // - Nach einem Browserstart bekommen alle Fenster, Tabs und Gruppen neue IDs.
 // - Stummschalten merkt sich, wer es war (mutedInfo.reason 'user' oder 'extension' mit
 //   extensionId). Tabs kommen nach einem Browserstart ohne Stummschaltung wieder.
@@ -200,7 +202,7 @@ class Browser {
       title: t.title,
       pinned: t.pinned,
       active: t.active,
-      highlighted: t.active,
+      highlighted: t.active || !!t.highlighted,
       groupId: t.groupId,
       status: t.discarded ? 'unloaded' : 'complete',
       discarded: !!t.discarded,
@@ -258,9 +260,10 @@ class Browser {
   // Wird ein Tab einer eingeklappten Gruppe aktiv, klappt Chromium die Gruppe auf.
   activate(t, w) {
     if (t.active) return;
-    for (const x of w.tabs) x.active = false;
+    for (const x of w.tabs) x.active = x.highlighted = false;
     t.active = true;
     this.fire('tabs.onActivated', { tabId: t.id, windowId: w.id });
+    this.fire('tabs.onHighlighted', { windowId: w.id, tabIds: [t.id] });
     if (t.discarded) {
       t.discarded = false;
       this.fire('tabs.onUpdated', t.id, { discarded: false }, this.tabInfo(t, w));
@@ -277,6 +280,7 @@ class Browser {
   detach(t, w) {
     const i = w.tabs.indexOf(t);
     w.tabs.splice(i, 1);
+    t.highlighted = false;
     if (t.active && w.tabs.length) {
       t.active = false;
       this.activate(w.tabs[Math.min(i, w.tabs.length - 1)], w);
@@ -490,7 +494,9 @@ class Browser {
           for (const w of b.windows) {
             if (q.windowId !== undefined && w.id !== q.windowId) continue;
             for (const t of w.tabs) {
-              if (q.active !== undefined && t.active !== q.active) continue;
+              if (q.lastFocusedWindow && w !== (b.windows.find((x) => x.focused) || b.windows.at(-1))) continue;
+            if (q.active !== undefined && t.active !== q.active) continue;
+            if (q.highlighted !== undefined && (t.active || !!t.highlighted) !== q.highlighted) continue;
               if (q.pinned !== undefined && t.pinned !== q.pinned) continue;
               out.push(b.tabInfo(t, w));
             }
@@ -546,6 +552,15 @@ class Browser {
           for (const id of [].concat(ids)) b.removeTab(id);
         }),
         discard: api('tabs.discard', (id) => b.discardTab(id)),
+        // Markiert die Tabs an diesen Positionen, der erste wird aktiv
+        highlight: api('tabs.highlight', ({ windowId, tabs }) => {
+          const w = b.findWin(windowId);
+          const list = [].concat(tabs).map((i) => w.tabs[i]);
+          b.activate(list[0], w);
+          for (const t of w.tabs) t.highlighted = list.includes(t);
+          b.fire('tabs.onHighlighted', { windowId, tabIds: list.map((t) => t.id) });
+          return b.winInfo(w);
+        }),
         group: api('tabs.group', ({ tabIds, groupId, createProperties } = {}) => {
           const list = [].concat(tabIds).map((id) => b.findTab(id));
           if (!list.length) throw new Error('No tabs given.');
@@ -579,6 +594,7 @@ class Browser {
         onRemoved: b.event('tabs.onRemoved'),
         onUpdated: b.event('tabs.onUpdated'),
         onActivated: b.event('tabs.onActivated'),
+        onHighlighted: b.event('tabs.onHighlighted'),
         onMoved: b.event('tabs.onMoved'),
         onAttached: b.event('tabs.onAttached'),
         onDetached: b.event('tabs.onDetached'),
@@ -643,6 +659,11 @@ class Browser {
           b.menus.push(clone(o));
           return o.id;
         },
+        update: api('contextMenus.update', (id, o = {}) => {
+          const m = b.menus.find((x) => x.id === id);
+          if (!m) throw new Error(`Cannot find menu item with id ${id}`);
+          Object.assign(m, clone(o));
+        }),
         removeAll: api('contextMenus.removeAll', () => {
           b.menus = [];
         }),

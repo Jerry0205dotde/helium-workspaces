@@ -8,6 +8,7 @@ const muteStashEl = document.getElementById('mute-stash');
 
 let windowId;
 let activeTabId;
+let marked = 1; // Anzahl der markierten Tabs, ↪ verschiebt sie alle
 let state;
 let editing = null; // id des Workspace, der gerade bearbeitet wird
 let busy = false; // läuft gerade eine Aktion?
@@ -151,14 +152,15 @@ function render(focus) {
     }
 
     const mv = btn('icon-btn', '↪', `mv:${ws.id}`);
-    mv.title = 'Aktuellen Tab hierhin verschieben';
-    mv.ariaLabel = `Aktuellen Tab nach „${ws.name}“ verschieben`;
+    const what = marked > 1 ? `${marked} markierte Tabs` : 'Aktuellen Tab';
+    mv.title = `${what} hierhin verschieben`;
+    mv.ariaLabel = `${what} nach „${ws.name}“ verschieben`;
     if (ws.id === state.current || !activeTabId) {
       mv.classList.add('placeholder');
       mv.disabled = true;
     }
     mv.addEventListener('click', () => {
-      run('Tab wird verschoben …', 'Tab konnte nicht verschoben werden.', () =>
+      run(marked > 1 ? 'Tabs werden verschoben …' : 'Tab wird verschoben …', marked > 1 ? 'Tabs konnten nicht verschoben werden.' : 'Tab konnte nicht verschoben werden.', () =>
         send({ type: 'moveTab', tabId: activeTabId, wsId: ws.id }), { close: true });
     });
     row.append(mv);
@@ -468,9 +470,11 @@ function start() {
   return run('Wird geladen …', 'Workspaces konnten nicht geladen werden.', async () => {
     if (windowId === undefined) {
       const win = await chrome.windows.getCurrent();
-      const [tab] = await chrome.tabs.query({ active: true, windowId: win.id });
+      const tabs = await chrome.tabs.query({ highlighted: true, windowId: win.id });
+      const tab = tabs.find((t) => t.active);
       windowId = win.id;
       activeTabId = tab?.id;
+      if (tab) marked = tabs.length;
     }
   });
 }

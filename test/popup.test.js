@@ -5,7 +5,7 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { setup } = require('./harness');
+const { setup, url, where } = require('./harness');
 const { Chromium, skipReason } = require('./page');
 
 const skip = skipReason();
@@ -176,6 +176,26 @@ test('Doppelklick auf ＋ legt nur einen Workspace an, der Fokus steht im neuen 
     assert.equal(env.b.local.data.workspaces.length, 2);
     const id = env.b.local.data.workspaces[1].id;
     assert.equal(await page.focused(), `name:${id}`);
+  } finally {
+    await page.close();
+  }
+});
+
+test('↪ verschiebt alle markierten Tabs und sagt das auch', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1', 'a2', 'a3'], B: ['b1'] } });
+  const { b, win, ids } = env;
+  const at = (u) => b.windows.find((w) => w.id === win).tabs.findIndex((t) => t.url === url(u));
+  await b.chrome.tabs.highlight({ windowId: win, tabs: [at('a1'), at('a3')] });
+  await env.w.settle();
+  const page = await browser.open('popup.html', env);
+  try {
+    const mv = `[data-focus="mv:${ids.B}"]`;
+    assert.equal(await page.eval(`document.querySelector('${mv}').title`), '2 markierte Tabs hierhin verschieben');
+    await page.click(mv);
+    assert.equal(await page.closed(), true);
+    assert.equal(where(env, 'a1').ws, ids.B);
+    assert.equal(where(env, 'a3').ws, ids.B);
+    assert.equal(where(env, 'a2').ws, ids.A);
   } finally {
     await page.close();
   }

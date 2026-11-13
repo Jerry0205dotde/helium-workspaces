@@ -164,7 +164,10 @@ async function switchRelative(windowId, step) {
 
 // ---------------------------------------------------------------- Tab verschieben
 
-async function moveTabToWs(tabId, wsId) {
+// Verschiebt den Tab und alle mit ihm markierten Tabs (Strg/Shift), mit group seine
+// ganze Tab-Gruppe. Gruppen, die vollständig mitgehen, bleiben samt Titel und Farbe
+// erhalten; einzelne mitgenommene Tabs einer Gruppe verlassen sie.
+async function moveTabToWs(tabId, wsId, group = false) {
   await resumeSwitch();
   // Das Ziel kann inzwischen gelöscht sein (Löschen oder Import lief noch); ohne diese
   // Prüfung entstünde eine Ablage, die der Abgleich als „Wiederhergestellt“ zurückholt
@@ -176,28 +179,39 @@ async function moveTabToWs(tabId, wsId) {
   const { mains } = await scan();
   const main = mains.find((w) => w.id === tab.windowId);
   if (!main) return;
+  const picked = (t) =>
+    t.id === tabId || (group && tab.groupId >= 0 ? t.groupId === tab.groupId : tab.highlighted && t.highlighted);
+  const ids = new Set(main.tabs.filter(picked).map((t) => t.id));
 
   await moving(async () => {
     // Fenster darf nicht leer werden
-    if (main.tabs.length === 1 || (!tab.pinned && movableTabsOf(main).length <= 1)) {
+    const left = main.tabs.filter((t) => !ids.has(t.id));
+    const movesUnpinned = main.tabs.some((t) => ids.has(t.id) && !t.pinned);
+    if (!left.length || (movesUnpinned && !left.some((t) => !t.pinned))) {
       await chrome.tabs.create({ windowId: tab.windowId, active: true });
     }
-    if (tab.pinned) await chrome.tabs.update(tabId, { pinned: false });
+    for (const t of main.tabs) if (ids.has(t.id) && t.pinned) await chrome.tabs.update(t.id, { pinned: false });
+
+    // Nach dem Lösen haben sich die Positionen verschoben, deshalb frisch lesen
+    const all = await chrome.tabs.query({ windowId: tab.windowId });
+    // Ein einzeln verschobener Tab verlässt seine Gruppe, auch wenn er ihr letzter ist
+    const whole = (gid) => gid >= 0 && (group || ids.size > 1) && all.every((t) => t.groupId !== gid || ids.has(t.id));
+    const list = all.filter((t) => ids.has(t.id)).map((t) => ({ ...t, groupId: whole(t.groupId) ? t.groupId : -1 }));
 
     const shownIn = mains.find((w) => s.windowWs[w.id] === wsId);
     if (shownIn) {
-      await chrome.tabs.move(tabId, { windowId: shownIn.id, index: -1 });
+      await moveOrdered(list, shownIn.id);
     } else {
       const st = await ensureStash(wsId, true);
-      await chrome.tabs.move(tabId, { windowId: st.windowId, index: -1 });
+      await moveOrdered(list, st.windowId);
       await chrome.tabs.update(st.tabId, { active: true });
       await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
     }
   });
   const s2 = await sess();
-  delete s2.tabOrigin[tabId];
+  for (const id of ids) delete s2.tabOrigin[id];
   await saveSess(s2);
-  await setTabIcon(tabId, wsId);
+  for (const id of ids) await setTabIcon(id, wsId);
   await snapshot();
 }
 
