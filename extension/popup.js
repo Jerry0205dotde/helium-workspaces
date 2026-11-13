@@ -13,15 +13,17 @@ let state;
 let editing = null; // id des Workspace, der gerade bearbeitet wird
 let busy = false; // läuft gerade eine Aktion?
 
+localize();
+
 const COLOR_NAMES = {
-  '#3b82f6': 'Blau',
-  '#ef4444': 'Rot',
-  '#22c55e': 'Grün',
-  '#f59e0b': 'Orange',
-  '#a855f7': 'Lila',
-  '#ec4899': 'Pink',
-  '#14b8a6': 'Türkis',
-  '#64748b': 'Grau',
+  '#3b82f6': tr('colorBlue'),
+  '#ef4444': tr('colorRed'),
+  '#22c55e': tr('colorGreen'),
+  '#f59e0b': tr('colorOrange'),
+  '#a855f7': tr('colorPurple'),
+  '#ec4899': tr('colorPink'),
+  '#14b8a6': tr('colorTeal'),
+  '#64748b': tr('colorGray'),
 };
 
 // Schaltfläche mit Schlüssel, damit der Fokus das Neuzeichnen übersteht
@@ -51,7 +53,7 @@ function showError(text, err, stale) {
   errorEl.replaceChildren(msg);
   if (detail) errorEl.append(el('p', 'detail', detail));
   if (stale) {
-    const retry = el('button', 'btn', 'Neu laden');
+    const retry = el('button', 'btn', tr('reload'));
     retry.addEventListener('click', start);
     errorEl.append(retry);
   }
@@ -90,17 +92,17 @@ function renderBackupError() {
   const e = state.backupError;
   backupErrorEl.hidden = !e;
   if (!e) return backupErrorEl.replaceChildren();
-  const since = new Date(e.since).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+  const since = new Date(e.since).toLocaleString(tr('lang'), { dateStyle: 'short', timeStyle: 'short' });
   backupErrorEl.replaceChildren(
-    el('p', 'msg', `Sicherung scheitert seit ${since}`),
-    el('p', null, 'Geht ein Fenster verloren, fehlen alle Änderungen seitdem.'),
+    el('p', 'msg', tr('backupFailingSince', since)),
+    el('p', null, tr('backupFailingHint')),
     el('p', 'detail', errorText(e.message)),
   );
 }
 
 // Wie lange ein Workspace nicht gezeigt sein muss, bis seine Tabs entladen werden
 const unloadEl = document.getElementById('unload');
-const unloadLabel = (m) => (!m ? 'nie' : m < 60 ? `${m} Minuten` : m === 60 ? '1 Stunde' : `${m / 60} Stunden`);
+const unloadLabel = (m) => (!m ? tr('unloadNever') : m < 60 ? tr('unloadMinutes', m) : m === 60 ? tr('unloadHour') : tr('unloadHours', m / 60));
 
 function renderUnload() {
   unloadEl.replaceChildren(...state.unloadChoices.map((m) => {
@@ -113,7 +115,7 @@ function renderUnload() {
 
 unloadEl.addEventListener('change', () => {
   const minutes = Number(unloadEl.value);
-  run('Wird gespeichert …', 'Einstellung konnte nicht gespeichert werden.', () => send({ type: 'unloadAfter', minutes }), { focus: ['unload'] });
+  run(tr('saving'), tr('settingFailed'), () => send({ type: 'unloadAfter', minutes }), { focus: ['unload'] });
 });
 
 function render(focus) {
@@ -130,11 +132,11 @@ function render(focus) {
     const row = el('div', 'row');
     const main = btn('main', undefined, `ws:${ws.id}`);
     if (i < 9) {
-      main.title = `Taste ${i + 1}`;
+      main.title = tr('keyN', i + 1);
       main.setAttribute('aria-keyshortcuts', String(i + 1));
     }
     if (ws.id === state.current) main.setAttribute('aria-current', 'true');
-    const meta = ws.elsewhere ? 'anderes Fenster' : `${ws.count} ${ws.count === 1 ? 'Tab' : 'Tabs'}`;
+    const meta = ws.elsewhere ? tr('otherWindow') : plural(ws.count, 'tabs');
     const icon = badge(ws);
     icon.ariaHidden = 'true'; // der Name steht daneben
     main.append(icon, el('span', 'name', ws.name), el('span', 'meta', meta));
@@ -143,30 +145,30 @@ function render(focus) {
 
     if (ws.audible) {
       const snd = btn('icon-btn sound', '🔊', `snd:${ws.id}`);
-      snd.title = 'Ton aus';
-      snd.ariaLabel = `„${ws.name}“ stummschalten`;
+      snd.title = tr('muteTitle');
+      snd.ariaLabel = tr('muteLabel', ws.name);
       snd.addEventListener('click', () =>
-        run('Wird stummgeschaltet …', 'Ton konnte nicht ausgeschaltet werden.', () =>
+        run(tr('muting'), tr('muteFailed'), () =>
           send({ type: 'mute', wsId: ws.id }), { focus: [`ws:${ws.id}`] }));
       row.append(snd);
     }
 
     const mv = btn('icon-btn', '↪', `mv:${ws.id}`);
-    const what = marked > 1 ? `${marked} markierte Tabs` : 'Aktuellen Tab';
-    mv.title = `${what} hierhin verschieben`;
-    mv.ariaLabel = `${what} nach „${ws.name}“ verschieben`;
+    const many = marked > 1;
+    mv.title = many ? tr('moveTabsTitle', marked) : tr('moveTabTitle');
+    mv.ariaLabel = many ? tr('moveTabsLabel', marked, ws.name) : tr('moveTabLabel', ws.name);
     if (ws.id === state.current || !activeTabId) {
       mv.classList.add('placeholder');
       mv.disabled = true;
     }
     mv.addEventListener('click', () => {
-      run(marked > 1 ? 'Tabs werden verschoben …' : 'Tab wird verschoben …', marked > 1 ? 'Tabs konnten nicht verschoben werden.' : 'Tab konnte nicht verschoben werden.', () =>
+      run(many ? tr('movingTabs') : tr('movingTab'), many ? tr('moveTabsFailed') : tr('moveTabFailed'), () =>
         send({ type: 'moveTab', tabId: activeTabId, wsId: ws.id }), { close: true });
     });
     row.append(mv);
     const ed = btn('icon-btn', '✎', `ed:${ws.id}`);
-    ed.title = 'Bearbeiten';
-    ed.ariaLabel = `„${ws.name}“ bearbeiten`;
+    ed.title = tr('edit');
+    ed.ariaLabel = tr('editLabel', ws.name);
     ed.ariaExpanded = String(ws.id === editing);
     ed.setAttribute('aria-controls', `editor-${ws.id}`);
     ed.addEventListener('click', () => {
@@ -277,16 +279,16 @@ function restoreFocus(keys = [focusKey]) {
 function failedNote(ws) {
   const box = el('div', 'failed');
   const n = ws.failed;
-  box.append(el('span', 'failed-text', `${n} ${n === 1 ? 'Tab' : 'Tabs'} nicht wiederhergestellt`));
-  const retry = btn('btn', 'Erneut versuchen', `retry:${ws.id}`);
-  retry.title = ws.id === state.current ? '' : 'Wechselt in diesen Workspace';
-  const dismiss = btn('btn danger', 'Verwerfen', `dismiss:${ws.id}`);
-  dismiss.title = 'Fehlende Tabs aus der Sicherung entfernen';
+  box.append(el('span', 'failed-text', plural(n, 'tabsNotRestored')));
+  const retry = btn('btn', tr('retry'), `retry:${ws.id}`);
+  retry.title = ws.id === state.current ? '' : tr('retryTitle');
+  const dismiss = btn('btn danger', tr('discard'), `dismiss:${ws.id}`);
+  dismiss.title = tr('discardTitle');
   retry.addEventListener('click', () =>
-    run('Tabs werden wiederhergestellt …', 'Tabs konnten nicht wiederhergestellt werden.', () =>
+    run(tr('restoring'), tr('restoreFailed'), () =>
       send({ type: 'retry', windowId, wsId: ws.id }), { focus: [`retry:${ws.id}`, `ws:${ws.id}`] }));
-  confirmFirst(dismiss, 'Wirklich?', () =>
-    run('Wird verworfen …', 'Tabs konnten nicht verworfen werden.', () =>
+  confirmFirst(dismiss, tr('confirm'), () =>
+    run(tr('discarding'), tr('discardFailed'), () =>
       send({ type: 'dismiss', wsId: ws.id }), { focus: [`dismiss:${ws.id}`, `ws:${ws.id}`] }));
   box.append(retry, dismiss);
   return box;
@@ -296,25 +298,24 @@ function editor(ws, index) {
   const box = el('div', 'editor');
   box.id = `editor-${ws.id}`;
   box.role = 'group';
-  box.ariaLabel = `„${ws.name}“ bearbeiten`;
+  box.ariaLabel = tr('editLabel', ws.name);
 
   const line = el('div', 'line');
   const emojiIn = el('input', 'emoji-in');
   emojiIn.dataset.focus = `emoji:${ws.id}`;
   emojiIn.placeholder = '☺';
-  emojiIn.title = 'Emoji (leer = Anfangsbuchstabe)';
-  emojiIn.ariaLabel = 'Emoji, leer für Anfangsbuchstaben';
+  emojiIn.title = tr('emojiTitle');
+  emojiIn.ariaLabel = tr('emojiLabel');
   emojiIn.value = ws.emoji;
   const nameIn = el('input', 'name-in');
   nameIn.dataset.focus = `name:${ws.id}`;
   nameIn.value = ws.name;
   nameIn.maxLength = NAME_MAX;
-  nameIn.placeholder = 'Name';
-  nameIn.ariaLabel = 'Name';
+  nameIn.placeholder = nameIn.ariaLabel = tr('name');
   line.append(emojiIn, nameIn);
 
   const save = (patch, done, focus) =>
-    run('Wird gespeichert …', 'Änderung konnte nicht gespeichert werden.', async () => {
+    run(tr('saving'), tr('saveFailed'), async () => {
       await send({ type: 'update', wsId: ws.id, patch });
       done?.();
     }, { focus });
@@ -326,7 +327,7 @@ function editor(ws, index) {
 
   const sw = el('div', 'swatches');
   sw.role = 'group';
-  sw.ariaLabel = 'Farbe';
+  sw.ariaLabel = tr('color');
   for (const c of state.colors) {
     const b = btn('swatch' + (c === ws.color ? ' sel' : ''), undefined, `color:${ws.id}:${c}`);
     b.style.background = c;
@@ -340,8 +341,8 @@ function editor(ws, index) {
   const moveBox = el('div', 'line');
   const up = btn('btn', '↑', `up:${ws.id}`);
   const down = btn('btn', '↓', `down:${ws.id}`);
-  up.title = up.ariaLabel = 'Nach oben';
-  down.title = down.ariaLabel = 'Nach unten';
+  up.title = up.ariaLabel = tr('moveUp');
+  down.title = down.ariaLabel = tr('moveDown');
   up.disabled = index === 0;
   down.disabled = index === state.workspaces.length - 1;
   const move = (d) => {
@@ -354,12 +355,12 @@ function editor(ws, index) {
   down.addEventListener('click', () => move(1));
   moveBox.append(up, down);
 
-  const del = btn('btn danger', 'Löschen', `del:${ws.id}`);
+  const del = btn('btn danger', tr('delete'), `del:${ws.id}`);
   del.disabled = state.workspaces.length < 2;
-  if (del.disabled) del.title = 'Der letzte Workspace kann nicht gelöscht werden';
-  const question = ws.count ? `${ws.count} ${ws.count === 1 ? 'Tab' : 'Tabs'} schließen?` : 'Wirklich löschen?';
+  if (del.disabled) del.title = tr('deleteLastTitle');
+  const question = ws.count ? plural(ws.count, 'closeTabs') : tr('confirmDelete');
   confirmFirst(del, question, () =>
-    run('Workspace wird gelöscht …', 'Workspace konnte nicht gelöscht werden.', async () => {
+    run(tr('deleting'), tr('deleteFailed'), async () => {
       await send({ type: 'delete', wsId: ws.id });
       editing = null;
     }));
@@ -381,7 +382,7 @@ function editor(ws, index) {
 }
 
 function reorder(ids, focus) {
-  run('Reihenfolge wird gespeichert …', 'Reihenfolge konnte nicht geändert werden.', () =>
+  run(tr('reordering'), tr('reorderFailed'), () =>
     send({ type: 'reorder', ids }), { focus });
 }
 
@@ -391,7 +392,7 @@ async function switchTo(id) {
     if (await flush()) window.close();
     return;
   }
-  run('Workspace wird gewechselt …', 'Workspace konnte nicht gewechselt werden.', () =>
+  run(tr('switching'), tr('switchFailed'), () =>
     send({ type: 'switch', windowId, wsId: id }), { close: true });
 }
 
@@ -399,7 +400,7 @@ addBtn.addEventListener('click', (e) => {
   // Ein Doppelklick legt nur einen Workspace an.
   if (e.detail > 1) return;
   const focus = ['add']; // vorne das Namensfeld des neuen Workspace, sobald bekannt
-  run('Workspace wird angelegt …', 'Workspace konnte nicht angelegt werden.', async () => {
+  run(tr('creating'), tr('createFailed'), async () => {
     const ws = await send({ type: 'create' });
     editing = ws.id;
     focus.unshift(`name:${ws.id}`);
@@ -408,7 +409,7 @@ addBtn.addEventListener('click', (e) => {
 
 // Export und Import laufen in einem eigenen Popup-Fenster, das zu keinem Workspace gehört
 document.getElementById('transfer').addEventListener('click', () =>
-  run('Wird geöffnet …', 'Export und Import konnten nicht geöffnet werden.', async () => {
+  run(tr('opening'), tr('openTransferFailed'), async () => {
     const url = chrome.runtime.getURL('transfer.html');
     const [tab] = await chrome.tabs.query({ url });
     if (tab) await chrome.windows.update(tab.windowId, { focused: true });
@@ -419,7 +420,7 @@ document.getElementById('transfer').addEventListener('click', () =>
 // Neuzeichnen die Checkbox auf den alten Stand zurück
 muteStashEl.addEventListener('change', () => {
   const on = muteStashEl.checked;
-  run('Wird gespeichert …', 'Einstellung konnte nicht gespeichert werden.', () =>
+  run(tr('saving'), tr('settingFailed'), () =>
     send({ type: 'muteStash', on }), { focus: ['mute-stash'] });
 });
 
@@ -434,12 +435,12 @@ send({ type: 'token' }).then(
     keyValue.textContent = token;
     keyCopy.disabled = false;
   },
-  (e) => (keyValue.textContent = `Nicht verfügbar: ${errorText(e)}`),
+  (e) => (keyValue.textContent = tr('keyUnavailable', errorText(e))),
 );
 keyCopy.addEventListener('click', () =>
   navigator.clipboard.writeText(keyValue.textContent).then(
-    () => (keyCopy.textContent = 'Kopiert'),
-    () => (keyCopy.textContent = 'Fehlgeschlagen'),
+    () => (keyCopy.textContent = tr('copied')),
+    () => (keyCopy.textContent = tr('copyFailed')),
   ));
 
 document.addEventListener('keydown', (e) => {
@@ -467,7 +468,7 @@ function moveSelection(e) {
 }
 
 function start() {
-  return run('Wird geladen …', 'Workspaces konnten nicht geladen werden.', async () => {
+  return run(tr('loading'), tr('loadFailed'), async () => {
     if (windowId === undefined) {
       const win = await chrome.windows.getCurrent();
       const tabs = await chrome.tabs.query({ highlighted: true, windowId: win.id });

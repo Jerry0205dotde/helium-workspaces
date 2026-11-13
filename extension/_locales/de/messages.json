@@ -1,0 +1,566 @@
+{
+  "lang": {
+    "message": "de"
+  },
+  "extName": {
+    "message": "Workspaces"
+  },
+  "extDescription": {
+    "message": "Arbeitsbereiche wie in Opera: mehrere Tab-Sätze im selben Fenster, ohne Neuladen."
+  },
+  "cmdOpen": {
+    "message": "Workspace-Liste öffnen"
+  },
+  "cmdNext": {
+    "message": "Nächster Workspace"
+  },
+  "cmdPrev": {
+    "message": "Vorheriger Workspace"
+  },
+  "tabs_one": {
+    "message": "$1 Tab"
+  },
+  "tabs_other": {
+    "message": "$1 Tabs"
+  },
+  "workspaces_one": {
+    "message": "$1 Workspace"
+  },
+  "workspaces_other": {
+    "message": "$1 Workspaces"
+  },
+  "groups_one": {
+    "message": "$1 Gruppe"
+  },
+  "groups_other": {
+    "message": "$1 Gruppen"
+  },
+  "tabGroups_one": {
+    "message": "$1 Tab-Gruppe"
+  },
+  "tabGroups_other": {
+    "message": "$1 Tab-Gruppen"
+  },
+  "pinnedTabs_one": {
+    "message": "$1 angehefteter Tab"
+  },
+  "pinnedTabs_other": {
+    "message": "$1 angeheftete Tabs"
+  },
+  "pinnedTabsDative_one": {
+    "message": "$1 angeheftetem Tab"
+  },
+  "pinnedTabsDative_other": {
+    "message": "$1 angehefteten Tabs"
+  },
+  "oldWorkspaces_one": {
+    "message": "$1 alter Workspace"
+  },
+  "oldWorkspaces_other": {
+    "message": "$1 alte Workspaces"
+  },
+  "tabsNotRestored_one": {
+    "message": "$1 Tab nicht wiederhergestellt"
+  },
+  "tabsNotRestored_other": {
+    "message": "$1 Tabs nicht wiederhergestellt"
+  },
+  "notRestoredTabs_one": {
+    "message": "$1 nicht wiederhergestellten Tab"
+  },
+  "notRestoredTabs_other": {
+    "message": "$1 nicht wiederhergestellte Tabs"
+  },
+  "closeTabs_one": {
+    "message": "$1 Tab schließen?"
+  },
+  "closeTabs_other": {
+    "message": "$1 Tabs schließen?"
+  },
+  "error": {
+    "message": "Fehler"
+  },
+  "newWorkspace": {
+    "message": "＋ Neuer Workspace"
+  },
+  "openTransfer": {
+    "message": "⇅ Exportieren / Importieren"
+  },
+  "muteStash": {
+    "message": "Ablagen stummschalten"
+  },
+  "muteStashTitle": {
+    "message": "Tabs in nicht gezeigten Workspaces spielen keinen Ton ab"
+  },
+  "unloadAfter": {
+    "message": "Ablagen entladen nach"
+  },
+  "unloadNever": {
+    "message": "nie"
+  },
+  "unloadMinutes": {
+    "message": "$1 Minuten"
+  },
+  "unloadHour": {
+    "message": "1 Stunde"
+  },
+  "unloadHours": {
+    "message": "$1 Stunden"
+  },
+  "keySummary": {
+    "message": "Schlüssel für install.sh"
+  },
+  "copy": {
+    "message": "Kopieren"
+  },
+  "copied": {
+    "message": "Kopiert"
+  },
+  "copyFailed": {
+    "message": "Fehlgeschlagen"
+  },
+  "keyUnavailable": {
+    "message": "Nicht verfügbar: $1"
+  },
+  "popupHint": {
+    "message": "↑ / ↓ und Enter oder Alt+Shift+↑ / ↓ wechseln · Rechtsklick auf Seite: Tab verschieben"
+  },
+  "versionTitle": {
+    "message": "Version der Erweiterung"
+  },
+  "reload": {
+    "message": "Neu laden"
+  },
+  "backupFailingSince": {
+    "message": "Sicherung scheitert seit $1"
+  },
+  "backupFailingHint": {
+    "message": "Geht ein Fenster verloren, fehlen alle Änderungen seitdem."
+  },
+  "colorBlue": {
+    "message": "Blau"
+  },
+  "colorRed": {
+    "message": "Rot"
+  },
+  "colorGreen": {
+    "message": "Grün"
+  },
+  "colorOrange": {
+    "message": "Orange"
+  },
+  "colorPurple": {
+    "message": "Lila"
+  },
+  "colorPink": {
+    "message": "Pink"
+  },
+  "colorTeal": {
+    "message": "Türkis"
+  },
+  "colorGray": {
+    "message": "Grau"
+  },
+  "keyN": {
+    "message": "Taste $1"
+  },
+  "otherWindow": {
+    "message": "anderes Fenster"
+  },
+  "muteTitle": {
+    "message": "Ton aus"
+  },
+  "muteLabel": {
+    "message": "„$1“ stummschalten"
+  },
+  "muting": {
+    "message": "Wird stummgeschaltet …"
+  },
+  "muteFailed": {
+    "message": "Ton konnte nicht ausgeschaltet werden."
+  },
+  "moveTabTitle": {
+    "message": "Aktuellen Tab hierhin verschieben"
+  },
+  "moveTabsTitle": {
+    "message": "$1 markierte Tabs hierhin verschieben"
+  },
+  "moveTabLabel": {
+    "message": "Aktuellen Tab nach „$1“ verschieben"
+  },
+  "moveTabsLabel": {
+    "message": "$1 markierte Tabs nach „$2“ verschieben"
+  },
+  "movingTab": {
+    "message": "Tab wird verschoben …"
+  },
+  "movingTabs": {
+    "message": "Tabs werden verschoben …"
+  },
+  "moveTabFailed": {
+    "message": "Tab konnte nicht verschoben werden."
+  },
+  "moveTabsFailed": {
+    "message": "Tabs konnten nicht verschoben werden."
+  },
+  "edit": {
+    "message": "Bearbeiten"
+  },
+  "editLabel": {
+    "message": "„$1“ bearbeiten"
+  },
+  "retry": {
+    "message": "Erneut versuchen"
+  },
+  "retryTitle": {
+    "message": "Wechselt in diesen Workspace"
+  },
+  "discard": {
+    "message": "Verwerfen"
+  },
+  "discardTitle": {
+    "message": "Fehlende Tabs aus der Sicherung entfernen"
+  },
+  "confirm": {
+    "message": "Wirklich?"
+  },
+  "restoring": {
+    "message": "Tabs werden wiederhergestellt …"
+  },
+  "restoreFailed": {
+    "message": "Tabs konnten nicht wiederhergestellt werden."
+  },
+  "discarding": {
+    "message": "Wird verworfen …"
+  },
+  "discardFailed": {
+    "message": "Tabs konnten nicht verworfen werden."
+  },
+  "emojiTitle": {
+    "message": "Emoji (leer = Anfangsbuchstabe)"
+  },
+  "emojiLabel": {
+    "message": "Emoji, leer für Anfangsbuchstaben"
+  },
+  "name": {
+    "message": "Name"
+  },
+  "color": {
+    "message": "Farbe"
+  },
+  "moveUp": {
+    "message": "Nach oben"
+  },
+  "moveDown": {
+    "message": "Nach unten"
+  },
+  "delete": {
+    "message": "Löschen"
+  },
+  "deleteLastTitle": {
+    "message": "Der letzte Workspace kann nicht gelöscht werden"
+  },
+  "confirmDelete": {
+    "message": "Wirklich löschen?"
+  },
+  "saving": {
+    "message": "Wird gespeichert …"
+  },
+  "saveFailed": {
+    "message": "Änderung konnte nicht gespeichert werden."
+  },
+  "settingFailed": {
+    "message": "Einstellung konnte nicht gespeichert werden."
+  },
+  "deleting": {
+    "message": "Workspace wird gelöscht …"
+  },
+  "deleteFailed": {
+    "message": "Workspace konnte nicht gelöscht werden."
+  },
+  "reordering": {
+    "message": "Reihenfolge wird gespeichert …"
+  },
+  "reorderFailed": {
+    "message": "Reihenfolge konnte nicht geändert werden."
+  },
+  "switching": {
+    "message": "Workspace wird gewechselt …"
+  },
+  "switchFailed": {
+    "message": "Workspace konnte nicht gewechselt werden."
+  },
+  "creating": {
+    "message": "Workspace wird angelegt …"
+  },
+  "createFailed": {
+    "message": "Workspace konnte nicht angelegt werden."
+  },
+  "opening": {
+    "message": "Wird geöffnet …"
+  },
+  "openTransferFailed": {
+    "message": "Export und Import konnten nicht geöffnet werden."
+  },
+  "loading": {
+    "message": "Wird geladen …"
+  },
+  "loadFailed": {
+    "message": "Workspaces konnten nicht geladen werden."
+  },
+  "transferTitle": {
+    "message": "Workspaces exportieren und importieren"
+  },
+  "exportHeading": {
+    "message": "Exportieren"
+  },
+  "exportText": {
+    "message": "Speichert alle Workspaces mit Name, Farbe, Emoji, Reihenfolge, Tabs und Tab-Gruppen sowie die angehefteten Tabs als JSON-Datei. Fenster-IDs und der Geräteschlüssel kommen nicht hinein."
+  },
+  "exportButton": {
+    "message": "Als Datei speichern"
+  },
+  "importHeading": {
+    "message": "Importieren"
+  },
+  "importText": {
+    "message": "Die Datei wird zuerst vollständig geprüft. Geändert wird erst, wenn du unten bestätigst."
+  },
+  "modesLegend": {
+    "message": "Was soll passieren?"
+  },
+  "mergeName": {
+    "message": "Zusammenführen"
+  },
+  "mergeText": {
+    "message": "bisherige Workspaces und Tabs bleiben, nichts wird geschlossen."
+  },
+  "replaceName": {
+    "message": "Ersetzen"
+  },
+  "replaceText": {
+    "message": "die bisherigen Workspaces werden gelöscht und durch die aus der Datei ersetzt."
+  },
+  "importButton": {
+    "message": "Importieren"
+  },
+  "exporting": {
+    "message": "Wird exportiert …"
+  },
+  "exportDone": {
+    "message": "$1 mit $2 exportiert."
+  },
+  "exportDonePinned": {
+    "message": "$1 mit $2 und $3 exportiert."
+  },
+  "exportFailed": {
+    "message": "Export fehlgeschlagen: $1"
+  },
+  "fileValid": {
+    "message": "Die Datei ist gültig: $1."
+  },
+  "fileValidDate": {
+    "message": "Die Datei ist gültig: $1 (exportiert am $2)."
+  },
+  "pinnedPlan": {
+    "message": "Angeheftete Tabs: $1 neu"
+  },
+  "pinnedPlanSkip": {
+    "message": "Angeheftete Tabs: $1 neu, $2 schon vorhanden"
+  },
+  "mergeById": {
+    "message": "derselbe Workspace"
+  },
+  "mergeByName": {
+    "message": "gleicher Name"
+  },
+  "mergeNew": {
+    "message": "„$1“ wird neu angelegt ($2)."
+  },
+  "mergeNothing": {
+    "message": "„$1“ ($2): alle $3 schon vorhanden, nichts zu tun."
+  },
+  "mergeAdd": {
+    "message": "„$1“ ($2) bekommt $3 neue."
+  },
+  "mergeAddSkip": {
+    "message": "„$1“ ($2) bekommt $3 neue, $4 schon vorhanden."
+  },
+  "replaceDelete": {
+    "message": "Löscht $1 ($2) und schließt $3."
+  },
+  "replaceDiscard": {
+    "message": "Verwirft $1."
+  },
+  "replaceCreate": {
+    "message": "Legt $1 aus der Datei neu an."
+  },
+  "replacePinned": {
+    "message": "Angeheftete Tabs bleiben offen, fehlende aus der Datei kommen dazu."
+  },
+  "quoted": {
+    "message": "„$1“"
+  },
+  "checkingFile": {
+    "message": "Datei wird geprüft …"
+  },
+  "fileTooLarge": {
+    "message": "Die Datei ist zu groß."
+  },
+  "fileRejected": {
+    "message": "Diese Datei kann nicht importiert werden. Es wurde nichts geändert."
+  },
+  "confirmReplaceTabs": {
+    "message": "$1 schließen und ersetzen?"
+  },
+  "confirmReplace": {
+    "message": "Wirklich ersetzen?"
+  },
+  "importing": {
+    "message": "Wird importiert …"
+  },
+  "resCreated": {
+    "message": "$1 angelegt"
+  },
+  "resMerged": {
+    "message": "$1 ergänzt"
+  },
+  "resAdded": {
+    "message": "$1 übernommen"
+  },
+  "resSkipped": {
+    "message": "$1 doppelte übersprungen"
+  },
+  "resPinned": {
+    "message": "$1 ergänzt"
+  },
+  "resRemoved": {
+    "message": "$1 mit $2 entfernt"
+  },
+  "importDone": {
+    "message": "Import abgeschlossen: $1."
+  },
+  "importDoneFailed": {
+    "message": "Import abgeschlossen: $1. $2 ließen sich nicht öffnen, sie stehen im Popup unter „nicht wiederhergestellt“."
+  },
+  "importFailed": {
+    "message": "Import fehlgeschlagen."
+  },
+  "stashHeading": {
+    "message": "Workspace-Ablage"
+  },
+  "stashText": {
+    "message": "Dieses versteckte Fenster gehört zur Erweiterung „Workspaces“. Es enthält die Tabs eines gerade nicht angezeigten Workspace. Bitte nicht schließen – zum Wechseln den Workspace-Button in der Symbolleiste benutzen."
+  },
+  "defaultWorkspace": {
+    "message": "Standard"
+  },
+  "recoveredWorkspace": {
+    "message": "Wiederhergestellt"
+  },
+  "iconTitle": {
+    "message": "Workspace: $1"
+  },
+  "iconTitleMissing": {
+    "message": "Workspace: $1 – $2"
+  },
+  "menuMove": {
+    "message": "Tab in Workspace verschieben"
+  },
+  "menuMoveMarked": {
+    "message": "$1 markierte Tabs in Workspace verschieben"
+  },
+  "menuGroup": {
+    "message": "Gruppe in Workspace verschieben"
+  },
+  "unloadInvalid": {
+    "message": "Ungültige Zeit zum Entladen."
+  },
+  "importModeUnknown": {
+    "message": "Unbekannte Import-Art."
+  },
+  "importReplaceUnconfirmed": {
+    "message": "Ersetzen schließt Tabs und muss bestätigt werden."
+  },
+  "exNotJson": {
+    "message": "Die Datei ist kein gültiges JSON."
+  },
+  "exNotText": {
+    "message": "„$1“ fehlt oder ist kein Text."
+  },
+  "exTooLong": {
+    "message": "„$1“ ist zu lang."
+  },
+  "exNotList": {
+    "message": "„$1“ fehlt oder ist keine Liste."
+  },
+  "exBadUrl": {
+    "message": "„$1“ ist keine gültige Adresse."
+  },
+  "exJavascript": {
+    "message": "javascript:-Adressen werden nicht importiert."
+  },
+  "exOwnPage": {
+    "message": "Seiten der Erweiterung selbst gehören nicht in die Datei."
+  },
+  "exNotExport": {
+    "message": "Das ist keine Export-Datei von Helium Workspaces."
+  },
+  "exBadVersion": {
+    "message": "Die Versionsnummer des Formats fehlt oder ist ungültig."
+  },
+  "exNewerVersion": {
+    "message": "Die Datei hat Format-Version $1, diese Erweiterung kennt nur Version $2."
+  },
+  "exNotObject": {
+    "message": "Eintrag ist kein Objekt."
+  },
+  "exNoWorkspaces": {
+    "message": "Die Datei enthält keine Workspaces."
+  },
+  "exTooManyWorkspaces": {
+    "message": "Die Datei enthält zu viele Workspaces."
+  },
+  "exTooManyTabs": {
+    "message": "Die Datei enthält zu viele Tabs."
+  },
+  "exBadColor": {
+    "message": "„$1“ ist keine Farbe der Form #rrggbb."
+  },
+  "exBadId": {
+    "message": "„id“ darf nur Buchstaben und Ziffern enthalten."
+  },
+  "exDupId": {
+    "message": "Die ID „$1“ kommt mehrfach vor."
+  },
+  "exEmptyId": {
+    "message": "„id“ ist leer."
+  },
+  "exDupGroupId": {
+    "message": "Die Gruppen-ID „$1“ kommt mehrfach vor."
+  },
+  "exBadGroupColor": {
+    "message": "„$1“ ist keine Gruppenfarbe ($2)."
+  },
+  "exBadCollapsed": {
+    "message": "„collapsed“ muss true oder false sein."
+  },
+  "exUnknownGroup": {
+    "message": "Gruppe „$1“ ist nicht unter „groups“ aufgeführt."
+  },
+  "exWherePinned": {
+    "message": "Angehefteter Tab $1"
+  },
+  "exWhereWs": {
+    "message": "Workspace $1"
+  },
+  "exWhereWsNamed": {
+    "message": "Workspace $1 („$2“)"
+  },
+  "exWhereGroup": {
+    "message": "$1, Gruppe $2"
+  },
+  "exWhereTab": {
+    "message": "$1, Tab $2"
+  }
+}

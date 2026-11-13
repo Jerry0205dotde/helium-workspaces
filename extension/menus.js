@@ -1,7 +1,7 @@
 // Hintergrundlogik: Kontextmenü „Tab in Workspace verschieben“ und, wenn der Tab in einer
 // Gruppe ist, „Gruppe in Workspace verschieben“
 
-const MENUS = { move: 'Tab in Workspace verschieben', group: 'Gruppe in Workspace verschieben' };
+const MENUS = { move: tr('menuMove'), group: tr('menuGroup') };
 
 // Auf Links, Bildern, Videos und markiertem Text ebenso wie auf einer freien Stelle der
 // Seite und am Symbol der Erweiterung; verschoben wird immer der Tab, nicht der Link
@@ -30,7 +30,7 @@ async function updateMenus() {
     const tabs = await chrome.tabs.query({ lastFocusedWindow: true, highlighted: true });
     const active = tabs.find((t) => t.active);
     const n = active ? tabs.length : 1;
-    await chrome.contextMenus.update('move', { title: n > 1 ? `${n} markierte Tabs in Workspace verschieben` : MENUS.move });
+    await chrome.contextMenus.update('move', { title: n > 1 ? tr('menuMoveMarked', n) : MENUS.move });
     await chrome.contextMenus.update('group', { visible: !!active && active.groupId >= 0 });
   } catch {
     // Das Menü wird gerade neu gebaut, buildMenus ruft das danach selbst auf

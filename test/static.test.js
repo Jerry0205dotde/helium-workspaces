@@ -40,6 +40,13 @@ test('manifest.json ist gültig und verweist nur auf vorhandene Dateien', () => 
   assert.match(m.version, /^\d+(\.\d+){0,3}$/);
   assert.ok(exists(EXT, m.background.service_worker), 'Service Worker fehlt');
   assert.ok(exists(EXT, m.action.default_popup), 'Popup fehlt');
+  for (const icons of [m.icons, m.action.default_icon]) {
+    for (const [size, f] of Object.entries(icons)) {
+      // Breite und Höhe stehen im IHDR-Block der PNG-Datei
+      const png = fs.readFileSync(path.join(EXT, f));
+      assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [Number(size), Number(size)], `${f} ist nicht ${size} px groß`);
+    }
+  }
   for (const p of ['tabs', 'tabGroups', 'storage', 'unlimitedStorage', 'contextMenus']) assert.ok(m.permissions.includes(p), `Berechtigung ${p} fehlt`);
   for (const [name, c] of Object.entries(m.commands || {})) {
     assert.match(c.description || '', /\S/, `Befehl ${name} ohne Beschreibung`);
@@ -60,6 +67,37 @@ test('HTML-Seiten der Erweiterung laden nur vorhandene Skripte und Stile', () =>
       assert.ok(exists(EXT, src), `${path.basename(f)}: ${src} fehlt`);
     }
   }
+});
+
+test('Übersetzungen: beide Sprachen haben dieselben Texte, alle benutzten Schlüssel gibt es', () => {
+  const m = readJson(path.join(EXT, 'manifest.json'));
+  const loc = (l) => readJson(path.join(EXT, '_locales', l, 'messages.json'));
+  const de = loc('de');
+  const en = loc(m.default_locale);
+  assert.equal(m.default_locale, 'en');
+  assert.deepEqual(Object.keys(de).sort(), Object.keys(en).sort(), 'Schlüssel von de und en');
+  // Chrome unterscheidet bei Schlüsseln nicht nach Groß- und Kleinschreibung
+  assert.equal(new Set(Object.keys(en).map((k) => k.toLowerCase())).size, Object.keys(en).length);
+  const subs = (s) => [...new Set(s.match(/\$[1-9]/g))].sort().join();
+  for (const k of Object.keys(en)) {
+    assert.match(de[k].message, /\S/, `de: ${k} leer`);
+    assert.equal(subs(de[k].message), subs(en[k].message), `Platzhalter von ${k}`);
+  }
+  const used = new Set();
+  const add = (k, where) => {
+    used.add(k);
+    assert.ok(Object.hasOwn(en, k), `${where}: Text ${k} fehlt in _locales`);
+  };
+  for (const f of [...files(EXT, '.js'), ...files(EXT, '.html'), path.join(EXT, 'manifest.json')]) {
+    const src = fs.readFileSync(f, 'utf8');
+    const where = path.basename(f);
+    for (const [, k] of src.matchAll(/\btr\('([^']+)'/g)) add(k, where);
+    for (const [, k] of src.matchAll(/data-i18n(?:-title)?="([^"]+)"/g)) add(k, where);
+    for (const [, k] of src.matchAll(/__MSG_(\w+)__/g)) add(k, where);
+    for (const [, k] of src.matchAll(/\bplural\([^,]+, '([^']+)'\)/g)) for (const n of ['one', 'other']) add(`${k}_${n}`, where);
+  }
+  // Ungenutzte Texte fallen auf (Schlüssel aus tr(…) mit berechnetem Namen gibt es nicht)
+  assert.deepEqual(Object.keys(en).filter((k) => !used.has(k)), []);
 });
 
 test('KWin-Metadaten sind gültig und passen zu install.sh', () => {

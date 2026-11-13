@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <link rel="stylesheet" href="popup.css">
@@ -9,16 +9,17 @@
   <div id="backup-error" class="error" hidden></div>
   <fieldset id="controls">
     <ul id="list" aria-label="Workspaces"></ul>
-    <button id="add" class="add" type="button" data-focus="add">＋ Neuer Workspace</button>
-    <button id="transfer" class="add" type="button" data-focus="transfer">⇅ Exportieren / Importieren</button>
-    <label class="option" title="Tabs in nicht gezeigten Workspaces spielen keinen Ton ab"><input id="mute-stash" type="checkbox" data-focus="mute-stash"> Ablagen stummschalten</label>
-    <label class="setting">Ablagen entladen nach <select id="unload" data-focus="unload"></select></label>
+    <button id="add" class="add" type="button" data-focus="add" data-i18n="newWorkspace"></button>
+    <button id="transfer" class="add" type="button" data-focus="transfer" data-i18n="openTransfer"></button>
+    <label class="option" data-i18n-title="muteStashTitle"><input id="mute-stash" type="checkbox" data-focus="mute-stash"> <span data-i18n="muteStash"></span></label>
+    <label class="setting"><span data-i18n="unloadAfter"></span> <select id="unload" data-focus="unload"></select></label>
   </fieldset>
   <details class="key">
-    <summary>Schlüssel für install.sh</summary>
-    <div class="key-line"><code id="key-value"></code><button id="key-copy" class="btn" type="button" disabled>Kopieren</button></div>
+    <summary data-i18n="keySummary"></summary>
+    <div class="key-line"><code id="key-value"></code><button id="key-copy" class="btn" type="button" disabled data-i18n="copy"></button></div>
   </details>
-  <footer><span class="hint">↑ / ↓ und Enter oder Alt+Shift+↑ / ↓ wechseln · Rechtsklick auf Seite: Tab verschieben</span><span id="status" role="status"></span><span id="version" class="version" title="Version der Erweiterung"></span></footer>
+  <footer><span class="hint" data-i18n="popupHint"></span><span id="status" role="status"></span><span id="version" class="version" data-i18n-title="versionTitle"></span></footer>
+  <script src="i18n.js"></script>
   <script src="label.js"></script>
   <script src="ui.js"></script>
   <script src="popup.js"></script>

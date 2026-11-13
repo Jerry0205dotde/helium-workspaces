@@ -27,10 +27,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const i18n = require('./i18n');
 
 const EXT_DIR = path.join(__dirname, '..', 'extension');
 const NEWTAB = 'chrome://newtab/';
 const GROUP_COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
+
+const DE = i18n.messages('de');
 
 const clone = (v) => (v === undefined ? undefined : structuredClone(v));
 
@@ -448,6 +451,7 @@ class Browser {
         onInstalled: b.event('runtime.onInstalled'),
         onStartup: b.event('runtime.onStartup'),
       },
+      i18n: { getMessage: (key, subs) => i18n.getMessage(DE, key, subs) },
       storage: {
         local: {
           get: api('storage.local.get', (k) => b.local.get(k)),

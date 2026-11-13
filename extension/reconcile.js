@@ -167,7 +167,7 @@ async function reconcile() {
   // Ablagen, deren Workspace fehlt, als Workspace zurückholen
   for (const wsId of stash.keys()) {
     if (!cfg.workspaces.some((w) => w.id === wsId)) {
-      cfg.workspaces.push({ id: wsId, name: 'Wiederhergestellt', color: '#64748b', emoji: '' });
+      cfg.workspaces.push({ id: wsId, name: tr('recoveredWorkspace'), color: '#64748b', emoji: '' });
       await saveWorkspaces(cfg.workspaces);
     }
   }

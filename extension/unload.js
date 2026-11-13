@@ -40,7 +40,7 @@ async function scheduleUnload() {
 }
 
 async function setUnloadAfter(minutes) {
-  if (!UNLOAD_CHOICES.includes(minutes)) throw new Error('Ungültige Zeit zum Entladen.');
+  if (!UNLOAD_CHOICES.includes(minutes)) throw new Error(tr('unloadInvalid'));
   await chrome.storage.local.set({ unloadAfter: minutes });
   await scheduleUnload();
 }
