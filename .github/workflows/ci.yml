@@ -12,7 +12,10 @@ jobs:
   test:
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
+      # Volle Historie, damit test/static.test.js die Version mit origin/main vergleichen kann
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -22,7 +25,7 @@ jobs:
         id: chrome
         with:
           install-dependencies: true
-      # Syntax, Manifest und KWin-Metadaten (test/static.test.js), das Verhalten der
+      # Syntax, Manifest samt erhöhter Version und KWin-Metadaten (test/static.test.js), das Verhalten der
       # Hintergrundlogik mit nachgebildeten Chrome-APIs und dieselben Abläufe in Chrome
       - run: node --test test/*.test.js
         env:

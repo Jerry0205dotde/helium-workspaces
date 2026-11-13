@@ -78,3 +78,49 @@ test('KWin-Metadaten sind gültig und passen zu install.sh', () => {
   assert.ok(sh.includes('--key token'));
   assert.match(fs.readFileSync(path.join(KWIN, 'contents', meta['X-Plasma-MainScript']), 'utf8'), /readConfig\("token"/);
 });
+
+// Ändert sich etwas in extension/, muss die Version im Manifest steigen. Sonst zeigt das
+// Popup nach einem Update dieselbe Version wie vorher, und man sieht nicht, ob der neue
+// Stand läuft. Verglichen wird mit VERSION_BASE (Standard origin/main). Fehlt diese Ref,
+// etwa in einem flachen Klon, wird der Test übersprungen.
+const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' }).trim();
+
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 4; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return Math.sign(d);
+  }
+  return 0;
+}
+
+test('Versionen werden nach allen vier Stellen verglichen', () => {
+  assert.equal(compareVersions('0.1.1', '0.1.0'), 1);
+  assert.equal(compareVersions('0.1.10', '0.1.9'), 1);
+  assert.equal(compareVersions('0.2', '0.1.9'), 1);
+  assert.equal(compareVersions('0.1', '0.1.0'), 0);
+  assert.equal(compareVersions('0.1.0.1', '0.1.0'), 1);
+  assert.equal(compareVersions('0.1.0', '0.1.1'), -1);
+});
+
+test('Version ist gegenüber main erhöht, wenn sich extension/ geändert hat', (t) => {
+  const base = process.env.VERSION_BASE || 'origin/main';
+  let mergeBase;
+  try {
+    mergeBase = git('merge-base', 'HEAD', base);
+  } catch {
+    t.skip(`${base} nicht vorhanden`);
+    return;
+  }
+  // Ohne HEAD vergleicht git diff mit dem Arbeitsverzeichnis, nicht eingecheckte Änderungen zählen also mit
+  const changed = git('diff', '--name-only', mergeBase, '--', 'extension/');
+  if (!changed) return;
+  const before = JSON.parse(git('show', `${base}:extension/manifest.json`)).version;
+  const now = readJson(path.join(EXT, 'manifest.json')).version;
+  assert.ok(
+    compareVersions(now, before) > 0,
+    `extension/ hat sich gegenüber ${base} geändert (${changed.split('\n').join(', ')}), ` +
+      `aber die Version in extension/manifest.json ist ${now}, auf ${base} ${before}. Bitte erhöhen.`,
+  );
+});
