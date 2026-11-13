@@ -161,7 +161,8 @@ class Env {
       .join('\n');
   }
 
-  // Wartet, bis der Bestand stimmt und alle Seiten geladen sind
+  // Wartet, bis der Bestand stimmt und keine Seite mehr lädt (entladene Tabs, etwa aus
+  // der Sicherung angelegte, bleiben ungeladen)
   settled(opts) {
     return waitFor(
       async () => {
@@ -173,7 +174,7 @@ class Env {
           e.message += `\n${this.describe(st)}`;
           throw e;
         }
-        const loading = st.windows.flatMap((w) => w.tabs).filter((t) => t.status !== 'complete');
+        const loading = st.windows.flatMap((w) => w.tabs).filter((t) => t.status === 'loading');
         assert.deepEqual(loading.map((t) => t.url), [], 'Seiten laden noch');
         return { ...r, st };
       },
