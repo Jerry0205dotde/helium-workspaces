@@ -115,6 +115,9 @@ chrome.commands.onCommand.addListener(async (cmd, tab) => {
   if (!windowId) windowId = (await chrome.windows.getLastFocused({ windowTypes: ['normal'] })).id;
   if (cmd === 'next-workspace') userAction(() => switchRelative(windowId, 1));
   if (cmd === 'prev-workspace') userAction(() => switchRelative(windowId, -1));
+  if (cmd === 'last-workspace') userAction(() => switchToLast(windowId));
+  const nr = /^switch-([1-9])$/.exec(cmd);
+  if (nr) userAction(() => switchToIndex(windowId, nr[1] - 1));
 });
 
 // ---------------------------------------------------------------- Nachrichten (Popup, Export und Import)

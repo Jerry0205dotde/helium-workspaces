@@ -220,6 +220,9 @@ async function reconcile() {
   for (const id of Object.keys(s.windowWs)) {
     if (!mains.some((w) => String(w.id) === id)) delete s.windowWs[id];
   }
+  for (const id of Object.keys(s.prevWs)) {
+    if (!mains.some((w) => String(w.id) === id)) delete s.prevWs[id];
+  }
   if (!starting) entries = [];
   const fresh = mains.filter((w) => !s.windowWs[w.id]);
   const guessed = new Set();
@@ -334,6 +337,7 @@ async function onWindowRemoved(winId) {
     return;
   }
   delete s.windowWs[winId];
+  delete s.prevWs[winId];
   await saveSess(s);
   const { stash, mains } = await scan();
   // Workspace und URLs merken, damit das Fenster nach Strg+Shift+T wieder seinen Workspace

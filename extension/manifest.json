@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
   "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
@@ -24,6 +24,19 @@
     "prev-workspace": {
       "suggested_key": { "default": "Alt+Shift+Up" },
       "description": "__MSG_cmdPrev__"
-    }
+    },
+    "last-workspace": {
+      "suggested_key": { "default": "Alt+Q" },
+      "description": "__MSG_cmdLast__"
+    },
+    "switch-1": { "description": "__MSG_cmdSwitch__ 1" },
+    "switch-2": { "description": "__MSG_cmdSwitch__ 2" },
+    "switch-3": { "description": "__MSG_cmdSwitch__ 3" },
+    "switch-4": { "description": "__MSG_cmdSwitch__ 4" },
+    "switch-5": { "description": "__MSG_cmdSwitch__ 5" },
+    "switch-6": { "description": "__MSG_cmdSwitch__ 6" },
+    "switch-7": { "description": "__MSG_cmdSwitch__ 7" },
+    "switch-8": { "description": "__MSG_cmdSwitch__ 8" },
+    "switch-9": { "description": "__MSG_cmdSwitch__ 9" }
   }
 }
