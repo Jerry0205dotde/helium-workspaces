@@ -158,11 +158,22 @@ $('import').addEventListener('click', (e) => {
   if (!text || e.detail > 1) return;
   const m = mode();
   const b = $('import');
-  // Ersetzen schließt Tabs: erst nach einem zweiten Klick
+  // Ersetzen schließt Tabs: erst nach einem zweiten Klick. Die Nachfrage nennt den Stand
+  // von jetzt, seit der Vorschau können Tabs oder Workspaces dazugekommen sein.
   if (m === 'replace' && !b.dataset.confirm) {
-    b.dataset.confirm = '1';
-    b.className = 'btn danger';
-    b.textContent = closing() ? tr('confirmReplaceTabs', tabs(closing())) : tr('confirmReplace');
+    run(tr('checkingCurrent'), async () => {
+      $('error').hidden = true;
+      try {
+        preview = await send({ type: 'importPreview', text });
+      } catch (err) {
+        showError(tr('fileRejected'), err);
+        return;
+      }
+      render();
+      b.dataset.confirm = '1';
+      b.className = 'btn danger';
+      b.textContent = closing() ? tr('confirmReplaceTabs', tabs(closing())) : tr('confirmReplace');
+    }).then(() => b.focus());
     return;
   }
   run(tr('importing'), async () => {
