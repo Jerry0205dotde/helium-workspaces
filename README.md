@@ -234,3 +234,7 @@ The tests do not check the connection to Helium and KWin. After changing that, b
 - [`kwin/`](./kwin): KWin script that hides the stash windows
 - [`install.sh`](./install.sh): set up the KWin script and write the key
 - [`test/`](./test): automated tests, [`fake-browser.js`](./test/fake-browser.js) replicates the Chrome APIs
+
+## License
+
+[GPL-3.0-or-later](./LICENSE). You may use, change and share Helium Workspaces, as long as anything you pass on based on it is also under the GPL and comes with its source code.
