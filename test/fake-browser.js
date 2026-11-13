@@ -11,6 +11,8 @@
 //   tabGroups.move nimmt die ganze Gruppe samt ID mit.
 // - Ein Tab, der zwischen zwei Tabs derselben Gruppe landet, tritt ihr bei.
 // - Nach einem Browserstart bekommen alle Fenster, Tabs und Gruppen neue IDs.
+// - Stummschalten merkt sich, wer es war (mutedInfo.reason 'user' oder 'extension' mit
+//   extensionId). Tabs kommen nach einem Browserstart ohne Stummschaltung wieder.
 // - storage.session ist nach einem Browserstart und nach dem Neuladen der Erweiterung
 //   leer, beim Neustart nur des Service Workers bleibt es erhalten.
 // Ereignisse werden sofort zugestellt, noch bevor der auslösende API-Aufruf zurückkehrt.
@@ -194,6 +196,8 @@ class Browser {
       active: t.active,
       highlighted: t.active,
       groupId: t.groupId,
+      audible: !!t.audible,
+      mutedInfo: clone(t.mutedInfo || { muted: false }),
       status: 'complete',
       incognito: false,
     };
@@ -480,6 +484,11 @@ class Browser {
             b.fire('tabs.onUpdated', t.id, { pinned: t.pinned }, b.tabInfo(t, w));
             if (from !== to) b.fire('tabs.onMoved', t.id, { windowId: w.id, fromIndex: from, toIndex: to });
             b.dropEmptyGroup(oldGroup);
+          }
+          if (o.muted !== undefined) {
+            // Ohne owner schaltet der Test wie von Hand im Browser
+            t.mutedInfo = owner ? { muted: !!o.muted, reason: 'extension', extensionId: new URL(b.origin).host } : { muted: !!o.muted, reason: 'user' };
+            b.fire('tabs.onUpdated', t.id, { mutedInfo: clone(t.mutedInfo) }, b.tabInfo(t, w));
           }
           if (o.active) b.activate(t, w);
           return b.tabInfo(t, w);
