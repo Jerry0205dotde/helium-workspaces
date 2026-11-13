@@ -106,3 +106,12 @@ test('Ohne oder mit leerer Browserliste gilt die Standardliste', () => {
     assert.ok(!brave.skipTaskbar && !brave.minimized, `browsers=${browsers}: Brave versteckt`);
   }
 });
+
+test('Fällt ein Browser aus der Liste, kommen seine versteckten Ablagen zurück in die Taskleiste', () => {
+  const brave = stash('brave-browser');
+  run([brave], TOKEN, { browsers: 'helium,brave-browser' });
+  assert.ok(isHidden(brave));
+  // install.sh --browsers '' lädt das Skript mit der Standardliste neu, das Fenster bleibt bestehen
+  run([brave], TOKEN, { browsers: '' });
+  assert.ok(!brave.skipTaskbar && !brave.skipSwitcher && !brave.skipPager);
+});

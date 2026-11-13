@@ -19,15 +19,17 @@ function isBrowser(w) {
 }
 
 function check(w) {
-    if (!TOKEN || !w || !w.normalWindow || !isBrowser(w)) return;
+    if (!TOKEN || !w || !w.normalWindow) return;
     const id = String(w.internalId);
-    if ((w.caption || "").indexOf(MARK) !== -1) {
+    const marked = (w.caption || "").indexOf(MARK) !== -1;
+    if (marked && isBrowser(w)) {
         hidden[id] = true;
         if (!w.skipTaskbar) w.skipTaskbar = true;
         if (!w.skipSwitcher) w.skipSwitcher = true;
         if (!w.skipPager) w.skipPager = true;
         if (!w.minimized) w.minimized = true;
-    } else if (hidden[id]) {
+    } else if (hidden[id] || (marked && w.skipTaskbar)) {
+        // Auch Ablagen eines Browsers, der nicht mehr in der Liste steht, kommen zurück
         delete hidden[id];
         w.skipTaskbar = false;
         w.skipSwitcher = false;
