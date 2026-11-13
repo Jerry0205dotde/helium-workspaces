@@ -1,6 +1,8 @@
 // Hintergrundlogik, Grundlagen: Speicher, Ablauf, Fenster erkennen, Tabs bewegen
 
 const STASH_PAGE = chrome.runtime.getURL('stash.html');
+// Ablage-Seite mit ?shown#<id>: Titel ohne Schlüssel, das KWin-Skript versteckt sie nicht (stash.js)
+const SHOWN = 'shown';
 const COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#64748b'];
 
 let switching = 0; // > 0, solange wir selbst Tabs verschieben

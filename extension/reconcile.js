@@ -178,8 +178,10 @@ async function reconcile() {
   // Eine neue Tab-Seite dort stammt von der Starteinstellung „Neuer-Tab-Seite“ und wird
   // geschlossen, sonst sammelt sich bei jedem Start eine weitere im Workspace an.
   const foreign = [];
-  for (const w of stash.values()) {
+  for (const [id, w] of stash) {
     const st = w.tabs.find(isStashTab);
+    // Nach einer gescheiterten Sicherung beim Schließen sichtbar gemacht (onWindowRemoved)
+    if (urlOf(st).includes(`?${SHOWN}#`)) await chrome.tabs.update(st.id, { url: `${STASH_PAGE}#${id}` });
     const act = w.tabs.find((t) => t.active);
     if (!mains.length && act && !isStashTab(act)) foreign.push(act);
     if (!st.pinned) await chrome.tabs.update(st.id, { pinned: true });
@@ -362,7 +364,21 @@ async function onWindowRemoved(winId) {
     // Letztes sichtbares Fenster geschlossen → Ablagen auch schließen, damit der
     // Browser wirklich beendet wird. Die Tabs stehen in der Sicherung; eine noch
     // ausstehende Sicherung vorher mit dem Abbild des Fensters nachholen.
-    if (changes > savedChanges && img) await snapshot({ ...img, ws }).catch((e) => console.warn('[workspaces] Sicherung beim Schließen', e));
+    if (changes > savedChanges && img) {
+      try {
+        await snapshot({ ...img, ws });
+      } catch (e) {
+        // Ohne Sicherung gingen die Tabs der Ablagen verloren. Sie bleiben deshalb offen
+        // und verlieren den Schlüssel im Titel, damit das KWin-Skript sie wieder in die
+        // Taskleiste bringt. Der nächste Abgleich versteckt sie wieder.
+        console.warn('[workspaces] Sicherung beim Schließen, Ablagen bleiben offen', e);
+        for (const [id, w] of stash) {
+          const st = w.tabs.find(isStashTab);
+          await chrome.tabs.update(st.id, { url: `${STASH_PAGE}?${SHOWN}#${id}` }).catch(() => {});
+        }
+        return;
+      }
+    }
     for (const w of stash.values()) await chrome.windows.remove(w.id).catch(() => {});
     return;
   }

@@ -373,3 +373,32 @@ test('Ist die Ablage beim Löschen schon geschlossen, gilt das als Erfolg', asyn
   delete env.ids.C;
   check(env, { A: SPEC.workspaces.A, B: SPEC.workspaces.B, pinned: SPEC.pinned });
 });
+
+// Scheitert beim Schließen des letzten Fensters die nachgeholte Sicherung, gingen mit den
+// Ablagen auch Tab-Änderungen seit der letzten Sicherung verloren (hier b3 → b4).
+test('Sicherung scheitert beim Schließen des letzten Fensters: Ablagen bleiben offen und sichtbar', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await w.settle();
+  const nav = { url: url('b4') };
+  await b.chrome.tabs.update(where(env, 'b3').tab.id, nav);
+  await w.advance(10);
+  const set = b.fail('storage.local.set');
+  await b.closeWindowByX(win);
+  await w.settle();
+  assert.equal(set.hits, 1, 'Sicherung beim Schließen wurde nicht versucht');
+  for (const name of ['B', 'C']) {
+    const page = stashOf(env, name)?.tabs[0];
+    assert.ok(page, `Ablage von ${name} wurde geschlossen`);
+    // Ohne Schlüssel im Titel (stash.js) zeigt das KWin-Skript das Fenster wieder
+    assert.equal(page.url, `${b.origin}stash.html?shown#${ids[name]}`, `Ablage von ${name} ist nicht sichtbar gemacht`);
+  }
+  assert.equal(where(env, 'b4').stash, true);
+
+  // Nach dem Neustart sind die Ablagen wieder versteckt, b4 ist noch da
+  b.restart();
+  await b.startWorker('startup').settle();
+  b.calls = b.calls.filter((c) => !(c.name === 'tabs.update' && (c.args[1]?.url === nav.url || c.args[1]?.url?.startsWith(`${b.origin}stash.html`))));
+  check(env, { ...ALL, B: [...SPEC.workspaces.B.slice(0, 2), 'b4'] });
+  for (const name of ['B', 'C']) assert.equal(stashOf(env, name).tabs[0].url, `${b.origin}stash.html#${ids[name]}`);
+});
