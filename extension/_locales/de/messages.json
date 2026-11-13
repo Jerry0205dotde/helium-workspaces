@@ -17,6 +17,12 @@
   "cmdPrev": {
     "message": "Vorheriger Workspace"
   },
+  "cmdLast": {
+    "message": "Zuletzt benutzter Workspace"
+  },
+  "cmdSwitch": {
+    "message": "Wechseln zu Workspace"
+  },
   "tabs_one": {
     "message": "$1 Tab"
   },

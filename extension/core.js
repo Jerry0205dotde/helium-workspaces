@@ -49,8 +49,9 @@ async function saveWorkspaces(workspaces) {
 
 // Laufzeitzustand (überlebt Neustarts des Service Workers, nicht des Browsers)
 async function sess() {
-  const s = await chrome.storage.session.get(['windowWs', 'lastTab', 'tabOrigin']);
-  return { windowWs: s.windowWs || {}, lastTab: s.lastTab || {}, tabOrigin: s.tabOrigin || {} };
+  // prevWs: je Hauptfenster der Workspace, den es vor dem jetzigen zeigte
+  const s = await chrome.storage.session.get(['windowWs', 'prevWs', 'lastTab', 'tabOrigin']);
+  return { windowWs: s.windowWs || {}, prevWs: s.prevWs || {}, lastTab: s.lastTab || {}, tabOrigin: s.tabOrigin || {} };
 }
 
 async function saveSess(s) {

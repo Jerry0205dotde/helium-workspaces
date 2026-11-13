@@ -126,6 +126,8 @@ To bring workspaces to another device, use the export (see below). It does not c
 | --- | --- |
 | Open the workspace list | Toolbar button or <kbd>Alt</kbd>+<kbd>W</kbd> |
 | Next / previous workspace | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>↓</kbd> / <kbd>↑</kbd>, or in the list <kbd>↓</kbd> / <kbd>↑</kbd> and <kbd>Enter</kbd> |
+| Back to the last used workspace | <kbd>Alt</kbd>+<kbd>Q</kbd>, pressing it again jumps back (like Alt+Tab) |
+| Straight to workspace 1–9 | set your own shortcuts at `chrome://extensions/shortcuts` (Chromium suggests at most four), or <kbd>1</kbd>–<kbd>9</kbd> in the list |
 | Create a workspace, rename it, change its color or emoji, delete it | in the list |
 | Change the order | drag in the list |
 | Move a tab to another workspace | Right-click anywhere on the page, including a link, an image or selected text → **Move tab to workspace**, or click ↪ next to the target in the list |

@@ -67,6 +67,21 @@ test('Tastenkürzel wechseln reihum zum nächsten und vorherigen Workspace', asy
   check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
 });
 
+test('Tastenkürzel wechseln direkt zu Workspace 1–9 und zum zuletzt benutzten', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  const tab = { id: b.windows.find((x) => x.id === win).tabs[0].id, windowId: win };
+  const order = [];
+  // switch-9 bei drei Workspaces tut nichts
+  for (const cmd of ['switch-3', 'switch-9', 'last-workspace', 'last-workspace', 'switch-2', 'last-workspace', 'switch-1']) {
+    b.fire('commands.onCommand', cmd, tab);
+    await w.settle();
+    order.push(shows(env, win));
+  }
+  assert.deepEqual(order, ['C', 'C', 'A', 'C', 'B', 'C', 'A']);
+  check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
+});
+
 test('Das Kontextmenü erscheint auch auf Links, Bildern, Videos und markiertem Text', async () => {
   const { b, ids } = await setup(SPEC);
   const sub = (kind) => Object.values(ids).map((id) => `${kind}:${id}`);

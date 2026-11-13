@@ -145,6 +145,7 @@ async function finishSwitch() {
     }
 
     s.windowWs[p.windowId] = p.to;
+    s.prevWs[p.windowId] = p.from;
     await saveSess(s);
     await chrome.storage.local.set({ lastWs: p.to });
     await setPending(null);
@@ -160,6 +161,18 @@ async function switchRelative(windowId, step) {
   const n = cfg.workspaces.length;
   if (n < 2) return;
   await switchTo(windowId, cfg.workspaces[(i + step + n) % n].id);
+}
+
+// Workspace an Stelle i der Liste (Tastenkürzel 1–9)
+async function switchToIndex(windowId, i) {
+  const ws = (await getConfig()).workspaces[i];
+  if (ws) await switchTo(windowId, ws.id);
+}
+
+// Zurück zum Workspace, den das Fenster vor dem jetzigen zeigte (wie Alt+Tab)
+async function switchToLast(windowId) {
+  const prev = (await sess()).prevWs[windowId];
+  if (prev) await switchTo(windowId, prev);
 }
 
 // ---------------------------------------------------------------- Tab verschieben
