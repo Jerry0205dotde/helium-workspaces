@@ -216,7 +216,7 @@ This is a private hobby project. Expect bugs.
 node --test test/*.test.js
 ```
 
-This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. The same checks run in CI on every pull request.
+This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. The same checks run in CI on every pull request.
 
 The tests do not check the connection to Helium and KWin. After changing that, briefly check by hand:
 
@@ -230,7 +230,11 @@ The tests do not check the connection to Helium and KWin. After changing that, b
 ## Structure
 
 - [`extension/`](./extension): the extension (Manifest V3)
-  - [`background.js`](./extension/background.js): switching, backup, reconciliation after a restart
+  - [`background.js`](./extension/background.js): the service worker, receives events and messages and loads the rest of the background logic:
+    [`core.js`](./extension/core.js) (basics), [`switch.js`](./extension/switch.js) (switching), [`backup.js`](./extension/backup.js) (backup),
+    [`restore.js`](./extension/restore.js) (restoring from the backup), [`reconcile.js`](./extension/reconcile.js) (reconciliation after a restart),
+    [`workspaces.js`](./extension/workspaces.js), [`export-import.js`](./extension/export-import.js), [`unload.js`](./extension/unload.js) (unloading),
+    [`sound.js`](./extension/sound.js) (sound), [`icons.js`](./extension/icons.js) (icons) and [`menus.js`](./extension/menus.js) (context menu)
   - [`popup.html`](./extension/popup.html) / [`popup.js`](./extension/popup.js): the workspace list
   - [`transfer.html`](./extension/transfer.html) / [`transfer.js`](./extension/transfer.js): export and import, [`exchange.js`](./extension/exchange.js): the file format and its validation
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): the page that marks a window as a stash

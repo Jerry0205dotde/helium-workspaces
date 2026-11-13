@@ -212,7 +212,7 @@ Das ist ein privates Bastelprojekt. Rechne mit Fehlern.
 node --test test/*.test.js
 ```
 
-Braucht nur Node.js ab Version 22, keinen Browser und kein KWin. Die Tests laden `background.js` unverändert in eine Nachbildung der Chrome-APIs und spielen damit Wechsel mit Gruppen und angehefteten Tabs, mehrere Fenster, Neustarts mit und ohne Sitzungswiederherstellung, das Neuladen der Erweiterung, gezielt scheiternde API-Aufrufe, schnell aufeinanderfolgende Änderungen sowie Export und Import samt Zusammenführen und Ersetzen durch. Dazu kommen Syntax, Manifest und KWin-Metadaten, außerdem läuft das KWin-Skript gegen eine Nachbildung der KWin-API und zeigt, welche Fenster es versteckt. Dieselben Prüfungen laufen in der CI bei jedem Pull Request.
+Braucht nur Node.js ab Version 22, keinen Browser und kein KWin. Die Tests laden `background.js` samt der Dateien, die es lädt, unverändert in eine Nachbildung der Chrome-APIs und spielen damit Wechsel mit Gruppen und angehefteten Tabs, mehrere Fenster, Neustarts mit und ohne Sitzungswiederherstellung, das Neuladen der Erweiterung, gezielt scheiternde API-Aufrufe, schnell aufeinanderfolgende Änderungen sowie Export und Import samt Zusammenführen und Ersetzen durch. Dazu kommen Syntax, Manifest und KWin-Metadaten, außerdem läuft das KWin-Skript gegen eine Nachbildung der KWin-API und zeigt, welche Fenster es versteckt. Dieselben Prüfungen laufen in der CI bei jedem Pull Request.
 
 Die Verbindung zu Helium und KWin prüfen die Tests nicht. Nach Änderungen daran kurz von Hand:
 
@@ -226,7 +226,11 @@ Die Verbindung zu Helium und KWin prüfen die Tests nicht. Nach Änderungen dara
 ## Aufbau
 
 - [`extension/`](./extension): die Erweiterung (Manifest V3)
-  - [`background.js`](./extension/background.js): Wechseln, Sicherung, Abgleich nach Neustart
+  - [`background.js`](./extension/background.js): der Service Worker, nimmt Ereignisse und Nachrichten entgegen und lädt die übrige Hintergrundlogik:
+    [`core.js`](./extension/core.js) (Grundlagen), [`switch.js`](./extension/switch.js) (Wechseln), [`backup.js`](./extension/backup.js) (Sicherung),
+    [`restore.js`](./extension/restore.js) (Wiederherstellen aus der Sicherung), [`reconcile.js`](./extension/reconcile.js) (Abgleich nach Neustart),
+    [`workspaces.js`](./extension/workspaces.js), [`export-import.js`](./extension/export-import.js), [`unload.js`](./extension/unload.js) (Entladen),
+    [`sound.js`](./extension/sound.js) (Ton), [`icons.js`](./extension/icons.js) (Symbole) und [`menus.js`](./extension/menus.js) (Kontextmenü)
   - [`popup.html`](./extension/popup.html) / [`popup.js`](./extension/popup.js): die Workspace-Liste
   - [`transfer.html`](./extension/transfer.html) / [`transfer.js`](./extension/transfer.js): Export und Import, [`exchange.js`](./extension/exchange.js): das Dateiformat und seine Prüfung
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): die Seite, die ein Fenster als Ablage markiert
