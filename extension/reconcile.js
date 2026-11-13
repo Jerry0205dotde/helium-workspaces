@@ -295,6 +295,7 @@ async function restoreStart(wins, wsId) {
     await chrome.storage.session.set({
       startCopies: all.filter((t) => copies.includes(t.id)).map((t) => ({ id: t.id, url: urlOf(t) })),
       startSeen: all.map((t) => t.id),
+      startCopiesUntil: Date.now() + 60000,
     });
   });
   console.info('[workspaces] Workspace nach dem Start aus der Sicherung aufgebaut');
@@ -307,9 +308,16 @@ async function restoreStart(wins, wsId) {
 // vorhandene Fenster an). Sind alle noch unveränderten Kopien danach im selben Workspace
 // ein weiteres Mal offen, werden die Kopien geschlossen; Chromiums Tabs behalten ihren
 // Verlauf. Landen sie in einem anderen Workspace (vorher gewechselt), bleiben die Kopien.
+// Das gilt nur in der ersten Minute nach dem Start: Später öffnet eher man selbst eine
+// der Seiten noch einmal, und die Kopie samt Eingaben darin bleibt.
 async function dropStartCopies(s, stash) {
-  const { startCopies, startSeen } = await chrome.storage.session.get(['startCopies', 'startSeen']);
+  const keys = ['startCopies', 'startSeen', 'startCopiesUntil'];
+  const { startCopies, startSeen, startCopiesUntil } = await chrome.storage.session.get(keys);
   if (!startCopies) return false;
+  if (!(Date.now() <= startCopiesUntil)) {
+    await chrome.storage.session.remove(keys);
+    return false;
+  }
   const tabs = await chrome.tabs.query({});
   const wsOf = (t) => s.windowWs[t.windowId] || [...stash].find(([, w]) => w.id === t.windowId)?.[0];
   const key = (t) => `${wsOf(t)} ${urlOf(t)}`;
@@ -318,7 +326,7 @@ async function dropStartCopies(s, stash) {
   const have = tabs.filter((t) => !seen.has(t.id)).map((t) => ({ url: key(t) }));
   const want = live.map((c) => ({ url: key(tabs.find((t) => t.id === c.id)) }));
   if (live.length && missingIn(want, have).length) return false; // noch nicht (alle) wiederhergestellt
-  await chrome.storage.session.remove(['startCopies', 'startSeen']);
+  await chrome.storage.session.remove(keys);
   if (!live.length) return false;
   await moving(() => chrome.tabs.remove(live.map((c) => c.id)));
   console.info('[workspaces] Kopien aus der Sicherung geschlossen, Chromium hat die Sitzung wiederhergestellt');

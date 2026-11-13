@@ -190,6 +190,21 @@ test('Nach einem Absturz: Wurde vor „Wiederherstellen“ gewechselt, bleiben d
   );
 });
 
+test('Nach einem Start ohne Wiederherstellung: Wer eine Seite später selbst noch einmal öffnet, behält die Kopie aus der Sicherung', async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  const { b } = env;
+  b.restart({ restore: 'crash' });
+  const w = b.startWorker('startup');
+  await w.settle();
+  const main = b.mains()[0].id;
+  const [copy] = b.tabsByUrl(url('a1'));
+  await w.advance(120000);
+  await b.chrome.tabs.create({ windowId: main, url: url('a1'), active: false });
+  await w.settle();
+  assert.ok(b.tabsByUrl(url('a1')).some((t) => t.id === copy.id), 'die Kopie aus der Sicherung wurde geschlossen');
+  assert.equal(b.tabsByUrl(url('a1')).length, 2);
+});
+
 test('Start ohne Sitzungswiederherstellung: zusammen wiederhergestellte Ablage-Seiten und angeheftete Tabs verdrängen keine gesicherten Tabs', async () => {
   const spec = {
     pinned: ['pin'],
