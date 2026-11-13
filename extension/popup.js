@@ -368,6 +368,9 @@ function editor(ws, index) {
     // Sonst schließt Escape das ganze Popup
     e.preventDefault();
     editing = null;
+    // Das Neuzeichnen entfernt ein geändertes Feld, dessen change dann speichert.
+    // Der Fokus soll auch danach auf ✎ landen.
+    focusKey = `ed:${ws.id}`;
     render([`ed:${ws.id}`]);
   });
 

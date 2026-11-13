@@ -222,6 +222,8 @@ CHROME=/usr/bin/chromium node --test test/chromium.test.js
 
 [`chromium.test.js`](./test/chromium.test.js) installiert die Erweiterung in ein frisches Profil und spielt durch: Wechsel mit Tab-Gruppe und angeheftetem Tab, ohne dass eine Seite neu lädt, Neuladen der Erweiterung, Beenden und Neustart mit „Dort weitermachen, wo ich aufgehört habe“ und mit „Neuer Tab“ sowie Schließen per X und Neustart. Ohne `CHROME` wird der Test übersprungen, ohne Bildschirm bleibt der Browser unsichtbar. In der CI läuft er mit Chrome for Testing.
 
+Mit demselben `CHROME` laufen auch [`popup.test.js`](./test/popup.test.js) und [`transfer.test.js`](./test/transfer.test.js): Popup und Importseite in einem headless Chromium, bedient mit echten Maus- und Tastaturereignissen. Geprüft wird das Verlassen eines Feldes per Klick, <kbd>Tab</kbd>, <kbd>Enter</kbd> und <kbd>Esc</kbd>, Nachfragen und Doppelklicks. Die Nachrichten der Seiten gehen an die Nachbildung der Chrome-APIs, nicht an eine installierte Erweiterung.
+
 KWin prüfen die Tests nicht. Nach Änderungen daran kurz von Hand:
 
 1. Die Erweiterung unter `chrome://extensions` neu laden und `./install.sh` mit dem Schlüssel aus dem Popup ausführen.
@@ -243,7 +245,7 @@ KWin prüfen die Tests nicht. Nach Änderungen daran kurz von Hand:
   - [`label.js`](./extension/label.js): das Zeichen im Symbol eines Workspace
 - [`kwin/`](./kwin): KWin-Skript, das die Ablage-Fenster versteckt
 - [`install.sh`](./install.sh): KWin-Skript einrichten und den Schlüssel eintragen
-- [`test/`](./test): automatische Tests, [`fake-browser.js`](./test/fake-browser.js) bildet die Chrome-APIs nach, [`chromium.js`](./test/chromium.js) steuert einen echten Chromium
+- [`test/`](./test): automatische Tests, [`fake-browser.js`](./test/fake-browser.js) bildet die Chrome-APIs nach, [`page.js`](./test/page.js) bedient Popup und Importseite in Chromium, [`chromium.js`](./test/chromium.js) steuert einen echten Chromium
 
 ## Lizenz
 
