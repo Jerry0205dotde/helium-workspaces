@@ -562,5 +562,11 @@
   },
   "exWhereTab": {
     "message": "$1, Tab $2"
+  },
+  "workspaceName": {
+    "message": "Workspace"
+  },
+  "workspaceN": {
+    "message": "Workspace $1"
   }
 }

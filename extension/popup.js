@@ -14,6 +14,7 @@ let editing = null; // id des Workspace, der gerade bearbeitet wird
 let busy = false; // läuft gerade eine Aktion?
 
 localize();
+listEl.ariaLabel = tr('extName');
 
 const COLOR_NAMES = {
   '#3b82f6': tr('colorBlue'),

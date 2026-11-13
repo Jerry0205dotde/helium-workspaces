@@ -4,7 +4,7 @@ async function createWs(name) {
   const cfg = await getConfig();
   const used = new Set(cfg.workspaces.map((w) => w.color));
   const color = COLORS.find((c) => !used.has(c)) || COLORS[cfg.workspaces.length % COLORS.length];
-  const ws = { id: newId(), name: name || `Workspace ${cfg.workspaces.length + 1}`, color, emoji: '' };
+  const ws = { id: newId(), name: name || tr('workspaceN', cfg.workspaces.length + 1), color, emoji: '' };
   cfg.workspaces.push(ws);
   await saveWorkspaces(cfg.workspaces);
   return ws;

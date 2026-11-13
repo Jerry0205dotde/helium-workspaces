@@ -122,8 +122,6 @@ To bring workspaces to another device, use the export (see below). It does not c
 
 ## Usage
 
-The extension's interface is in German. This README quotes its labels as they appear on screen, followed by a translation.
-
 | Action | How |
 | --- | --- |
 | Open the workspace list | Toolbar button or <kbd>Alt</kbd>+<kbd>W</kbd> |

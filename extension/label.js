@@ -22,7 +22,7 @@ function wsName(s) {
     if (name.length + segment.length > NAME_MAX) break;
     name += segment;
   }
-  return name.trim() || 'Workspace';
+  return name.trim() || tr('workspaceName');
 }
 
 // Zeichen im Symbol eines Workspace: sein Emoji, sonst der Anfang des Namens.
