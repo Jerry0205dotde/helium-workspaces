@@ -200,12 +200,16 @@ body.busy footer .hint { display: none; }
 .key-line { display: flex; align-items: center; gap: 6px; padding-bottom: 4px; }
 .key code { flex: 1; min-width: 0; overflow-wrap: anywhere; user-select: all; color: var(--fg); }
 footer {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   margin-top: 4px;
   padding: 6px 8px 2px;
   border-top: 1px solid var(--border);
   color: var(--muted);
   font-size: 11px;
 }
+.version { margin-left: auto; white-space: nowrap; }
 .failed {
   display: flex;
   flex-wrap: wrap;
