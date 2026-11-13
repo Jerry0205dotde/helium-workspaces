@@ -152,6 +152,113 @@ test('Letztes Fenster per X geschlossen: nach dem Start ist alles wieder da', as
   }
 });
 
+// Wie Chromium beim Schließen per X verschwinden die Tabs einzeln. Währenddessen lädt
+// eine Seite in der Ablage von B weiter (Tab-Ereignis), und wait lässt Zeit vergehen.
+for (const [label, wait] of [
+  ['bevor die verzögerte Sicherung läuft', 10],
+  ['die verzögerte Sicherung läuft beim Schließen', 400],
+]) {
+  test(`Letztes Fenster kurz nach einer Tab-Änderung geschlossen (${label}): die Änderung ist nach dem Start da`, async () => {
+    const env = await setup(SPEC);
+    const { b, w, win } = env;
+    // Neuer Tab in der Gruppe „Mathe“, ein neuer angehefteter Tab, und a1 navigiert weiter
+    const a4 = await b.chrome.tabs.create({ windowId: win, url: url('a4'), active: false });
+    const mathe = where(env, 'a2').tab.groupId;
+    await b.chrome.tabs.group({ tabIds: [a4.id], groupId: mathe });
+    const p2 = await b.chrome.tabs.create({ windowId: win, url: url('p2'), active: false });
+    await b.chrome.tabs.update(p2.id, { pinned: true });
+    const nav = { url: url('a5') };
+    await b.chrome.tabs.update(where(env, 'a1').tab.id, nav);
+    // Navigation durch den Nutzer, nicht durch die Erweiterung (siehe check)
+    b.calls = b.calls.filter((c) => !(c.name === 'tabs.update' && c.args[1]?.url === nav.url));
+    await w.advance(100);
+    const b1 = where(env, 'b1').tab;
+    await b.closeWindowByX(win, async () => {
+      b.fire('tabs.onUpdated', b1.id, { url: b1.url }, { ...b1 });
+      await w.advance(wait);
+    });
+    await w.settle();
+    assert.equal(b.windows.length, 0, 'Ablage-Fenster wurden nicht geschlossen');
+
+    const A = ['a5', { url: 'a2', group: 'Mathe', color: 'blue' }, { url: 'a3', group: 'Mathe', color: 'blue' }, { url: 'a4', group: 'Mathe', color: 'blue' }];
+    const expected = { ...ALL, A, pinned: ['p1', 'p2'] };
+    b.restart();
+    const w2 = b.startWorker('startup');
+    await w2.settle();
+    assert.equal(shows(env, b.mains()[0].id), 'A');
+    check(env, expected);
+  });
+}
+
+// Eine langsame Antwort (Symbol des neuen Tabs, Gruppenabfrage) darf das Abbild der Tabs
+// nicht verzögern: das Fenster schließt, während sie noch aussteht.
+for (const [label, api, change] of [
+  ['Symbol des neuen Tabs', 'action.setIcon', (b, win) => b.chrome.tabs.create({ windowId: win, url: url('a4'), active: false })],
+  ['Gruppenabfrage', 'tabGroups.query', (b, win, env) => b.chrome.tabs.update(where(env, 'a3').tab.id, { url: url('a4') })],
+]) {
+  test(`Letztes Fenster geschlossen, während die Antwort „${label}“ aussteht: die Änderung ist nach dem Start da`, async () => {
+    const env = await setup(SPEC);
+    const { b, w, win } = env;
+    await w.settle();
+    const held = b.fail(api, { hold: true });
+    await change(b, win, env);
+    await w.advance(20);
+    // Eine zweite Änderung, solange die Antwort noch aussteht
+    await b.chrome.tabs.update(where(env, 'a1').tab.id, { url: url('a5') });
+    b.calls = b.calls.filter((c) => !(c.name === 'tabs.update' && ['a4', 'a5'].map(url).includes(c.args[1]?.url)));
+    await w.advance(20);
+    assert.equal(held.hits, 1, `${api} wurde nicht aufgerufen`);
+    await b.closeWindowByX(win);
+    held.release();
+    await w.settle();
+    assert.equal(b.windows.length, 0, 'Ablage-Fenster wurden nicht geschlossen');
+
+    const A = api === 'action.setIcon'
+      ? ['a5', ...SPEC.workspaces.A.slice(1), 'a4']
+      : ['a5', { url: 'a2', group: 'Mathe', color: 'blue' }, { url: 'a4', group: 'Mathe', color: 'blue' }];
+    b.restart();
+    const w2 = b.startWorker('startup');
+    await w2.settle();
+    check(env, { ...ALL, A });
+  });
+}
+
+test('Nach einem Neustart des Service Workers: Tab geöffnet, dann gleich das letzte Fenster geschlossen', async () => {
+  const env = await setup(SPEC);
+  const { b, win } = env;
+  const w = b.startWorker();
+  await w.settle();
+  await b.chrome.tabs.create({ windowId: win, url: url('a4'), active: false });
+  await w.advance(50);
+  await b.closeWindowByX(win);
+  await w.settle();
+  assert.equal(b.windows.length, 0, 'Ablage-Fenster wurden nicht geschlossen');
+  b.restart();
+  await b.startWorker('startup').settle();
+  // Die Gruppe „Mathe“ behält Titel und Farbe
+  check(env, { ...ALL, A: [...SPEC.workspaces.A, 'a4'] });
+});
+
+test('Eine veraltete Gruppenantwort überschreibt keine neueren Gruppenangaben im Abbild', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  await w.settle();
+  // Die Gruppe wird umbenannt; die Gruppenabfrage der Auffrischung bleibt aus, die reguläre
+  // Sicherung danach übernimmt den neuen Namen
+  b.fail('tabGroups.query', { hold: true });
+  await b.chrome.tabGroups.update(where(env, 'a2').tab.groupId, { title: 'Neu', color: 'red' });
+  await w.advance(1000);
+  b.fail('tabGroups.query', { hold: true });
+  await b.chrome.tabs.create({ windowId: win, url: url('a4'), active: false });
+  await w.advance(50);
+  await b.closeWindowByX(win);
+  await w.settle();
+  b.restart();
+  await b.startWorker('startup').settle();
+  const A = ['a1', { url: 'a2', group: 'Neu', color: 'red' }, { url: 'a3', group: 'Neu', color: 'red' }, 'a4'];
+  check(env, { ...ALL, A });
+});
+
 // Wie die Tab-Suche: aktiviert den Tab in seiner Ablage und holt deren Fenster nach vorn
 async function pickInStash(env, name) {
   const at = where(env, name);

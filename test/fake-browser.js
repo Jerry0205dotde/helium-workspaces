@@ -118,9 +118,10 @@ class Browser {
   // Lässt den nächsten passenden Aufruf von name (z. B. 'tabs.move') scheitern.
   // when(...args) wählt Aufrufe aus, after überspringt so viele passende Aufrufe,
   // times begrenzt die Zahl der Fehlschläge, hang lässt den Aufruf nie zurückkehren
-  // (wie ein Service Worker, der mitten im Aufruf beendet wird).
-  fail(name, { when = () => true, after = 0, times = 1, hang = false, message } = {}) {
-    const f = { name, when, skip: after, left: times, hang, message, hits: 0 };
+  // (wie ein Service Worker, der mitten im Aufruf beendet wird), hold hält die Antwort
+  // (mit dem Stand beim Aufruf) zurück, bis der Test f.release() aufruft.
+  fail(name, { when = () => true, after = 0, times = 1, hang = false, hold = false, message } = {}) {
+    const f = { name, when, skip: after, left: times, hang, hold, message, hits: 0 };
     this.faults.push(f);
     return f;
   }
@@ -156,6 +157,10 @@ class Browser {
       if (f?.run) f.run(...args);
       else if (f) {
         if (f.hang) return new Promise(() => {});
+        if (f.hold) {
+          const v = clone(fn(...args));
+          return new Promise((r) => (f.release = () => r(v)));
+        }
         throw new Error(f.message || `${name} gescheitert (Test)`);
       }
       return clone(fn(...args));
@@ -332,6 +337,22 @@ class Browser {
     const gids = new Set(w.tabs.map((t) => t.groupId));
     w.tabs = [];
     for (const g of gids) this.dropEmptyGroup(g);
+    this.closeIfEmpty(w);
+  }
+
+  // Schließen per X wie in Chromium: die Tabs verschwinden einzeln, das Fenster bleibt
+  // bis zuletzt abfragbar. between() läuft nach jedem Tab, etwa um die Zeit laufen zu
+  // lassen oder andere Ereignisse auszulösen.
+  async closeWindowByX(id, between = async () => {}) {
+    const w = this.findWin(id);
+    this.lastClosed = this.snap(w);
+    while (w.tabs.length) {
+      const t = w.tabs.pop();
+      t.active = false;
+      this.fire('tabs.onRemoved', t.id, { windowId: w.id, isWindowClosing: true });
+      this.dropEmptyGroup(t.groupId);
+      await between();
+    }
     this.closeIfEmpty(w);
   }
 
