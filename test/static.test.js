@@ -74,9 +74,12 @@ test('KWin-Metadaten sind gültig und passen zu install.sh', () => {
   for (const s of [`Script-${id}`, `${id}Enabled`, `unloadScript ${id}`, `isScriptLoaded ${id}`]) {
     assert.ok(sh.includes(s), `install.sh nutzt nicht die Id ${id} (${s})`);
   }
-  // Das Skript liest den Schlüssel, den install.sh schreibt
-  assert.ok(sh.includes('--key token'));
-  assert.match(fs.readFileSync(path.join(KWIN, 'contents', meta['X-Plasma-MainScript']), 'utf8'), /readConfig\("token"/);
+  // Das Skript liest den Schlüssel und die Browserliste, die install.sh schreibt
+  const main = fs.readFileSync(path.join(KWIN, 'contents', meta['X-Plasma-MainScript']), 'utf8');
+  for (const key of ['token', 'browsers']) {
+    assert.ok(sh.includes(`--key ${key}`), `install.sh schreibt ${key} nicht`);
+    assert.ok(main.includes(`readConfig("${key}"`), `main.js liest ${key} nicht`);
+  }
 });
 
 // Ändert sich etwas in extension/, muss die Version im Manifest steigen. Sonst zeigt das

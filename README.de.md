@@ -43,7 +43,25 @@ Drei Teile arbeiten zusammen:
 Die Erweiterung läuft auch in Google Chrome und Chromium. Sie wird dort genauso unter `chrome://extensions` installiert, und die Starteinstellung oben gilt dort ebenso. Dabei sind zwei Teile zu unterscheiden:
 
 - **Erweiterung:** Workspaces anlegen, umbenennen, wechseln und löschen, Tabs verschieben, angeheftete Tabs und die Tastenkürzel. Das funktioniert wie in Helium. Getestet mit Google Chrome 157.0.8103.78 und Chromium 160.0.8158.0.
-- **Desktop-Integration:** Das KWin-Skript versteckt nur Ablage-Fenster von Browsern, die es an ihrer Fensterklasse (X11) bzw. App-ID (Wayland) erkennt: `helium`, `google-chrome`, `chromium` und `chromium-browser`. Getestet mit Google Chrome 157.0.8103.78 und Chromium 157.0.8103.38 unter KWin 6.8.2, als native Wayland-Fenster und als X11-Fenster über XWayland. Andere Browser wie Brave, Vivaldi oder Edge werden nicht erkannt. Ihre Ablage-Fenster bleiben als minimierte Fenster sichtbar.
+- **Desktop-Integration:** Das KWin-Skript versteckt nur Ablage-Fenster von Browsern, die es an ihrer Fensterklasse (X11) bzw. App-ID (Wayland) erkennt: `helium`, `google-chrome`, `chromium` und `chromium-browser`. Getestet mit Google Chrome 157.0.8103.78 und Chromium 157.0.8103.38 unter KWin 6.8.2, als native Wayland-Fenster und als X11-Fenster über XWayland. Andere Browser wie Brave, Vivaldi oder Edge erkennt es erst, wenn sie in der Liste stehen, siehe unten. Bis dahin bleiben ihre Ablage-Fenster als minimierte Fenster sichtbar.
+
+### Andere Browser
+
+`install.sh --browsers` legt fest, welche Fensterklassen (X11) bzw. App-IDs (Wayland) das KWin-Skript erkennt, kommagetrennt und ohne Rücksicht auf Groß-/Kleinschreibung. Die Liste ersetzt die Standardliste `helium,google-chrome,chromium,chromium-browser`, muss also jeden genutzten Browser nennen:
+
+```bash
+./install.sh --browsers helium,brave-browser
+```
+
+Die Einstellung bleibt bei späteren Aufrufen von `install.sh` ohne `--browsers` erhalten. `--browsers ''` stellt die Standardliste wieder her.
+
+Die Fensterklasse eines Browsers zeigt dieser Befehl in einem Terminal in der Plasma-Sitzung, danach ein Fenster des Browsers anklicken:
+
+```bash
+qdbus6 org.kde.KWin /KWin org.kde.KWin.queryWindowInfo | grep resourceClass
+```
+
+Alternativ in den Systemeinstellungen unter **Fensterverwaltung → Fensterregeln**: **Neu hinzufügen …**, dann **Fenstereigenschaften ermitteln** und ein Fenster des Browsers anklicken. **Fensterklasse (Programm)** zeigt denselben Wert. Flatpak-Fassungen können eine andere Klasse melden als das Systempaket.
 
 ## Installation
 
@@ -199,6 +217,7 @@ Ohne die Erweiterung verlieren die Ablage-Fenster ihre Markierung, ihre Tabs ble
    kpackagetool6 --type=KWin/Script -r helium-workspaces
    kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete
    kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
+   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers --delete
    ```
 
    Wurde das Skript zu früh entfernt, Helium beenden und neu starten. Danach sind die Fenster wieder normal sichtbar.

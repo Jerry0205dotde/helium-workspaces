@@ -1,6 +1,6 @@
-// Versteckt die Ablage-Fenster der Workspaces-Erweiterung in Helium, Google Chrome
-// und Chromium: nicht in Taskleiste, Alt+Tab, Übersicht oder Pager und immer
-// minimiert. Erkannt werden sie am Titel "HWS-Ablage <Schlüssel>"; der geräteeigene
+// Versteckt die Ablage-Fenster der Workspaces-Erweiterung in Helium, Google Chrome,
+// Chromium und weiteren Browsern aus kwinrc: nicht in Taskleiste, Alt+Tab, Übersicht
+// oder Pager und immer minimiert. Erkannt werden sie am Titel "HWS-Ablage <Schlüssel>"; der geräteeigene
 // Schlüssel steht in kwinrc (von install.sh gesetzt), damit Webseiten sich nicht als
 // Ablage ausgeben können. Verliert ein Fenster die Markierung (z. B. Erweiterung
 // deaktiviert), taucht es wieder in der Taskleiste auf, damit keine Tabs unsichtbar
@@ -8,8 +8,11 @@
 const TOKEN = String(readConfig("token", ""));
 const MARK = "HWS-Ablage " + TOKEN + " ";
 const hidden = {};
-// Fensterklasse (X11) bzw. App-ID (Wayland) der unterstützten Browser, kleingeschrieben
-const BROWSERS = ["helium", "google-chrome", "chromium", "chromium-browser"];
+// Fensterklasse (X11) bzw. App-ID (Wayland) der Browser, deren Ablagen versteckt werden.
+// install.sh --browsers setzt die Liste in kwinrc, kommagetrennt; ohne Eintrag gilt die
+// Standardliste. Groß-/Kleinschreibung zählt nicht.
+const BROWSERS = String(readConfig("browsers", "") || "helium,google-chrome,chromium,chromium-browser")
+    .toLowerCase().split(",").map(function (s) { return s.trim(); }).filter(Boolean);
 
 function isBrowser(w) {
     return BROWSERS.indexOf((w.resourceClass || "").toLowerCase()) !== -1;
