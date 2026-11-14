@@ -23,8 +23,8 @@ const GIT_ENV = {
 // installed: ob kpackagetool6 -s das Paket findet, dbus: ob qdbus6 KWin erreicht,
 // token: was kreadconfig6 als eingetragenen Schlüssel liefert, setup(dir): vorbereiten,
 // gibt den Pfad des auszuführenden install.sh zurück, profiles: Pfad unter ~/.config → Inhalt
-// der Preferences-Datei dort
-function run(args, { installed = true, dbus = true, token = '', setup, profiles = {} } = {}) {
+// der Preferences-Datei dort, input: was auf die Frage nach dem Schlüssel eingetippt wird
+function run(args, { installed = true, dbus = true, token = '', setup, profiles = {}, input = '' } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-install-'));
   const home = path.join(dir, 'home');
   for (const [p, content] of Object.entries(profiles)) {
@@ -45,7 +45,7 @@ function run(args, { installed = true, dbus = true, token = '', setup, profiles 
     const script = setup ? setup(dir) : INSTALL;
     const env = { ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home };
     delete env.XDG_CONFIG_HOME;
-    const r = spawnSync('bash', [script, ...args], { encoding: 'utf8', input: '', env });
+    const r = spawnSync('bash', [script, ...args], { encoding: 'utf8', input, env });
     const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean) : [];
     const after = Object.fromEntries(
       Object.keys(profiles).map((p) => [p, fs.readFileSync(path.join(home, '.config', p, 'Preferences'), 'utf8')]),
@@ -202,4 +202,27 @@ test('Installation gibt keinen Hinweis ohne Browserprofile', () => {
   const r = run([TOKEN]);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, 'Fertig.\n');
+});
+
+// Was install.sh als Schlüssel in kwinrc schreibt
+const written = (r) => r.calls.find((c) => c.includes('--key token '))?.split(' ').pop();
+
+test('Der kopierte Befehl aus dem Popup trägt den Schlüssel ein (#111)', () => {
+  const r = run([TOKEN]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(written(r), TOKEN);
+  assert.match(r.stdout, /Fertig\./);
+});
+
+test('Der Befehl aus dem Popup an der Frage eingefügt ergibt nur den Schlüssel (#111)', () => {
+  const r = run([], { input: `./install.sh ${TOKEN}\n` });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(written(r), TOKEN);
+});
+
+test('Ein ungültiger Schlüssel bricht ab, bevor etwas eingetragen ist', () => {
+  const r = run([], { input: './install.sh 0123\n' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /Ungültiger Schlüssel/);
+  assert.equal(written(r), undefined);
 });

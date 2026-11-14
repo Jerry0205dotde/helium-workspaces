@@ -77,11 +77,13 @@ Alternativ in den Systemeinstellungen unter **Fensterverwaltung → Fensterregel
 2. In Helium `chrome://extensions` öffnen und oben rechts den **Entwicklermodus** einschalten.
 3. **Entpackte Erweiterung laden** wählen und den Ordner `extension/` aus dem Repository auswählen.
 4. Den Workspace-Button in der Symbolleiste anheften.
-5. Den Workspace-Button anklicken, unten **Schlüssel für install.sh** aufklappen und auf **Kopieren** klicken. Dann im Repository das KWin-Skript einrichten und den Schlüssel einfügen, wenn das Skript danach fragt:
+5. Den Workspace-Button anklicken, unten **Schlüssel für install.sh** aufklappen und auf **Kopieren** klicken. Das kopiert den fertigen Befehl samt Schlüssel:
 
    ```bash
-   ./install.sh
+   ./install.sh <Schlüssel>
    ```
+
+   Ihn in einem Terminal im Repository-Ordner einfügen und ausführen. Er richtet das KWin-Skript ein.
 
    Am Ende steht `Fertig.`. Das KWin-Skript ist dann installiert, aktiviert, geladen und kennt den Schlüssel.
 6. Zum Prüfen einen zweiten Workspace anlegen und hin- und herwechseln. In der Taskleiste darf kein zusätzliches Browserfenster auftauchen.
@@ -106,7 +108,7 @@ Beim Neuladen schließt Chromium alle Seiten der Erweiterung, auch die Ablage-Ma
 
 Die Erweiterung zum Aktualisieren nicht entfernen und neu hinzufügen. Beim Entfernen löscht Helium alle Workspaces und die Sicherung.
 
-Einmalig beim Update von einer Version, in der der Schlüssel noch in `extension/token.js` stand: Nach dem Neuladen legt die Erweiterung einen neuen Schlüssel an, und die Ablage-Fenster sind sichtbar. Nach Schritt 2 deshalb `./install.sh` ausführen und den neuen Schlüssel aus dem Popup einfügen. `install.sh` löscht dabei die alte `extension/token.js`.
+Einmalig beim Update von einer Version, in der der Schlüssel noch in `extension/token.js` stand: Nach dem Neuladen legt die Erweiterung einen neuen Schlüssel an, und die Ablage-Fenster sind sichtbar. Nach Schritt 2 deshalb im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. `install.sh` löscht dabei die alte `extension/token.js`.
 
 ### Der Schlüssel
 
@@ -182,12 +184,12 @@ Ein sichtbares Ablage-Fenster hat einen Titel wie `HWS-Ablage 3f9c… · Uni` un
    ```
 
    Die Ausgabe muss der Schlüssel sein, den das Popup unter **Schlüssel für install.sh** zeigt, und der Fenstertitel muss ihn nach `HWS-Ablage` zeigen. Steht im Titel kein Schlüssel (`HWS-Ablage · Uni`), die Erweiterung in `chrome://extensions` neu laden.
-3. Zum Reparieren `./install.sh` ausführen und den Schlüssel aus dem Popup einfügen. Das Skript lädt das KWin-Skript neu, nach ein bis zwei Sekunden verschwinden die Ablagen aus der Taskleiste.
+3. Zum Reparieren im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. Das Skript lädt das KWin-Skript neu, nach ein bis zwei Sekunden verschwinden die Ablagen aus der Taskleiste.
 
 ### `install.sh` bricht ab
 
 - **`Kommando nicht gefunden`** bzw. **`command not found`**: Ein Programm aus den [Voraussetzungen](#voraussetzungen) fehlt.
-- **`Ungültiger Schlüssel`**: Es wurde kein oder ein unvollständiger Schlüssel eingegeben. Im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und erneut einfügen. Der Schlüssel besteht aus 24 Zeichen `0`–`9` und `a`–`f`.
+- **`Ungültiger Schlüssel`**: Es wurde kein oder ein unvollständiger Schlüssel eingegeben. Im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den kopierten Befehl ausführen. Der Schlüssel besteht aus 24 Zeichen `0`–`9` und `a`–`f`.
 - **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** oder **`KWin-Skript wurde nicht geladen`**: `install.sh` erreicht KWin nicht, etwa über SSH oder in einer Textkonsole. Das Skript ist dann schon installiert, aber nicht geladen. In einem Terminal in der Plasma-Sitzung erneut starten.
 
 ### Tabs fehlen nach einem Neustart
