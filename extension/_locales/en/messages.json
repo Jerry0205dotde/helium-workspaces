@@ -375,7 +375,7 @@
     "message": "Export"
   },
   "exportText": {
-    "message": "Saves all workspaces with name, color, emoji, order, tabs and tab groups as well as the pinned tabs as a JSON file. Window IDs and the device key are left out."
+    "message": "Saves all workspaces with name, color, emoji, order, tabs and tab groups, the pinned tabs and the settings as a JSON file. Window IDs and the device key are left out."
   },
   "exportButton": {
     "message": "Save as file"
@@ -499,6 +499,30 @@
   },
   "resPinned": {
     "message": "$1 added"
+  },
+  "settingsPlan": {
+    "message": "Applies the settings: $1."
+  },
+  "settingsSame": {
+    "message": "The settings in the file already apply here."
+  },
+  "settingValue": {
+    "message": "$1: $2"
+  },
+  "settingOn": {
+    "message": "on"
+  },
+  "settingOff": {
+    "message": "off"
+  },
+  "resSettings": {
+    "message": "$1 applied"
+  },
+  "settings_one": {
+    "message": "$1 setting"
+  },
+  "settings_other": {
+    "message": "$1 settings"
   },
   "resRemoved": {
     "message": "$1 with $2 removed"

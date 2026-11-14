@@ -21,5 +21,8 @@ function badge(ws) {
   return b;
 }
 
+// Wert der Einstellung „Ablagen entladen nach“ in Minuten
+const unloadLabel = (m) => (!m ? tr('unloadNever') : m < 60 ? tr('unloadMinutes', m) : m === 60 ? tr('unloadHour') : tr('unloadHours', m / 60));
+
 // Fehlermeldung ohne das vorangestellte „Error:“
 const errorText = (err) => String(err?.message || err || '').replace(/^Error:\s*/, '');

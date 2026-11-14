@@ -40,7 +40,26 @@ async function collectAll() {
 async function exportAll() {
   await resumeSwitch();
   const { list, pinned } = await collectAll();
-  return buildExchange(list, pinned, chrome.runtime.getURL(''));
+  return buildExchange(list, pinned, chrome.runtime.getURL(''), await getSettings());
+}
+
+// Die Einstellungen, die der Export mitnimmt (#161)
+async function getSettings() {
+  const { muteStash } = await chrome.storage.local.get('muteStash');
+  return { muteStash: !!muteStash, unloadAfter: await getUnloadAfter(), autoBackup: await getAutoBackup() };
+}
+
+// Übernimmt die Einstellungen aus einer Datei und gibt zurück, wie viele sich geändert
+// haben. Die automatische Sicherung startet anders als beim Einschalten auf der
+// Exportseite nicht sofort, sondern mit dem Wecker, wenn der Import fertig ist.
+async function applySettings(settings) {
+  const now = await getSettings();
+  const changed = Object.entries(settings).filter(([k, v]) => now[k] !== v);
+  if (!changed.length) return 0;
+  await chrome.storage.local.set(Object.fromEntries(changed));
+  await scheduleUnload();
+  await scheduleAutoBackup();
+  return changed.length;
 }
 
 // Ordnet beim Zusammenführen jedem importierten Workspace einen vorhandenen zu: zuerst
@@ -91,8 +110,10 @@ async function previewImport(text) {
   await resumeSwitch();
   const all = await collectAll();
   const plan = planImport(data, all);
+  const now = await getSettings();
   return {
     exported: data.exported,
+    settings: Object.entries(data.settings).map(([key, value]) => ({ key, value, changed: now[key] !== value })),
     pinned: data.pinned.length,
     pinnedAdd: plan.pinnedAdd.length,
     workspaces: plan.merge.map(({ imp, target, by, add }) => ({
@@ -151,6 +172,7 @@ async function addPinned(list) {
 // ungültig, ändert sich nichts. 'merge' legt fehlende Workspaces an und ergänzt
 // vorhandene, ohne etwas zu schließen. 'replace' legt alle Workspaces der Datei neu an
 // und löscht danach die bisherigen samt ihren Tabs, deshalb nur mit Bestätigung.
+// Die Einstellungen aus der Datei gelten bei beiden Arten.
 async function importExchange(text, mode, confirmed) {
   const data = parseExchange(text, chrome.runtime.getURL(''));
   if (mode !== 'merge' && mode !== 'replace') throw new Error(tr('importModeUnknown'));
@@ -162,7 +184,7 @@ async function importExchange(text, mode, confirmed) {
   const cfg = await getConfig();
   const { backup } = await getBackup();
   const taken = new Set(cfg.workspaces.map((w) => w.id));
-  const res = { created: 0, merged: 0, added: 0, skipped: 0, failed: 0, removed: 0, closed: 0 };
+  const res = { created: 0, merged: 0, added: 0, skipped: 0, failed: 0, removed: 0, closed: 0, settings: 0 };
 
   // Neuer Workspace, Tabs zunächst nur in der Sicherung. Die ID aus der Datei bleibt,
   // solange sie hier frei ist, damit ein späterer Import ihn wiedererkennt.
@@ -223,6 +245,7 @@ async function importExchange(text, mode, confirmed) {
   res.pinned = p.added;
   res.failed += p.failed;
   res.pinnedSkipped = data.pinned.length - plan.pinnedAdd.length;
+  res.settings = await applySettings(data.settings);
   await updateAllIcons();
   await snapshot();
   return res;

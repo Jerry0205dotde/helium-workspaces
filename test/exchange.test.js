@@ -59,6 +59,7 @@ async function source() {
 const exportedFrom = (ids) => ({
   format: 'helium-workspaces',
   version: 1,
+  settings: { muteStash: false, unloadAfter: 0, autoBackup: 0 },
   pinned: [tab('p1'), tab('p2')],
   workspaces: [
     { id: ids.C, name: 'C', color: '#22c55e', emoji: '', groups: [], tabs: [tab('c1'), tab('c2')] },
@@ -129,7 +130,7 @@ test('Rundlauf: Export ersetzt ein leeres Profil, alles kommt gleich an', async 
   const dst = await fresh();
 
   const res = await importFile(dst, file, 'replace', true);
-  assert.deepEqual(res, { created: 3, merged: 0, added: 8 + 2, skipped: 0, failed: 0, removed: 1, closed: 1, pinned: 2, pinnedSkipped: 0 });
+  assert.deepEqual(res, { created: 3, merged: 0, added: 8 + 2, skipped: 0, failed: 0, removed: 1, closed: 1, settings: 0, pinned: 2, pinnedSkipped: 0 });
   // Namen, Farben, Emojis, Reihenfolge und sogar die IDs sind die der Datei
   assert.deepEqual(dst.b.local.data.workspaces, file.workspaces.map(({ id, name, color, emoji }) => ({ id, name, color, emoji })));
   assert.equal(shows(dst, dst.win), 'C');
@@ -147,7 +148,7 @@ test('Rundlauf: Export in ein leeres Profil zusammenführen lässt „Standard�
   const dst = await fresh();
 
   const res = await importFile(dst, file, 'merge');
-  assert.deepEqual(res, { created: 3, merged: 0, added: 8 + 2, skipped: 0, failed: 0, removed: 0, closed: 0, pinned: 2, pinnedSkipped: 0 });
+  assert.deepEqual(res, { created: 3, merged: 0, added: 8 + 2, skipped: 0, failed: 0, removed: 0, closed: 0, settings: 0, pinned: 2, pinnedSkipped: 0 });
   assert.deepEqual(dst.b.local.data.workspaces.map((w) => w.name), ['Standard', 'C', 'A', 'B']);
   assert.equal(shows(dst, dst.win), 'Standard');
   check(dst, { ...ALL, Standard: [] });
@@ -295,7 +296,7 @@ test('Zusammenführen: Treffer über ID und Name, vorhandene Adressen übersprun
 
   const open = tabIds(env);
   const res = await importFile(env, file, 'merge');
-  assert.deepEqual(res, { created: 1, merged: 2, added: 1 + 3 + 2, skipped: 2 + 2, failed: 0, removed: 0, closed: 0, pinned: 1, pinnedSkipped: 1 });
+  assert.deepEqual(res, { created: 1, merged: 2, added: 1 + 3 + 2, skipped: 2 + 2, failed: 0, removed: 0, closed: 0, settings: 0, pinned: 1, pinnedSkipped: 1 });
 
   // Vorhandene Workspaces behalten Namen, Farbe und ihre Tabs; nichts wurde geschlossen
   const now = envOf(b);
@@ -325,7 +326,7 @@ test('Zusammenführen: Treffer über ID und Name, vorhandene Adressen übersprun
 
   // Derselbe Import noch einmal findet alles vor, auch den neuen Workspace über seinen Namen
   const second = await importFile(env, file, 'merge');
-  assert.deepEqual(second, { created: 0, merged: 0, added: 0, skipped: 10, failed: 0, removed: 0, closed: 0, pinned: 0, pinnedSkipped: 2 });
+  assert.deepEqual(second, { created: 0, merged: 0, added: 0, skipped: 10, failed: 0, removed: 0, closed: 0, settings: 0, pinned: 0, pinnedSkipped: 2 });
   assert.equal(b.local.data.workspaces.length, 4);
 });
 
@@ -353,7 +354,7 @@ test('Zusammenführen in einen Workspace ohne Fenster ergänzt seine Sicherung s
     },
   ]);
   const res = await importFile(env, file, 'merge');
-  assert.deepEqual(res, { created: 0, merged: 1, added: 3, skipped: 3, failed: 0, removed: 0, closed: 0, pinned: 0, pinnedSkipped: 0 });
+  assert.deepEqual(res, { created: 0, merged: 1, added: 3, skipped: 3, failed: 0, removed: 0, closed: 0, settings: 0, pinned: 0, pinnedSkipped: 0 });
   assert.equal(b.windows.length, 1, 'für den Import wurde ein Fenster geöffnet');
 
   // check() prüft auch, dass b9 in der Sicherung denselben Gruppenschlüssel trägt wie b1 und b2
@@ -421,7 +422,7 @@ test('Ersetzen mit Bestätigung: alte Workspaces samt Ablagen sind weg, die neue
   for (const name of ['B', 'C']) assert.ok(b.windows.some((w) => b.stashOf(w) === env.ids[name]), `Ablage von ${name} fehlt vor dem Import`);
 
   const res = await importFile(env, REPLACEMENT, 'replace', true);
-  assert.deepEqual(res, { created: 2, merged: 0, added: 4, skipped: 0, failed: 0, removed: 3, closed: 10, pinned: 1, pinnedSkipped: 1 });
+  assert.deepEqual(res, { created: 2, merged: 0, added: 4, skipped: 0, failed: 0, removed: 3, closed: 10, settings: 0, pinned: 1, pinnedSkipped: 1 });
 
   const now = envOf(b);
   assert.deepEqual(b.local.data.workspaces.map((w) => [w.name, w.color, w.emoji]), [
@@ -493,7 +494,7 @@ test('Ersetzen durch den eigenen Export legt jeden Tab genau einmal neu an', asy
   const oldIds = Object.values(env.ids);
 
   const res = await importFile(env, file, 'replace', true);
-  assert.deepEqual(res, { created: 3, merged: 0, added: 10, skipped: 0, failed: 0, removed: 3, closed: 10, pinned: 0, pinnedSkipped: 2 });
+  assert.deepEqual(res, { created: 3, merged: 0, added: 10, skipped: 0, failed: 0, removed: 3, closed: 10, settings: 0, pinned: 0, pinnedSkipped: 2 });
   // Die IDs der Datei sind noch vergeben, deshalb bekommen die neuen Workspaces eigene
   const now = envOf(b);
   assert.deepEqual(b.local.data.workspaces.map((w) => w.name), ['C', 'A', 'B']);
@@ -548,4 +549,71 @@ test('Import ergänzt angeheftete Tabs, bis die Sicherung sie so oft enthält wi
     const saved = env.b.local.data.backupPinned.map((e) => e.url);
     assert.equal(saved.filter((u) => u === url('p1')).length, 3, mode);
   }
+});
+
+// ---------------------------------------------------------------- Einstellungen (#161)
+
+const SETTINGS = { muteStash: true, unloadAfter: 30, autoBackup: 7 };
+const settingsOf = (b) => {
+  const { muteStash, unloadAfter, autoBackup } = b.local.data;
+  return { muteStash, unloadAfter, autoBackup };
+};
+
+test('Einstellungen kommen mit dem Export in ein neues Profil, bei beiden Arten', async () => {
+  const src = await source();
+  await ok(src.w.request({ type: 'muteStash', on: true }));
+  await ok(src.w.request({ type: 'unloadAfter', minutes: 30 }));
+  await ok(src.w.request({ type: 'autoBackup', days: 7 }));
+  const file = await request(src, { type: 'export' });
+  assert.deepEqual(file.settings, SETTINGS);
+
+  for (const mode of ['merge', 'replace']) {
+    const dst = await fresh();
+    const text = JSON.stringify(file);
+    const preview = await request(dst, { type: 'importPreview', text });
+    assert.deepEqual(preview.settings, Object.entries(SETTINGS).map(([key, value]) => ({ key, value, changed: true })), mode);
+    assert.equal(dst.b.local.data.unloadAfter, undefined, `${mode}: die Vorschau hat etwas gesetzt`);
+
+    const res = await importFile(dst, file, mode, true);
+    assert.equal(res.settings, 3, mode);
+    assert.deepEqual(settingsOf(dst.b), SETTINGS, mode);
+    // Die Wecker laufen wie nach dem Einstellen im Popup bzw. auf der Exportseite
+    assert.equal(dst.b.alarms.get('unload')?.periodInMinutes, 1, mode);
+    assert.equal(dst.b.alarms.get('autoBackup')?.periodInMinutes, 60, mode);
+    // Die Ablagen sind stumm. Importierte Workspaces bekommen ihre Ablage beim Wechseln.
+    for (const name of ['C', 'A']) await ok(dst.w.request({ type: 'switch', windowId: dst.win, wsId: dst.ids[name] }));
+    await dst.w.settle();
+    const stashed = dst.b.windows.filter((w) => !dst.b.mains().includes(w)).flatMap((w) => w.tabs.slice(1));
+    assert.ok(stashed.length, mode);
+    assert.ok(stashed.every((t) => t.mutedInfo?.muted), `${mode}: Ablagen nicht stumm`);
+    assert.deepEqual(content(await request(dst, { type: 'export' })).settings, SETTINGS, mode);
+
+    // Derselbe Import noch einmal ändert keine Einstellung
+    const again = await request(dst, { type: 'importPreview', text });
+    assert.ok(again.settings.every((s) => !s.changed), mode);
+    assert.equal((await importFile(dst, file, 'merge')).settings, 0, mode);
+  }
+});
+
+test('Ungültige Einstellungen werden übergangen, Dateien ohne Einstellungen ändern keine', async () => {
+  const env = await setup(SPEC);
+  await ok(env.w.request({ type: 'unloadAfter', minutes: 15 }));
+  const ws = [{ name: 'N', color: '#abcdef', tabs: [tab('n1')] }];
+
+  // Ältere Datei ohne „settings“
+  const old = fileOf(ws);
+  assert.deepEqual((await request(env, { type: 'importPreview', text: JSON.stringify(old) })).settings, []);
+  assert.equal((await importFile(env, old, 'merge')).settings, 0);
+  assert.deepEqual(settingsOf(env.b), { muteStash: undefined, unloadAfter: 15, autoBackup: undefined });
+
+  // Kaputte Werte lehnen die Datei nicht ab, nur der gültige wird übernommen
+  for (const settings of [null, 'an', [true], { muteStash: 'ja', unloadAfter: 7, autoBackup: 2 }]) {
+    const f = { ...fileOf(ws), settings };
+    assert.deepEqual((await request(env, { type: 'importPreview', text: JSON.stringify(f) })).settings, [], JSON.stringify(settings));
+    assert.equal((await importFile(env, f, 'merge')).settings, 0);
+  }
+  const mixed = { ...fileOf(ws), settings: { muteStash: 1, unloadAfter: '30', autoBackup: 1 } };
+  assert.deepEqual((await request(env, { type: 'importPreview', text: JSON.stringify(mixed) })).settings, [{ key: 'autoBackup', value: 1, changed: true }]);
+  assert.equal((await importFile(env, mixed, 'merge')).settings, 1);
+  assert.deepEqual(settingsOf(env.b), { muteStash: undefined, unloadAfter: 15, autoBackup: 1 });
 });

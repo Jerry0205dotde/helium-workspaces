@@ -1,12 +1,15 @@
 // Austauschformat für Export und Import. Enthält nur, was auch auf einem anderen Gerät
 // oder in einem frischen Profil Sinn ergibt: die Workspaces in ihrer Reihenfolge mit Name,
-// Farbe, Emoji, Tabs und Tab-Gruppen sowie die angehefteten Tabs. Fenster-, Tab- und
-// Gruppen-IDs und der geräteeigene KWin-Schlüssel gehören nicht dazu.
+// Farbe, Emoji, Tabs und Tab-Gruppen, die angehefteten Tabs und die Einstellungen
+// „Ablagen stummschalten“, „Ablagen entladen nach“ (Minuten) und „Automatisch sichern“
+// (Tage). Fenster-, Tab- und Gruppen-IDs und der geräteeigene KWin-Schlüssel gehören
+// nicht dazu.
 //
 // {
 //   "format": "helium-workspaces",
 //   "version": 1,
 //   "exported": "2026-11-11T12:00:00.000Z",
+//   "settings": { "muteStash": true, "unloadAfter": 30, "autoBackup": 1 },
 //   "pinned": [{ "url": "…", "title": "…" }],
 //   "workspaces": [{
 //     "id": "k3j9x0aa", "name": "Uni", "color": "#3b82f6", "emoji": "🎓",
@@ -17,6 +20,8 @@
 //
 // Die Workspace-ID dient nur dazu, beim erneuten Import denselben Workspace
 // wiederzuerkennen. Die Gruppen-IDs gelten nur innerhalb ihres Workspace.
+// "settings" ist optional (ältere Dateien haben es nicht), ebenso jede Einstellung darin.
+// Ein ungültiger Wert lehnt die Datei nicht ab, er wird nur nicht übernommen.
 
 const EXCHANGE_FORMAT = 'helium-workspaces';
 const EXCHANGE_VERSION = 1;
@@ -37,12 +42,13 @@ function isOwnPage(url, extOrigin) {
 
 // list: [{ ws, entries }] mit Einträgen im Sicherungsformat (url, title, g, gt, gc, gx).
 // Der Gruppenschlüssel g muss innerhalb eines Workspace eine Gruppe eindeutig benennen.
-function buildExchange(list, pinned, extOrigin) {
+function buildExchange(list, pinned, extOrigin, settings) {
   const keep = (e) => e.url && !isOwnPage(e.url, extOrigin);
   return {
     format: EXCHANGE_FORMAT,
     version: EXCHANGE_VERSION,
     exported: new Date().toISOString(),
+    settings,
     pinned: pinned.filter(keep).map((e) => ({ url: e.url, title: e.title || '' })),
     workspaces: list.map(({ ws, entries }) => {
       const groups = [];
@@ -67,8 +73,19 @@ function buildExchange(list, pinned, extOrigin) {
   };
 }
 
+// Die gültigen Einstellungen aus der Datei, ungültige und fehlende bleiben weg. Die
+// erlaubten Werte stehen in unload.js und autobackup.js.
+function parseSettings(s) {
+  if (s === null || typeof s !== 'object' || Array.isArray(s)) return {};
+  const r = {};
+  if (typeof s.muteStash === 'boolean') r.muteStash = s.muteStash;
+  if (UNLOAD_CHOICES.includes(s.unloadAfter)) r.unloadAfter = s.unloadAfter;
+  if (AUTO_CHOICES.includes(s.autoBackup)) r.autoBackup = s.autoBackup;
+  return r;
+}
+
 // Prüft eine Export-Datei vollständig und wirft bei jedem Fehler, bevor irgendetwas
-// geändert wird. Ergebnis: { exported, pinned: [{url, title}], workspaces: [{ id | null,
+// geändert wird. Ergebnis: { exported, settings, pinned: [{url, title}], workspaces: [{ id | null,
 // name, color, emoji, groups, tabs }] }, Tabs im Sicherungsformat. Ihr Gruppenschlüssel g
 // ist "<Workspace-Nr.>:<Gruppen-ID>" und muss beim Übernehmen noch eindeutig gemacht werden.
 function parseExchange(text, extOrigin) {
@@ -171,5 +188,5 @@ function parseExchange(text, extOrigin) {
     if (total > EXCHANGE_LIMITS.tabs) fail('', tr('exTooManyTabs'));
     return { id, name, color, emoji, groups: new Set(tabs.map((e) => e.g).filter(Boolean)).size, tabs };
   });
-  return { exported, pinned, workspaces };
+  return { exported, settings: parseSettings(data.settings), pinned, workspaces };
 }
