@@ -153,3 +153,29 @@ test('Popup zeigt hörbare Workspaces an, Klick auf den Lautsprecher schaltet si
   assert.equal(muted(env, 'a1'), false);
   check(env, ALL);
 });
+
+test('Ein neuer Tab in einer Ablage ist gleich stumm, nicht erst bei der nächsten Aktion', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  await option(env, true);
+  // Ein Tab der Ablage öffnet einen neuen, etwa über target=_blank
+  const stashB = where(env, 'b1').win;
+  b.createTab({ windowId: stashB.id, url: 'https://b3.test/', active: false });
+  await w.settle();
+  assert.equal(muted(env, 'b3'), true);
+  assert.equal(reason(env, 'b3'), 'extension');
+
+  // Ein Tab, den man in ein Ablage-Fenster zieht, ebenso
+  const t = where(env, 'a3').tab;
+  b.moveTab(b.findTab(t.id).t, b.findWin(win), b.findWin(where(env, 'c1').win.id));
+  await w.settle();
+  assert.equal(where(env, 'a3').stash, true);
+  assert.equal(muted(env, 'a3'), true);
+
+  // Ohne die Option bleibt ein neuer Tab in der Ablage laut
+  await option(env, false);
+  b.createTab({ windowId: stashB.id, url: 'https://b4.test/', active: false });
+  await w.settle();
+  assert.equal(muted(env, 'b4'), false);
+  assert.equal(muted(env, 'b3'), false);
+});
