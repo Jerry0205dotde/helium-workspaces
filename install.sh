@@ -12,6 +12,8 @@
 # Rückfrage neu ein, Schlüssel und Browserliste bleiben.
 # Nach der Installation weist das Skript auf Profile von Helium, Google Chrome und Chromium hin,
 # die nicht mit „Dort weitermachen, wo ich aufgehört habe“ starten. Es ändert dort nichts.
+# Bevor es etwas ändert, prüft das Skript, ob alle benötigten Programme da sind. Für qdbus6
+# nimmt es auch qdbus-qt6 (Fedora) oder qdbus. ./install.sh --help zeigt diesen Text.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -46,10 +48,29 @@ while [ $# -gt 0 ]; do
     --browsers=*) BROWSERS="${1#*=}"; SET_BROWSERS=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     --update) UPDATE=1; shift ;;
+    # Der Kommentar am Anfang dieser Datei, ohne die Zeile mit #!
+    -h|--help) sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0"; exit 0 ;;
     -*) t "Unbekannte Option: $1" "Unknown option: $1" >&2; exit 1 ;;
     *) TOKEN="$1"; shift ;;
   esac
 done
+
+# Fehlt ein Programm, abbrechen, bevor etwas geändert ist. qdbus6 heißt nicht überall so.
+QDBUS=""
+for q in qdbus6 qdbus-qt6 qdbus; do
+  command -v "$q" >/dev/null && { QDBUS="$q"; break; }
+done
+MISSING=()
+[ -n "$QDBUS" ] || MISSING+=("qdbus6 (qdbus-qt6, qdbus)")
+for p in kpackagetool6 kreadconfig6 kwriteconfig6 sed tr ${UPDATE:+git}; do
+  command -v "$p" >/dev/null || MISSING+=("$p")
+done
+if [ ${#MISSING[@]} -gt 0 ]; then
+  t "Es fehlen Programme, die install.sh braucht:" "Programs that install.sh needs are missing:" >&2
+  printf '  %s\n' "${MISSING[@]}" >&2
+  t "Siehe Voraussetzungen in der README." "See Requirements in the README." >&2
+  exit 1
+fi
 
 if [ -n "$UPDATE" ]; then
   [ -z "$TOKEN$SET_BROWSERS$UNINSTALL" ] \
@@ -68,8 +89,8 @@ if [ -n "$UPDATE" ]; then
 fi
 
 if [ -n "$UNINSTALL" ]; then
-  # Erreicht qdbus6 KWin nicht, bricht das Skript hier ab, bevor etwas entfernt ist.
-  qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces >/dev/null
+  # Erreicht qdbus KWin nicht, bricht das Skript hier ab, bevor etwas entfernt ist.
+  "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces >/dev/null
   INSTALLED=""
   kpackagetool6 --type=KWin/Script -s helium-workspaces >/dev/null 2>&1 && INSTALLED=1
   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
@@ -80,12 +101,12 @@ if [ -n "$UNINSTALL" ]; then
     kpackagetool6 --type=KWin/Script -u "$DIR/kwin" >/dev/null
     # Auch ein in den Systemeinstellungen deaktiviertes Skript, sonst lädt KWin es nicht
     kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true
-    qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
-    qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null
+    "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
+    "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null
     sleep 1
   fi
   # Dann entladen, sonst läuft das Skript bis zum nächsten Start von KWin weiter
-  qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
+  "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
   [ -z "$INSTALLED" ] || kpackagetool6 --type=KWin/Script -r helium-workspaces >/dev/null
   kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete
   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers --delete
@@ -124,9 +145,9 @@ if [ -n "$SET_BROWSERS" ]; then
 fi
 kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true
 # Skript neu laden, damit es Schlüssel und Browserliste übernimmt
-qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
-qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null
-[ "$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces)" = true ] \
+"$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
+"$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null
+[ "$("$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces)" = true ] \
   || { t "KWin-Skript wurde nicht geladen" "KWin script was not loaded" >&2; exit 1; }
 
 # session.restore_on_startup ist 1 bei „Dort weitermachen, wo ich aufgehört habe“. Fehlt der
