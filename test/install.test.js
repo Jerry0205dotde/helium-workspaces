@@ -28,8 +28,9 @@ const GIT_ENV = {
 // token: was kreadconfig6 als eingetragenen Schlüssel liefert, setup(dir): vorbereiten,
 // gibt den Pfad des auszuführenden install.sh zurück, profiles: Pfad unter ~/.config → Inhalt
 // der Preferences-Datei dort, input: was auf die Frage nach dem Schlüssel eingetippt wird,
-// env: Sprachvariablen (ohne Angabe Deutsch)
-function run(args, { installed = true, dbus = true, token = '', setup, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' } } = {}) {
+// env: Sprachvariablen (ohne Angabe Deutsch), check(dir): nach dem Lauf, vor dem Aufräumen,
+// das Ergebnis steht in checked
+function run(args, { installed = true, dbus = true, token = '', setup, check, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' } } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-install-'));
   const home = path.join(dir, 'home');
   for (const [p, content] of Object.entries(profiles)) {
@@ -43,7 +44,8 @@ function run(args, { installed = true, dbus = true, token = '', setup, profiles 
   const fake = (name, body) =>
     fs.writeFileSync(path.join(bin, name), `#!/bin/bash\necho "${name} $*" >> "${log}"\n${body}\n`, { mode: 0o755 });
   fake('qdbus6', dbus ? 'echo true' : 'echo "Could not connect to D-Bus server" >&2; exit 1');
-  fake('kpackagetool6', `[ "$2" = -s ] && exit ${installed ? 0 : 3}; exit 0`);
+  // Wie das echte kpackagetool6: -u scheitert, solange das Paket nicht installiert ist
+  fake('kpackagetool6', `case "$2" in -s) exit ${installed ? 0 : 3} ;; -u) exit ${installed ? 0 : 1} ;; esac; exit 0`);
   fake('kwriteconfig6', 'exit 0');
   fake('kreadconfig6', `[ "$6" = token ] && echo "${token}"; exit 0`);
   try {
@@ -56,7 +58,8 @@ function run(args, { installed = true, dbus = true, token = '', setup, profiles 
     const after = Object.fromEntries(
       Object.keys(profiles).map((p) => [p, fs.readFileSync(path.join(home, '.config', p, 'Preferences'), 'utf8')]),
     );
-    return { status: r.status, stdout: r.stdout, stderr: r.stderr, calls, dir, profiles: after };
+    const checked = check?.(dir);
+    return { status: r.status, stdout: r.stdout, stderr: r.stderr, calls, dir, profiles: after, checked };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -237,6 +240,120 @@ test('Ein ungültiger Schlüssel bricht ab, bevor etwas eingetragen ist', () => 
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /Ungültiger Schlüssel/);
   assert.equal(written(r), undefined);
+});
+
+const READ_TOKEN = 'kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token';
+// Nach dem Eintragen: einschalten und das Skript neu laden
+const ENABLE_AND_RELOAD = [
+  'kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true',
+  'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces',
+  'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start',
+  'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces',
+];
+const writeToken = (token) => `kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token ${token}`;
+const writeBrowsers = (list) => `kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers ${list}`;
+
+// install.sh samt kwin/ und extension/token.js einer älteren Version in einem eigenen Ordner,
+// damit sich prüfen lässt, ob token.js verschwindet
+function copy(dir) {
+  const repo = path.join(dir, 'repo');
+  fs.mkdirSync(path.join(repo, 'extension'), { recursive: true });
+  fs.copyFileSync(INSTALL, path.join(repo, 'install.sh'));
+  fs.writeFileSync(path.join(repo, 'extension', 'token.js'), `const TOKEN = '${TOKEN}';\n`);
+  return path.join(repo, 'install.sh');
+}
+const tokenFile = (dir) => fs.existsSync(path.join(dir, 'repo', 'extension', 'token.js'));
+
+test('Erstinstallation: installiert das Paket, trägt den Schlüssel ein und lädt das Skript', () => {
+  const r = run([TOKEN], { installed: false, setup: copy, check: tokenFile });
+  assert.equal(r.status, 0, r.stderr);
+  const kwin = path.join(r.dir, 'repo', 'kwin');
+  assert.deepEqual(r.calls, [
+    READ_TOKEN,
+    `kpackagetool6 --type=KWin/Script -u ${kwin}`,
+    `kpackagetool6 --type=KWin/Script -i ${kwin}`,
+    writeToken(TOKEN),
+    ...ENABLE_AND_RELOAD,
+  ]);
+  assert.equal(r.checked, false, 'extension/token.js liegt noch da');
+  assert.equal(r.stdout, 'Fertig.\n');
+});
+
+test('Erneute Installation: Enter an der Frage behält den eingetragenen Schlüssel', () => {
+  const r = run([], { token: TOKEN, input: '\n' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.calls, [
+    READ_TOKEN,
+    `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
+    writeToken(TOKEN),
+    ...ENABLE_AND_RELOAD,
+  ]);
+});
+
+test('Ein neuer Schlüssel an der Frage ersetzt den eingetragenen', () => {
+  const other = 'fedcba9876543210fedcba98';
+  const r = run([], { token: TOKEN, input: `${other}\n` });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(written(r), other);
+});
+
+test('Enter ohne eingetragenen Schlüssel bricht ab, bevor etwas installiert ist', () => {
+  const r = run([], { input: '\n', setup: copy, check: tokenFile });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /Ungültiger Schlüssel/);
+  assert.deepEqual(r.calls, [READ_TOKEN]);
+  assert.equal(r.checked, true, 'extension/token.js schon entfernt');
+});
+
+test('Ein ungültiger Schlüssel als Argument ändert nichts, auch nicht token.js', () => {
+  const r = run(['0123456789ABCDEF01234567'], { token: TOKEN, setup: copy, check: tokenFile });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /Ungültiger Schlüssel/);
+  assert.deepEqual(r.calls, [READ_TOKEN]);
+  assert.equal(r.checked, true, 'extension/token.js schon entfernt');
+});
+
+test('--browsers trägt die Liste nach dem Schlüssel ein, ohne Leerzeichen und kleingeschrieben', () => {
+  for (const args of [['--browsers', 'Helium, Brave-Browser', TOKEN], [TOKEN, '--browsers=Helium, Brave-Browser']]) {
+    const r = run(args);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(r.calls, [
+      READ_TOKEN,
+      `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
+      writeToken(TOKEN),
+      writeBrowsers('helium,brave-browser'),
+      ...ENABLE_AND_RELOAD,
+    ], args.join(' '));
+  }
+});
+
+test('Ohne --browsers bleibt die eingetragene Browserliste unberührt', () => {
+  const r = run([TOKEN], { token: TOKEN });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!r.calls.some((c) => c.includes('--key browsers')), r.calls.join('\n'));
+});
+
+test("--browsers '' stellt die Standardliste wieder her", () => {
+  for (const args of [['--browsers', '', TOKEN], ['--browsers=', TOKEN], ['--browsers', ' ', TOKEN]]) {
+    const r = run(args);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(r.calls, [
+      READ_TOKEN,
+      `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
+      writeToken(TOKEN),
+      writeBrowsers('--delete'),
+      ...ENABLE_AND_RELOAD,
+    ], JSON.stringify(args));
+  }
+});
+
+test('Eine ungültige Browserliste bricht ab, bevor etwas gelesen oder eingetragen ist', () => {
+  for (const args of [['--browsers', 'helium;rm', TOKEN], ['--browsers', 'helium,,brave', TOKEN], ['--browsers']]) {
+    const r = run(args);
+    assert.notEqual(r.status, 0, args.join(' '));
+    assert.match(r.stderr, /Browserliste|--browsers braucht eine Liste/);
+    assert.deepEqual(r.calls, [], args.join(' '));
+  }
 });
 
 // Meldungen je nach Sprache der Sitzung, im Zweifel Englisch
