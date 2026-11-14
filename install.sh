@@ -141,4 +141,6 @@ if [ ${#NOT_RESTORING[@]} -gt 0 ]; then
     "and lose their history. If you use the extension in one of these profiles, choose that"
   t "Einstellungen → Beim Start die Option wählen." "option there under Settings → On startup."
 fi
-t "Fertig." "Done."
+# Die Version des KWin-Skripts ist dieselbe wie die der Erweiterung (test/static.test.js)
+KWIN_VERSION="$(sed -n 's/^ *"Version": *"\([^"]*\)".*/\1/p' "$DIR/kwin/metadata.json")"
+t "Fertig, KWin-Skript $KWIN_VERSION installiert." "Done, KWin script $KWIN_VERSION installed."

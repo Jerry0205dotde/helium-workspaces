@@ -85,7 +85,7 @@ Alternativ in den Systemeinstellungen unter **Fensterverwaltung → Fensterregel
 
    Ihn in einem Terminal im Repository-Ordner einfügen und ausführen. Er richtet das KWin-Skript ein.
 
-   Am Ende steht `Fertig.`. Das KWin-Skript ist dann installiert, aktiviert, geladen und kennt den Schlüssel. `install.sh` antwortet auf Deutsch, wenn die Sprache der Sitzung Deutsch ist (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES` oder `LANG`), sonst auf Englisch.
+   Am Ende steht `Fertig, KWin-Skript <Version> installiert.`. Das KWin-Skript ist dann installiert, aktiviert, geladen und kennt den Schlüssel. `install.sh` antwortet auf Deutsch, wenn die Sprache der Sitzung Deutsch ist (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES` oder `LANG`), sonst auf Englisch.
 6. Zum Prüfen einen zweiten Workspace anlegen und hin- und herwechseln. In der Taskleiste darf kein zusätzliches Browserfenster auftauchen.
 
 Den Ordner nach dem Laden nicht verschieben. Helium lädt die Erweiterung bei jedem Start aus genau diesem Ordner. Den Entwicklermodus eingeschaltet lassen. Ohne ihn deaktiviert Helium entpackte Erweiterungen.
@@ -233,7 +233,7 @@ node --test test/*.test.js
 
 Braucht nur Node.js ab Version 22, keinen Browser und kein KWin. Die Tests laden `background.js` samt der Dateien, die es lädt, unverändert in eine Nachbildung der Chrome-APIs und spielen damit Wechsel mit Gruppen und angehefteten Tabs, mehrere Fenster, Neustarts mit und ohne Sitzungswiederherstellung, das Neuladen der Erweiterung, gezielt scheiternde API-Aufrufe, schnell aufeinanderfolgende Änderungen sowie Export und Import samt Zusammenführen und Ersetzen durch. Dazu kommen Syntax, Manifest und KWin-Metadaten, außerdem läuft das KWin-Skript gegen eine Nachbildung der KWin-API und zeigt, welche Fenster es versteckt. `install.sh` läuft gegen Nachbildungen der KDE-Befehle: die Installation samt dem Hinweis auf die Starteinstellung, `--uninstall` und `--update`, das dabei mit echtem `git` aus einem Test-Repository holt. Die Meldungen von `install.sh` werden auf Deutsch und Englisch geprüft. Dieselben Prüfungen laufen in der CI bei jedem Pull Request.
 
-Ändert sich etwas in `extension/`, muss die Version in [`manifest.json`](./extension/manifest.json) höher sein als auf `main`, sonst schlägt `static.test.js` fehl. Die Version steht unten rechts im Popup, so sieht man nach einem Update, ob der neue Stand läuft. Verglichen wird mit `origin/main`, mit `VERSION_BASE` lässt sich eine andere Ref angeben. Fehlt die Ref, wird die Prüfung übersprungen.
+Ändert sich etwas in `extension/`, muss die Version in [`manifest.json`](./extension/manifest.json) höher sein als auf `main`, sonst schlägt `static.test.js` fehl. Die Version steht unten rechts im Popup, so sieht man nach einem Update, ob der neue Stand läuft. Das KWin-Skript trägt in [`metadata.json`](./kwin/metadata.json) dieselbe Version, auch das prüft `static.test.js`, und `install.sh` nennt sie am Ende. Verglichen wird mit `origin/main`, mit `VERSION_BASE` lässt sich eine andere Ref angeben. Fehlt die Ref, wird die Prüfung übersprungen.
 
 Landet eine höhere Version auf `main`, setzt [`tag.yml`](./.github/workflows/tag.yml) auf diesen Commit das Tag `v<Version>`, zum Beispiel `v0.2.0`.
 
