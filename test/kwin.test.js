@@ -141,3 +141,33 @@ test('Ändert sich der Schlüssel, kommen die mit dem alten Schlüssel versteckt
   run([helium, brave], 'ffffffffffffffffffffffff');
   for (const w of [helium, brave]) assert.ok(!w.skipTaskbar && !w.skipSwitcher && !w.skipPager, `${w.resourceClass} bleibt versteckt`);
 });
+
+// Ein zweiter Browser bzw. ein zweites Profil mit eigenem Schlüssel (#155)
+const OTHER = 'fedcba9876543210fedcba98';
+const otherStash = (cls) => kwinWindow(cls, `HWS-Ablage ${OTHER} · Ich – ${cls}`);
+
+test('Mit mehreren Schlüsseln in kwinrc werden die Ablagen jedes Browsers versteckt (#155)', () => {
+  for (const token of [`${TOKEN},${OTHER}`, ` ${OTHER} ,, ${TOKEN} `]) {
+    const helium = stash('helium');
+    const chromium = otherStash('chromium');
+    const k = run([helium], token);
+    k.add(chromium);
+    assert.ok(isHidden(helium) && isHidden(chromium), token);
+  }
+  // Ein Schlüssel ist nur als ganzer Eintrag gültig, nicht als Teil der Liste
+  const joined = kwinWindow('helium', `HWS-Ablage ${TOKEN},${OTHER} · Uni`);
+  const half = kwinWindow('helium', `HWS-Ablage ${TOKEN.slice(0, 12)} · Uni`);
+  run([joined, half], `${TOKEN},${OTHER}`);
+  for (const w of [joined, half]) assert.ok(!w.skipTaskbar && !w.minimized, w.caption);
+});
+
+test('Wird ein Schlüssel ausgetragen, kommen nur seine Ablagen zurück in die Taskleiste (#155)', () => {
+  const helium = stash('helium');
+  const chromium = otherStash('chromium');
+  run([helium, chromium], `${TOKEN},${OTHER}`);
+  assert.ok(isHidden(helium) && isHidden(chromium));
+  // install.sh --remove trägt den Schlüssel von Chromium aus und lädt das Skript neu
+  run([helium, chromium], TOKEN);
+  assert.ok(isHidden(helium));
+  assert.ok(!chromium.skipTaskbar && !chromium.skipSwitcher && !chromium.skipPager);
+});

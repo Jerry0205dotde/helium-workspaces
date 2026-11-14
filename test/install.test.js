@@ -384,11 +384,81 @@ test('Scheitert das Aktualisieren, bricht install.sh mit der Meldung von kpackag
   assert.deepEqual(r.calls, [READ_TOKEN, SHOW, `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`]);
 });
 
-test('Ein neuer Schlüssel an der Frage ersetzt den eingetragenen', () => {
-  const other = 'fedcba9876543210fedcba98';
-  const r = run([], { token: TOKEN, input: `${other}\n` });
+// Ein zweiter Browser bzw. ein zweites Profil mit eigenem Schlüssel (#155)
+const OTHER = 'fedcba9876543210fedcba98';
+
+test('Ein neuer Schlüssel kommt zu den eingetragenen dazu, statt sie zu ersetzen (#155)', () => {
+  for (const [args, input] of [[[OTHER], ''], [[], `${OTHER}\n`], [[`./install.sh ${OTHER}`], '']]) {
+    const r = run(args, { token: TOKEN, input });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(written(r), `${TOKEN},${OTHER}`, JSON.stringify(args));
+    assert.equal(r.stdout, `Eingetragene Schlüssel: ${TOKEN},${OTHER}\n${DONE_DE}`);
+  }
+});
+
+test('Ein schon eingetragener Schlüssel steht danach nicht doppelt in kwinrc (#155)', () => {
+  for (const token of [`${TOKEN},${OTHER}`, ` ${TOKEN}, ,${OTHER},${TOKEN} `]) {
+    const r = run([OTHER], { token });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(written(r), `${TOKEN},${OTHER}`, token);
+  }
+});
+
+test('Enter an der Frage und --update behalten alle eingetragenen Schlüssel (#155)', () => {
+  const r = run([], { token: `${TOKEN},${OTHER}`, input: '\n' });
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(written(r), other);
+  assert.equal(written(r), `${TOKEN},${OTHER}`);
+  const u = run(['--update'], { token: `${TOKEN},${OTHER}`, setup: (dir) => repos(dir) });
+  assert.equal(u.status, 0, u.stderr);
+  assert.ok(u.calls.includes(writeToken(`${TOKEN},${OTHER}`)), u.calls.join('\n'));
+});
+
+// Auch ein in den Systemeinstellungen deaktiviertes Skript, sonst lädt KWin es nicht neu
+const RELOAD = [
+  'kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true',
+  'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces',
+  'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start',
+];
+
+test('--remove trägt einen Schlüssel aus und lädt das Skript neu, die übrigen bleiben (#155)', () => {
+  for (const args of [['--remove', TOKEN], [TOKEN, '--remove'], ['--remove', `./install.sh ${TOKEN}`]]) {
+    const r = run(args, { token: `${TOKEN},${OTHER}` });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(r.calls, [
+      'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces',
+      READ_TOKEN,
+      writeToken(OTHER),
+      ...RELOAD,
+    ], args.join(' '));
+    assert.equal(r.stdout, `Schlüssel ausgetragen. Noch eingetragen: ${OTHER}\n`);
+  }
+});
+
+test('--remove mit dem letzten Schlüssel löscht den Eintrag, das Skript holt dann alle Ablagen zurück (#155)', () => {
+  const r = run(['--remove', TOKEN], { token: TOKEN });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.calls.slice(2), [
+    'kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete',
+    ...RELOAD,
+  ]);
+  assert.match(r.stdout, /keiner mehr eingetragen/);
+});
+
+test('--remove ändert nichts bei einem fremden oder ungültigen Schlüssel, ohne KWin oder mit weiteren Angaben (#155)', () => {
+  for (const [args, opts, message] of [
+    [['--remove', OTHER], { token: TOKEN }, /Der Schlüssel fedcba9876543210fedcba98 ist nicht eingetragen\./],
+    [['--remove', '0123'], { token: TOKEN }, /Ungültiger Schlüssel/],
+    [['--remove'], { token: TOKEN }, /Ungültiger Schlüssel/],
+    [['--remove', TOKEN], { token: TOKEN, dbus: false }, /D-Bus/],
+    [['--remove', TOKEN, '--browsers', 'helium'], { token: TOKEN }, /--remove nimmt nur den Schlüssel/],
+    [['--remove', TOKEN, '--uninstall'], { token: TOKEN }, /--remove nimmt nur den Schlüssel/],
+    [['--remove', '--update'], { token: TOKEN }, /--update nimmt keine weiteren Angaben/],
+  ]) {
+    const r = run(args, opts);
+    assert.notEqual(r.status, 0, args.join(' '));
+    assert.match(r.stderr, message, args.join(' '));
+    assert.ok(!r.calls.some((c) => c.startsWith('kwriteconfig6') || c.endsWith('Scripting.start')), r.calls.join('\n'));
+  }
 });
 
 test('Enter ohne eingetragenen Schlüssel bricht ab, bevor etwas installiert ist', () => {
@@ -489,6 +559,18 @@ for (const [env, lang] of [
 
     const noKey = run(['--update'], { env });
     assert.match(noKey.stderr, de ? /^Noch kein Schlüssel eingetragen\./ : /^No key set up yet\./);
+
+    const second = run([OTHER], { env, token: TOKEN });
+    assert.equal(second.stdout, `${de ? 'Eingetragene Schlüssel' : 'Keys set up'}: ${TOKEN},${OTHER}\n${de ? DONE_DE : DONE_EN}`);
+
+    const kept = run(['--remove', TOKEN], { env, token: `${TOKEN},${OTHER}` });
+    assert.equal(kept.stdout, de ? `Schlüssel ausgetragen. Noch eingetragen: ${OTHER}\n` : `Key removed. Still set up: ${OTHER}\n`);
+    const last = run(['--remove', TOKEN], { env, token: TOKEN });
+    assert.match(last.stdout, de ? /^Schlüssel ausgetragen\. Es ist keiner mehr eingetragen/ : /^Key removed\. No key is set up anymore/);
+    const unknown = run(['--remove', OTHER], { env, token: TOKEN });
+    assert.match(unknown.stderr, de ? /^Der Schlüssel \w+ ist nicht eingetragen\./ : /^The key \w+ is not set up\./);
+    const combined = run(['--remove', TOKEN, '--uninstall'], { env });
+    assert.match(combined.stderr, de ? /^--remove nimmt nur den Schlüssel/ : /^--remove only takes the key/);
   });
 }
 

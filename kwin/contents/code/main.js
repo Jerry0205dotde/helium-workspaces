@@ -6,9 +6,10 @@
 // deaktiviert), taucht es wieder in der Taskleiste auf, damit keine Tabs unsichtbar
 // verloren gehen. Ohne Schlüssel (install.sh --uninstall löscht ihn zuerst) holt das
 // Skript alle Ablagen zurück.
-const TOKEN = String(readConfig("token", ""));
 const PREFIX = "HWS-Ablage ";
-const MARK = PREFIX + TOKEN + " ";
+const MARKS = String(readConfig("token", "")).split(",")
+    .map(function (s) { return s.trim(); }).filter(Boolean)
+    .map(function (token) { return PREFIX + token + " "; });
 const hidden = {};
 // Fensterklasse (X11) bzw. App-ID (Wayland) der Browser, deren Ablagen versteckt werden.
 // install.sh --browsers setzt die Liste in kwinrc, kommagetrennt; ohne Eintrag gilt die
@@ -24,7 +25,7 @@ function check(w) {
     if (!w || !w.normalWindow) return;
     const id = String(w.internalId);
     const caption = w.caption || "";
-    const marked = TOKEN !== "" && caption.indexOf(MARK) !== -1;
+    const marked = MARKS.some(function (mark) { return caption.indexOf(mark) !== -1; });
     if (marked && isBrowser(w)) {
         hidden[id] = true;
         if (!w.skipTaskbar) w.skipTaskbar = true;
@@ -33,7 +34,7 @@ function check(w) {
         if (!w.minimized) w.minimized = true;
     } else if (hidden[id] || (caption.indexOf(PREFIX) !== -1 && w.skipTaskbar)) {
         // Auch Ablagen eines Browsers, der nicht mehr in der Liste steht, und Ablagen mit
-        // einem alten Schlüssel (install.sh hat einen neuen eingetragen) kommen zurück
+        // einem Schlüssel, der nicht mehr eingetragen ist (install.sh --remove), kommen zurück
         delete hidden[id];
         w.skipTaskbar = false;
         w.skipSwitcher = false;

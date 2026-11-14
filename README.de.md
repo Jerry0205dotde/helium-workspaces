@@ -112,7 +112,9 @@ Einmalig beim Update von einer Version, in der der Schlüssel noch in `extension
 
 ### Der Schlüssel
 
-Die Erweiterung erzeugt beim ersten Start einen zufälligen Schlüssel und speichert ihn in ihrem Speicher im Helium-Profil. Webseiten können ihn dort nicht lesen. Er steht aber im Titel der Ablage-Tabs, und den kann jede andere installierte Erweiterung mit der Berechtigung `tabs` lesen. Der Schlüssel schützt also vor Webseiten, nicht vor anderen Erweiterungen. Das Popup zeigt ihn unter **Schlüssel für install.sh**, und `install.sh` trägt ihn in `kwinrc` ein. Jedes Gerät hat so seinen eigenen Schlüssel. Passt der Schlüssel in `kwinrc` nicht zu dem im Popup, bleiben die Ablage-Fenster sichtbar.
+Die Erweiterung erzeugt beim ersten Start einen zufälligen Schlüssel und speichert ihn in ihrem Speicher im Helium-Profil. Webseiten können ihn dort nicht lesen. Er steht aber im Titel der Ablage-Tabs, und den kann jede andere installierte Erweiterung mit der Berechtigung `tabs` lesen. Der Schlüssel schützt also vor Webseiten, nicht vor anderen Erweiterungen. Das Popup zeigt ihn unter **Schlüssel für install.sh**, und `install.sh` trägt ihn in `kwinrc` ein. Jedes Gerät und jedes Browserprofil hat so seinen eigenen Schlüssel. Steht der Schlüssel aus dem Popup nicht in `kwinrc`, bleiben die Ablage-Fenster sichtbar.
+
+Mehrere Browser oder Profile mit der Erweiterung, etwa Helium und Chromium oder zwei Helium-Profile, haben je einen eigenen Schlüssel. Für jeden `install.sh` mit dem Schlüssel aus dem jeweiligen Popup ausführen. Ein neuer Schlüssel kommt zu den eingetragenen dazu, `install.sh` nennt dann alle. Einen Schlüssel, der nicht mehr gebraucht wird, etwa nach dem Entfernen der Erweiterung aus einem Profil, trägt `./install.sh --remove <Schlüssel>` wieder aus. Die Ablagen mit diesem Schlüssel kommen dann zurück in die Taskleiste.
 
 Workspaces auf ein anderes Gerät bringt der Export (siehe unten). Er enthält den Schlüssel nicht.
 
@@ -187,7 +189,7 @@ Ein sichtbares Ablage-Fenster hat einen Titel wie `HWS-Ablage 3f9c… · Uni` un
    kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token
    ```
 
-   Die Ausgabe muss der Schlüssel sein, den das Popup unter **Schlüssel für install.sh** zeigt, und der Fenstertitel muss ihn nach `HWS-Ablage` zeigen. Steht im Titel kein Schlüssel (`HWS-Ablage · Uni`), die Erweiterung in `chrome://extensions` neu laden.
+   In der Ausgabe muss der Schlüssel stehen, den das Popup unter **Schlüssel für install.sh** zeigt (bei mehreren Browsern oder Profilen kommagetrennt), und der Fenstertitel muss ihn nach `HWS-Ablage` zeigen. Steht im Titel kein Schlüssel (`HWS-Ablage · Uni`), die Erweiterung in `chrome://extensions` neu laden.
 3. Zum Reparieren im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. Das Skript lädt das KWin-Skript neu, nach ein bis zwei Sekunden verschwinden die Ablagen aus der Taskleiste.
 
 ### `install.sh` bricht ab
@@ -233,7 +235,7 @@ Das ist ein privates Bastelprojekt. Rechne mit Fehlern.
 node --test test/*.test.js
 ```
 
-Braucht nur Node.js ab Version 22, keinen Browser und kein KWin. Die Tests laden `background.js` samt der Dateien, die es lädt, unverändert in eine Nachbildung der Chrome-APIs und spielen damit Wechsel mit Gruppen und angehefteten Tabs, mehrere Fenster, Neustarts mit und ohne Sitzungswiederherstellung, das Neuladen der Erweiterung, gezielt scheiternde API-Aufrufe, schnell aufeinanderfolgende Änderungen sowie Export und Import samt Zusammenführen und Ersetzen durch. Dazu kommen Syntax, Manifest und KWin-Metadaten, außerdem läuft das KWin-Skript gegen eine Nachbildung der KWin-API und zeigt, welche Fenster es versteckt. `install.sh` läuft gegen Nachbildungen der KDE-Befehle: die Installation samt dem Hinweis auf die Starteinstellung, die Prüfung auf fehlende Programme, `--help`, `--uninstall` und `--update`, das dabei mit echtem `git` aus einem Test-Repository holt. Die Meldungen von `install.sh` werden auf Deutsch und Englisch geprüft. Dieselben Prüfungen laufen in der CI bei jedem Pull Request.
+Braucht nur Node.js ab Version 22, keinen Browser und kein KWin. Die Tests laden `background.js` samt der Dateien, die es lädt, unverändert in eine Nachbildung der Chrome-APIs und spielen damit Wechsel mit Gruppen und angehefteten Tabs, mehrere Fenster, Neustarts mit und ohne Sitzungswiederherstellung, das Neuladen der Erweiterung, gezielt scheiternde API-Aufrufe, schnell aufeinanderfolgende Änderungen sowie Export und Import samt Zusammenführen und Ersetzen durch. Dazu kommen Syntax, Manifest und KWin-Metadaten, außerdem läuft das KWin-Skript gegen eine Nachbildung der KWin-API und zeigt, welche Fenster es versteckt. `install.sh` läuft gegen Nachbildungen der KDE-Befehle: die Installation samt dem Hinweis auf die Starteinstellung, die Prüfung auf fehlende Programme, mehrere Schlüssel, `--help`, `--remove`, `--uninstall` und `--update`, das dabei mit echtem `git` aus einem Test-Repository holt. Die Meldungen von `install.sh` werden auf Deutsch und Englisch geprüft. Dieselben Prüfungen laufen in der CI bei jedem Pull Request.
 
 Ändert sich etwas in `extension/`, muss die Version in [`manifest.json`](./extension/manifest.json) höher sein als auf `main`, sonst schlägt `static.test.js` fehl. Die Version steht unten rechts im Popup, so sieht man nach einem Update, ob der neue Stand läuft. Das KWin-Skript trägt in [`metadata.json`](./kwin/metadata.json) dieselbe Version, auch das prüft `static.test.js`, und `install.sh` nennt sie am Ende. Verglichen wird mit `origin/main`, mit `VERSION_BASE` lässt sich eine andere Ref angeben. Fehlt die Ref, wird die Prüfung übersprungen.
 
@@ -269,7 +271,7 @@ KWin prüfen die Tests nicht. Nach Änderungen daran kurz von Hand:
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): die Seite, die ein Fenster als Ablage markiert
   - [`label.js`](./extension/label.js): das Zeichen im Symbol eines Workspace
 - [`kwin/`](./kwin): KWin-Skript, das die Ablage-Fenster versteckt
-- [`install.sh`](./install.sh): KWin-Skript einrichten und den Schlüssel eintragen, mit `--update` aktualisieren, mit `--uninstall` wieder entfernen
+- [`install.sh`](./install.sh): KWin-Skript einrichten und den Schlüssel eintragen, mit `--remove` einen Schlüssel austragen, mit `--update` aktualisieren, mit `--uninstall` wieder entfernen
 - [`test/`](./test): automatische Tests, [`fake-browser.js`](./test/fake-browser.js) bildet die Chrome-APIs nach, [`page.js`](./test/page.js) bedient Popup und Importseite in Chromium, [`chromium.js`](./test/chromium.js) steuert einen echten Chromium
 
 ## Lizenz
