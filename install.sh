@@ -129,7 +129,9 @@ if [ -n "$REMOVE" ]; then
   else
     kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
   fi
-  # Neu geladen holt das KWin-Skript die Ablagen mit diesem Schlüssel zurück in die Taskleiste
+  # Neu geladen holt das KWin-Skript die Ablagen mit diesem Schlüssel zurück in die Taskleiste,
+  # auch wenn es in den Systemeinstellungen deaktiviert war, wie bei der Installation
+  kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true
   "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
   "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null
   if [ ${#KEYS[@]} -gt 0 ]; then

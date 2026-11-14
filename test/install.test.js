@@ -413,7 +413,9 @@ test('Enter an der Frage und --update behalten alle eingetragenen Schlüssel (#1
   assert.ok(u.calls.includes(writeToken(`${TOKEN},${OTHER}`)), u.calls.join('\n'));
 });
 
+// Auch ein in den Systemeinstellungen deaktiviertes Skript, sonst lädt KWin es nicht neu
 const RELOAD = [
+  'kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true',
   'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces',
   'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start',
 ];
