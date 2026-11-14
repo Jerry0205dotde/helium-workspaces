@@ -14,6 +14,23 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Meldungen auf Deutsch, wenn die Sprache der Sitzung Deutsch ist, sonst auf Englisch.
+# Vorrang wie bei gettext: LC_ALL vor LC_MESSAGES vor LANG, davor die Sprachliste in
+# LANGUAGE (setzt Plasma), außer die Locale ist C bzw. POSIX. Aus der Liste zählt die
+# erste Sprache, die es gibt, also Deutsch oder Englisch (auch C bzw. POSIX).
+LOC="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"
+case "$LOC" in C|C.*|POSIX|"") ;; *) LOC="${LANGUAGE:+$LANGUAGE:}$LOC" ;; esac
+DE=""
+IFS=: read -ra LANGS <<< "$LOC"
+for l in "${LANGS[@]}"; do
+  case "$l" in
+    de|de_*|de.*|de@*) DE=1; break ;;
+    en|en_*|en.*|en@*|C|C.*|POSIX) break ;;
+  esac
+done
+# t "deutsch" "english" gibt die Meldung in der Sprache der Sitzung aus
+t() { if [ -n "$DE" ]; then printf '%s\n' "$1"; else printf '%s\n' "$2"; fi; }
+
 TOKEN=""
 BROWSERS=""
 SET_BROWSERS=""
@@ -22,26 +39,30 @@ UPDATE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --browsers)
-      [ $# -ge 2 ] || { echo "--browsers braucht eine Liste, z. B. --browsers helium,brave-browser" >&2; exit 1; }
+      [ $# -ge 2 ] || { t "--browsers braucht eine Liste, z. B. --browsers helium,brave-browser" \
+                          "--browsers needs a list, e.g. --browsers helium,brave-browser" >&2; exit 1; }
       BROWSERS="$2"; SET_BROWSERS=1; shift 2 ;;
     --browsers=*) BROWSERS="${1#*=}"; SET_BROWSERS=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     --update) UPDATE=1; shift ;;
-    -*) echo "Unbekannte Option: $1" >&2; exit 1 ;;
+    -*) t "Unbekannte Option: $1" "Unknown option: $1" >&2; exit 1 ;;
     *) TOKEN="$1"; shift ;;
   esac
 done
 
 if [ -n "$UPDATE" ]; then
   [ -z "$TOKEN$SET_BROWSERS$UNINSTALL" ] \
-    || { echo "--update nimmt keine weiteren Angaben, Schlüssel und Browserliste bleiben wie eingetragen." >&2; exit 1; }
+    || { t "--update nimmt keine weiteren Angaben, Schlüssel und Browserliste bleiben wie eingetragen." \
+           "--update takes no further arguments, the key and the browser list stay as they are." >&2; exit 1; }
   OLD="$(kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token)"
-  [ -n "$OLD" ] || { echo "Noch kein Schlüssel eingetragen. Zuerst ./install.sh ohne --update ausführen." >&2; exit 1; }
+  [ -n "$OLD" ] || { t "Noch kein Schlüssel eingetragen. Zuerst ./install.sh ohne --update ausführen." \
+                       "No key set up yet. Run ./install.sh without --update first." >&2; exit 1; }
   git -C "$DIR" pull --ff-only
   # Die eben geholte Fassung von install.sh richtet das KWin-Skript ein, sie kann neuer sein als diese
   bash "$DIR/install.sh" "$OLD"
   VERSION="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$DIR/extension/manifest.json")"
-  echo "Jetzt in chrome://extensions bei „Workspaces“ auf Neu laden klicken. Danach zeigt das Popup unten rechts die Version $VERSION."
+  t "Jetzt in chrome://extensions bei „Workspaces“ auf Neu laden klicken. Danach zeigt das Popup unten rechts die Version $VERSION." \
+    "Now click Reload on \"Workspaces\" in chrome://extensions. The popup then shows version $VERSION in the bottom right."
   exit 0
 fi
 
@@ -55,24 +76,27 @@ if [ -n "$UNINSTALL" ]; then
   kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete
   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers --delete
-  echo "KWin-Skript entfernt."
+  t "KWin-Skript entfernt." "KWin script removed."
   exit 0
 fi
 
 BROWSERS="$(printf '%s' "$BROWSERS" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
 [[ -z "$BROWSERS" || "$BROWSERS" =~ ^[a-z0-9._-]+(,[a-z0-9._-]+)*$ ]] \
-  || { echo "Ungültige Browserliste: $BROWSERS. Erwartet werden Fensterklassen mit Kommas dazwischen, z. B. helium,brave-browser." >&2; exit 1; }
+  || { t "Ungültige Browserliste: $BROWSERS. Erwartet werden Fensterklassen mit Kommas dazwischen, z. B. helium,brave-browser." \
+         "Invalid browser list: $BROWSERS. Expected window classes separated by commas, e.g. helium,brave-browser." >&2; exit 1; }
 
 OLD="$(kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token)"
 if [ -z "$TOKEN" ]; then
-  read -rp "Schlüssel aus dem Popup der Erweiterung${OLD:+ (Enter behält $OLD)}: " TOKEN || true
+  read -rp "$(t "Schlüssel aus dem Popup der Erweiterung${OLD:+ (Enter behält $OLD)}: " \
+              "Key from the extension's popup${OLD:+ (Enter keeps $OLD)}: ")" TOKEN || true
   TOKEN="${TOKEN:-$OLD}"
 fi
 # Wer den kopierten Befehl aus dem Popup an der Frage einfügt, bekommt trotzdem nur den Schlüssel
 TOKEN="${TOKEN##*install.sh}"
 TOKEN="$(printf '%s' "$TOKEN" | tr -d '[:space:]')"
 [[ "$TOKEN" =~ ^[0-9a-f]{24}$ ]] \
-  || { echo "Ungültiger Schlüssel. Im Popup der Erweiterung unter \"Schlüssel für install.sh\" kopieren." >&2; exit 1; }
+  || { t "Ungültiger Schlüssel. Im Popup der Erweiterung unter \"Schlüssel für install.sh\" kopieren." \
+         "Invalid key. Copy it in the extension's popup under \"Key for install.sh\"." >&2; exit 1; }
 # Überbleibsel älterer Versionen, die den Schlüssel als Datei abgelegt haben
 rm -f "$DIR/extension/token.js"
 
@@ -90,7 +114,7 @@ kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true
 qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
 qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null
 [ "$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces)" = true ] \
-  || { echo "KWin-Skript wurde nicht geladen" >&2; exit 1; }
+  || { t "KWin-Skript wurde nicht geladen" "KWin script was not loaded" >&2; exit 1; }
 
 # session.restore_on_startup ist 1 bei „Dort weitermachen, wo ich aufgehört habe“. Fehlt der
 # Wert, gilt der Standard „Neuer Tab“ (5). Die gleichnamigen Prüfsummen unter protection.macs
@@ -108,10 +132,13 @@ for entry in "net.imput.helium:Helium" "google-chrome:Google Chrome" "chromium:C
   done
 done
 if [ ${#NOT_RESTORING[@]} -gt 0 ]; then
-  echo "Hinweis: Diese Profile starten nicht mit „Dort weitermachen, wo ich aufgehört habe“:"
+  t "Hinweis: Diese Profile starten nicht mit „Dort weitermachen, wo ich aufgehört habe“:" \
+    "Note: these profiles do not start with \"Continue where you left off\":"
   printf '  %s\n' "${NOT_RESTORING[@]}"
-  echo "Dann stellt der Browser die Ablage-Fenster beim Start nicht wieder her, und ihre Tabs laden"
-  echo "neu und verlieren ihren Verlauf. Nutzt du die Erweiterung in einem dieser Profile, dort unter"
-  echo "Einstellungen → Beim Start die Option wählen."
+  t "Dann stellt der Browser die Ablage-Fenster beim Start nicht wieder her, und ihre Tabs laden" \
+    "The browser then does not restore the stash windows on startup, and their tabs reload"
+  t "neu und verlieren ihren Verlauf. Nutzt du die Erweiterung in einem dieser Profile, dort unter" \
+    "and lose their history. If you use the extension in one of these profiles, choose that"
+  t "Einstellungen → Beim Start die Option wählen." "option there under Settings → On startup."
 fi
-echo "Fertig."
+t "Fertig." "Done."

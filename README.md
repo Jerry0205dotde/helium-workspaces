@@ -85,7 +85,7 @@ Alternatively in System Settings under **Window Management → Window Rules**: c
 
    Paste it into a terminal in the repository folder and run it. It sets up the KWin script.
 
-   The last line of output is `Fertig.` ("Done."). The KWin script is then installed, enabled and loaded, and it knows the key.
+   The last line of output is `Done.`. The KWin script is then installed, enabled and loaded, and it knows the key. `install.sh` answers in German if the session language is German (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES` or `LANG`), otherwise in English.
 6. To check, create a second workspace and switch back and forth. No additional browser window may appear in the taskbar.
 
 Do not move the folder after loading it. Helium loads the extension from exactly this folder on every start. Leave developer mode turned on. Without it Helium disables unpacked extensions.
@@ -188,11 +188,9 @@ A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its fir
 
 ### `install.sh` aborts
 
-The messages of `install.sh` itself are in German.
-
 - **`command not found`** or **`Kommando nicht gefunden`**: a program from the [requirements](#requirements) is missing.
-- **`Ungültiger Schlüssel`** ("invalid key"): no key or an incomplete key was entered. In the popup, click **Copy** under **Key for install.sh** and run the copied command. The key consists of 24 characters `0`–`9` and `a`–`f`.
-- **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** or **`KWin-Skript wurde nicht geladen`** ("KWin script was not loaded"): `install.sh` cannot reach KWin, for example over SSH or in a text console. The script is then already installed but not loaded. Run it again in a terminal inside the Plasma session.
+- **`Invalid key`**: no key or an incomplete key was entered. In the popup, click **Copy** under **Key for install.sh** and run the copied command. The key consists of 24 characters `0`–`9` and `a`–`f`.
+- **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** or **`KWin script was not loaded`**: `install.sh` cannot reach KWin, for example over SSH or in a text console. The script is then already installed but not loaded. Run it again in a terminal inside the Plasma session.
 
 ### Tabs are missing after a restart
 
@@ -232,7 +230,7 @@ This is a private hobby project. Expect bugs.
 node --test test/*.test.js
 ```
 
-This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. `install.sh` runs against stand-ins for the KDE commands: installing including the hint about the startup setting, `--uninstall`, and `--update`, which pulls with real `git` from a test repository. The same checks run in CI on every pull request.
+This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. `install.sh` runs against stand-ins for the KDE commands: installing including the hint about the startup setting, `--uninstall`, and `--update`, which pulls with real `git` from a test repository. The messages of `install.sh` are checked in German and English. The same checks run in CI on every pull request.
 
 If anything in `extension/` changes, the version in [`manifest.json`](./extension/manifest.json) must be higher than on `main`, otherwise `static.test.js` fails. The version is shown in the bottom right of the popup, so after an update you can see whether the new code is running. The comparison is against `origin/main`; `VERSION_BASE` selects a different ref. If the ref is missing, the check is skipped.
 

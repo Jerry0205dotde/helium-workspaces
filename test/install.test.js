@@ -23,8 +23,9 @@ const GIT_ENV = {
 // installed: ob kpackagetool6 -s das Paket findet, dbus: ob qdbus6 KWin erreicht,
 // token: was kreadconfig6 als eingetragenen Schlüssel liefert, setup(dir): vorbereiten,
 // gibt den Pfad des auszuführenden install.sh zurück, profiles: Pfad unter ~/.config → Inhalt
-// der Preferences-Datei dort, input: was auf die Frage nach dem Schlüssel eingetippt wird
-function run(args, { installed = true, dbus = true, token = '', setup, profiles = {}, input = '' } = {}) {
+// der Preferences-Datei dort, input: was auf die Frage nach dem Schlüssel eingetippt wird,
+// env: Sprachvariablen (ohne Angabe Deutsch)
+function run(args, { installed = true, dbus = true, token = '', setup, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' } } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-install-'));
   const home = path.join(dir, 'home');
   for (const [p, content] of Object.entries(profiles)) {
@@ -44,7 +45,8 @@ function run(args, { installed = true, dbus = true, token = '', setup, profiles 
   try {
     const script = setup ? setup(dir) : INSTALL;
     const env = { ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home };
-    delete env.XDG_CONFIG_HOME;
+    for (const k of ['XDG_CONFIG_HOME', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_MESSAGES']) delete env[k];
+    Object.assign(env, lang);
     const r = spawnSync('bash', [script, ...args], { encoding: 'utf8', input, env });
     const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean) : [];
     const after = Object.fromEntries(
@@ -225,4 +227,65 @@ test('Ein ungültiger Schlüssel bricht ab, bevor etwas eingetragen ist', () => 
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /Ungültiger Schlüssel/);
   assert.equal(written(r), undefined);
+});
+
+// Meldungen je nach Sprache der Sitzung, im Zweifel Englisch
+for (const [env, lang] of [
+  [{ LANG: 'de_DE.UTF-8' }, 'de'],
+  [{ LANG: 'en_US.UTF-8' }, 'en'],
+  [{}, 'en'],
+  [{ LANG: 'C.UTF-8' }, 'en'],
+  [{ LANG: 'fr_FR.UTF-8' }, 'en'],
+  [{ LANG: 'en_US.UTF-8', LC_MESSAGES: 'de_AT.UTF-8' }, 'de'],
+  [{ LANG: 'de_DE.UTF-8', LC_ALL: 'C' }, 'en'],
+  [{ LANG: 'en_US.UTF-8', LANGUAGE: 'de:en' }, 'de'],
+  [{ LANG: 'de_DE.UTF-8', LANGUAGE: 'en_GB' }, 'en'],
+  [{ LC_ALL: 'C', LANGUAGE: 'de' }, 'en'],
+  [{ LANG: 'de_DE.UTF-8', LANGUAGE: 'fr:de:en' }, 'de'],
+  [{ LANG: 'de_DE.UTF-8', LANGUAGE: 'fr:en:de' }, 'en'],
+  [{ LANG: 'de_DE.UTF-8', LANGUAGE: 'fr' }, 'de'],
+  [{ LANG: 'de_DE.UTF-8', LANGUAGE: 'C:de' }, 'en'],
+  [{ LANG: 'de_DE.UTF-8', LANGUAGE: 'POSIX' }, 'en'],
+]) {
+  const de = lang === 'de';
+  test(`Meldungen auf ${de ? 'Deutsch' : 'Englisch'} bei ${JSON.stringify(env)}`, () => {
+    const removed = run(['--uninstall'], { env });
+    assert.equal(removed.status, 0, removed.stderr);
+    assert.equal(removed.stdout, de ? 'KWin-Skript entfernt.\n' : 'KWin script removed.\n');
+
+    const installed = run([TOKEN], { env });
+    assert.equal(installed.status, 0, installed.stderr);
+    assert.equal(installed.stdout, de ? 'Fertig.\n' : 'Done.\n');
+
+    const badKey = run(['abc'], { env });
+    assert.notEqual(badKey.status, 0);
+    assert.match(badKey.stderr, de ? /^Ungültiger Schlüssel\./ : /^Invalid key\./);
+
+    const option = run(['--foo'], { env });
+    assert.match(option.stderr, de ? /^Unbekannte Option: --foo$/m : /^Unknown option: --foo$/m);
+
+    const noKey = run(['--update'], { env });
+    assert.match(noKey.stderr, de ? /^Noch kein Schlüssel eingetragen\./ : /^No key set up yet\./);
+  });
+}
+
+test('--update meldet sich auf Englisch, auch in der geholten Fassung von install.sh', () => {
+  const r = run(['--update'], { token: TOKEN, env: { LANG: 'en_US.UTF-8' }, setup: (dir) => repos(dir) });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Done\.\n/);
+  assert.match(r.stdout, /Now click Reload on "Workspaces" in chrome:\/\/extensions\. The popup then shows version 1\.1\.0 in the bottom right\./);
+});
+
+test('Hinweis auf Profile auf Englisch', () => {
+  const r = run([TOKEN], { env: { LANG: 'en_US.UTF-8' }, profiles: { 'chromium/Default': prefs(5) } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(
+    r.stdout,
+    'Note: these profiles do not start with "Continue where you left off":\n' +
+      '  Chromium: ~/.config/chromium/Default\n' +
+      'The browser then does not restore the stash windows on startup, and their tabs reload\n' +
+      'and lose their history. If you use the extension in one of these profiles, choose that\n' +
+      'option there under Settings → On startup.\n' +
+      'Done.\n',
+  );
 });
