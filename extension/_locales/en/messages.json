@@ -455,6 +455,9 @@
   "replaceCreate": {
     "message": "Creates $1 from the file."
   },
+  "replaceKeep": {
+    "message": "Keeps $1 in windows that match workspaces in the file open, with their history."
+  },
   "replacePinned": {
     "message": "Pinned tabs stay open, missing ones from the file are added."
   },
@@ -526,6 +529,9 @@
   },
   "resRemoved": {
     "message": "$1 with $2 removed"
+  },
+  "resKept": {
+    "message": "$1 kept open"
   },
   "importDone": {
     "message": "Import complete: $1."

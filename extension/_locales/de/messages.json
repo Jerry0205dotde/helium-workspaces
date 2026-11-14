@@ -455,6 +455,9 @@
   "replaceCreate": {
     "message": "Legt $1 aus der Datei neu an."
   },
+  "replaceKeep": {
+    "message": "Behält $1 in Fenstern, die zu Workspaces der Datei passen, samt Verlauf offen."
+  },
   "replacePinned": {
     "message": "Angeheftete Tabs bleiben offen, fehlende aus der Datei kommen dazu."
   },
@@ -526,6 +529,9 @@
   },
   "resRemoved": {
     "message": "$1 mit $2 entfernt"
+  },
+  "resKept": {
+    "message": "$1 offen geblieben"
   },
   "importDone": {
     "message": "Import abgeschlossen: $1."

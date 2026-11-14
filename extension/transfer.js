@@ -115,7 +115,8 @@ function resetConfirm() {
 }
 
 const mode = () => document.querySelector('input[name=mode]:checked').value;
-const closing = () => preview.current.reduce((n, w) => n + w.open, 0);
+// Offene Tabs, die Ersetzen schließt; die in übernommenen Fenstern bleiben (keep)
+const closing = () => preview.current.reduce((n, w) => n + w.open, 0) - (preview.keep || 0);
 
 function settingText({ key, value }) {
   if (key === 'muteStash') return tr('settingValue', tr('muteStash'), value ? tr('settingOn') : tr('settingOff'));
@@ -175,6 +176,7 @@ function render() {
   ];
   if (failed) rep.push(el('li', 'warn', tr('replaceDiscard', plural(failed, 'notRestoredTabs'))));
   rep.push(el('li', '', tr('replaceCreate', plural(p.workspaces.length, 'workspaces'))));
+  if (p.keep) rep.push(el('li', '', tr('replaceKeep', tabs(p.keep))));
   rep.push(el('li', '', tr('replacePinned')));
   rep.push(el('li', '', tr('replaceUndo')));
   $('replace-list').replaceChildren(...rep);
@@ -236,6 +238,7 @@ $('import').addEventListener('click', (e) => {
       if (r.pinned) parts.push(tr('resPinned', plural(r.pinned, 'pinnedTabs')));
       if (r.settings) parts.push(tr('resSettings', plural(r.settings, 'settings')));
       if (r.removed) parts.push(tr('resRemoved', plural(r.removed, 'oldWorkspaces'), tabs(r.closed)));
+      if (r.kept) parts.push(tr('resKept', tabs(r.kept)));
       const msg = r.failed ? tr('importDoneFailed', parts.join(', '), tabs(r.failed)) : tr('importDone', parts.join(', '));
       resetImport();
       $('file').value = '';

@@ -130,7 +130,7 @@ test('Rundlauf: Export ersetzt ein leeres Profil, alles kommt gleich an', async 
   const dst = await fresh();
 
   const res = await importFile(dst, file, 'replace', true);
-  assert.deepEqual(res, { created: 3, merged: 0, added: 8 + 2, skipped: 0, failed: 0, removed: 1, closed: 1, settings: 0, pinned: 2, pinnedSkipped: 0 });
+  assert.deepEqual(res, { created: 3, merged: 0, added: 8 + 2, skipped: 0, failed: 0, removed: 1, closed: 1, settings: 0, kept: 0, pinned: 2, pinnedSkipped: 0 });
   // Namen, Farben, Emojis, Reihenfolge und sogar die IDs sind die der Datei
   assert.deepEqual(dst.b.local.data.workspaces, file.workspaces.map(({ id, name, color, emoji }) => ({ id, name, color, emoji })));
   assert.equal(shows(dst, dst.win), 'C');
@@ -422,7 +422,7 @@ test('Ersetzen mit Bestätigung: alte Workspaces samt Ablagen sind weg, die neue
   for (const name of ['B', 'C']) assert.ok(b.windows.some((w) => b.stashOf(w) === env.ids[name]), `Ablage von ${name} fehlt vor dem Import`);
 
   const res = await importFile(env, REPLACEMENT, 'replace', true);
-  assert.deepEqual(res, { created: 2, merged: 0, added: 4, skipped: 0, failed: 0, removed: 3, closed: 10, settings: 0, pinned: 1, pinnedSkipped: 1 });
+  assert.deepEqual(res, { created: 2, merged: 0, added: 4, skipped: 0, failed: 0, removed: 3, closed: 10, settings: 0, kept: 0, pinned: 1, pinnedSkipped: 1 });
 
   const now = envOf(b);
   assert.deepEqual(b.local.data.workspaces.map((w) => [w.name, w.color, w.emoji]), [
@@ -487,14 +487,20 @@ test('Nach dem Ersetzen hat das Importfenster wieder den Fokus, seine Meldung bl
   check(envOf(b), { X: ['x1', { url: 'x2', group: 'G', color: 'pink' }, { url: 'x3', group: 'G', color: 'pink' }], Y: ['y1'], pinned: ['p1', 'p9'] });
 });
 
-test('Ersetzen durch den eigenen Export legt jeden Tab genau einmal neu an', async () => {
+test('Ersetzen durch den eigenen Export: das Hauptfenster bleibt offen, die übrigen Tabs entstehen genau einmal neu', async () => {
   const env = await source();
   const { b } = env;
   const file = await request(env, { type: 'export' });
   const oldIds = Object.values(env.ids);
+  const shownTabs = b.mains()[0].tabs.map((t) => t.id);
 
+  const preview = await request(env, { type: 'importPreview', text: JSON.stringify(file) });
+  assert.equal(preview.keep, 4);
   const res = await importFile(env, file, 'replace', true);
-  assert.deepEqual(res, { created: 3, merged: 0, added: 10, skipped: 0, failed: 0, removed: 3, closed: 10, settings: 0, pinned: 0, pinnedSkipped: 2 });
+  assert.deepEqual(res, { created: 3, merged: 0, added: 10, skipped: 0, failed: 0, removed: 3, closed: 6, settings: 0, kept: 4, pinned: 0, pinnedSkipped: 2 });
+  // A war zu sehen: Sein Fenster zeigt jetzt das importierte A, mit denselben Tabs
+  assert.equal(shows(envOf(b), env.win), 'A');
+  assert.deepEqual(b.mains()[0].tabs.map((t) => t.id), shownTabs, 'Tabs des Hauptfensters wurden ersetzt');
   // Die IDs der Datei sind noch vergeben, deshalb bekommen die neuen Workspaces eigene
   const now = envOf(b);
   assert.deepEqual(b.local.data.workspaces.map((w) => w.name), ['C', 'A', 'B']);
@@ -502,6 +508,34 @@ test('Ersetzen durch den eigenen Export legt jeden Tab genau einmal neu an', asy
   assert.deepEqual(Object.keys(b.local.data.backup).sort(), Object.values(now.ids).sort());
   check(now, ALL, { allowNewTab: false });
   await cycle(now, ['A', 'B', 'C'], ALL);
+});
+
+// Nach dem Umstieg auf die feste Erweiterungs-ID (#156) startet die Erweiterung mit leerem
+// Speicher. Die alten Ablagen sind dann minimierte Fenster ohne Ablage-Seite.
+test('Umstieg auf die feste ID: Ersetzen mit dem Export übernimmt Hauptfenster und alte Ablagen samt Tabs (#156)', async () => {
+  const env = await source();
+  const { b } = env;
+  const file = await request(env, { type: 'export' });
+  const tabsNow = () => b.windows.flatMap((w) => w.tabs.filter((t) => !t.url.startsWith(b.origin)).map((t) => t.id)).sort();
+  const before = tabsNow();
+
+  b.reloadExtension({ newId: 'hwsfesteid' });
+  await b.worker.settle();
+  const now = envOf(b);
+  assert.deepEqual(b.local.data.workspaces.map((w) => w.name), ['Standard']);
+  // Auch die leere Ablage des gezeigten A ist geblieben, mit einer neuen Tab-Seite
+  assert.deepEqual(b.windows.map((w) => [w.state, b.stashOf(w)]), [['normal', null], ['minimized', null], ['minimized', null], ['minimized', null]]);
+
+  const preview = await request(now, { type: 'importPreview', text: JSON.stringify(file) });
+  assert.deepEqual([preview.current.map((w) => w.open), preview.keep], [[10], 10]);
+  const res = await importFile(now, file, 'replace', true);
+  assert.deepEqual(res, { created: 3, merged: 0, added: 10, skipped: 0, failed: 0, removed: 1, closed: 0, kept: 10, pinned: 0, pinnedSkipped: 2 });
+  assert.deepEqual(b.local.data.workspaces, file.workspaces.map(({ id, name, color, emoji }) => ({ id, name, color, emoji })));
+  assert.equal(shows(now, env.win), 'A');
+  assert.deepEqual(b.windows.map((w) => w.state), ['normal', 'minimized', 'minimized']);
+  assert.deepEqual(tabsNow(), before, 'Tabs wurden geschlossen oder neu angelegt');
+  check(now, ALL, { allowNewTab: false });
+  await cycle(now, ['B', 'C', 'A'], ALL);
 });
 
 // Fenster 1 hat p1 einmal angeheftet, ein zweites Hauptfenster mit C zweimal

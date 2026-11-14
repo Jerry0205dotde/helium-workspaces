@@ -926,8 +926,10 @@ class Browser {
   }
 
   // Erweiterung unter chrome://extensions neu laden: Chromium schließt dabei ihre Seiten
-  // (also die Ablage-Markierungen), storage.session wird geleert.
-  reloadExtension() {
+  // (also die Ablage-Markierungen), storage.session wird geleert. Mit newId hat sie danach
+  // eine andere ID, etwa beim ersten Laden mit festem Schlüssel im Manifest (#156): Dann
+  // gehört ihr auch ein leerer storage.local.
+  reloadExtension({ newId } = {}) {
     this.worker?.kill();
     this.listeners = new Map();
     // Chromium schließt die Seiten der Erweiterung. Ist eine davon der letzte Tab ihres
@@ -940,6 +942,10 @@ class Browser {
       }
     }
     this.session.clear();
+    if (newId) {
+      this.origin = `chrome-extension://${newId}/`;
+      this.local.clear();
+    }
     return this.startWorker('installed');
   }
 

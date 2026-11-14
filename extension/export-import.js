@@ -104,6 +104,62 @@ function pinnedToAdd(list, all, mode) {
   return missingIn(list.filter((e) => missing.has(e.url)), [...all.pinnedFirst, ...failed]);
 }
 
+// Beim Ersetzen übernimmt ein Workspace der Datei ein offenes Hauptfenster, statt dessen
+// Tabs zu schließen und neu anzulegen, wenn alle Tabs darin zu ihm gehören und es mehr
+// als die Hälfte seiner Tabs enthält. Die Tabs behalten so ihren Verlauf, etwa beim
+// Umstieg auf die feste Erweiterungs-ID: Danach sind die alten Ablagen normale Fenster
+// (#156). Neue Tab-Seiten zählen nicht mit. Vergeben wird nach den meisten Treffern,
+// jedes Fenster und jeder Workspace höchstens einmal. Ergebnis: Index in der Datei → Fenster.
+function planAdopt(data, mains) {
+  const pairs = [];
+  for (const win of mains) {
+    const have = movableTabsOf(win).filter((t) => !isNewTab(t)).map((t) => ({ url: urlOf(t) }));
+    if (!have.length) continue;
+    data.workspaces.forEach((imp, i) => {
+      if (have.length * 2 > imp.tabs.length && !missingIn(have, imp.tabs).length) pairs.push({ win, i, hits: have.length });
+    });
+  }
+  pairs.sort((a, b) => b.hits - a.hits);
+  const adopt = new Map();
+  const taken = new Set();
+  for (const p of pairs) {
+    if (adopt.has(p.i) || taken.has(p.win.id)) continue;
+    adopt.set(p.i, p.win);
+    taken.add(p.win.id);
+  }
+  return adopt;
+}
+
+// Tabs, die beim Ersetzen in übernommenen Fenstern offen bleiben (zählt wie collectAll)
+const keptIn = (adopt) => [...adopt.values()].reduce((n, w) => n + movableTabsOf(w).filter(urlOf).length, 0);
+
+// Macht die übernommenen Fenster zu Fenstern der neuen Workspaces (ids wie data.workspaces).
+// Ein minimiertes Fenster wird wieder zur Ablage, etwa eine alte Ablage nach dem Umstieg;
+// ein sichtbares zeigt den Workspace. Fehlende Tabs aus der Datei kommen dazu.
+async function adoptWindows(data, ids, adopt, stamp) {
+  const s = await sess();
+  let failed = 0;
+  for (const [i, win] of adopt) {
+    const id = ids[i];
+    const imp = data.workspaces[i];
+    delete s.prevWs[win.id];
+    if (win.state === 'minimized') {
+      delete s.windowWs[win.id];
+      await saveSess(s);
+      await moving(() => chrome.tabs.create({ windowId: win.id, url: `${STASH_PAGE}#${id}`, index: 0, pinned: true, active: true }));
+    } else {
+      s.windowWs[win.id] = id;
+      await saveSess(s);
+    }
+    const add = missingIn(imp.tabs, movableTabsOf(win).map((t) => ({ url: urlOf(t) })));
+    if (!add.length) continue;
+    const r = await moving(() => recreate(importEntries(add, stamp, { from: imp.tabs, join: true }), win.id, false, true));
+    await keepFailed(id, r.failed);
+    failed += r.failed.length;
+  }
+  return failed;
+}
+
 // Prüft die Datei und beschreibt, was Zusammenführen bzw. Ersetzen ändern würde.
 async function previewImport(text) {
   const data = parseExchange(text, chrome.runtime.getURL(''));
@@ -114,6 +170,7 @@ async function previewImport(text) {
   return {
     exported: data.exported,
     settings: Object.entries(data.settings).map(([key, value]) => ({ key, value, changed: now[key] !== value })),
+    keep: keptIn(planAdopt(data, all.mains)),
     pinned: data.pinned.length,
     pinnedAdd: plan.pinnedAdd.length,
     workspaces: plan.merge.map(({ imp, target, by, add }) => ({
@@ -201,17 +258,37 @@ async function importExchange(text, mode, confirmed) {
 
   if (mode === 'replace') {
     const oldIds = cfg.workspaces.map((w) => w.id);
+    const adopt = planAdopt(data, all.mains);
     const ids = data.workspaces.map(addWs);
     await chrome.storage.local.set({ backup });
     await saveWorkspaces(cfg.workspaces);
-    // Erst alle Fenster zum ersten neuen Workspace wechseln, dann die alten löschen
-    for (const w of all.mains) await switchTo(w.id, ids[0]);
+    res.failed += await adoptWindows(data, ids, adopt, stamp);
+    // Erst die übrigen Fenster zu einem neuen Workspace wechseln, den noch kein übernommenes
+    // Fenster zeigt, dann die alten löschen. Ein minimiertes Fenster nur mit neuen
+    // Tab-Seiten ist eine alte leere Ablage (Chromium ersetzt die Ablage-Seite der alten ID
+    // dann durch eine neue Tab-Seite) und wird geschlossen.
+    const shown = [...adopt].filter(([, w]) => w.state !== 'minimized').map(([i]) => ids[i]);
+    const target = ids.find((id) => !shown.includes(id)) ?? ids[0];
+    const taken = [...adopt.values()];
+    for (const w of all.mains) {
+      if (taken.includes(w)) continue;
+      if (w.state === 'minimized' && w.tabs.every(isNewTab)) {
+        const s = await sess();
+        delete s.windowWs[w.id];
+        delete s.prevWs[w.id];
+        await saveSess(s);
+        await chrome.windows.remove(w.id).catch(() => {});
+      } else {
+        await switchTo(w.id, target);
+      }
+    }
     // Alle alten Workspaces lassen sich gemeinsam zurückholen
     const deleted = [];
     for (const id of oldIds) await deleteWs(id, deleted);
-    await chrome.storage.local.set({ lastWs: ids[0] });
+    await chrome.storage.local.set({ lastWs: shown[0] ?? target });
     res.removed = oldIds.length;
-    res.closed = all.list.reduce((n, x) => n + x.open, 0);
+    res.kept = keptIn(adopt);
+    res.closed = all.list.reduce((n, x) => n + x.open, 0) - res.kept;
   } else {
     for (const m of plan.merge) {
       if (!m.target) {

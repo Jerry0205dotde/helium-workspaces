@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const crypto = require('node:crypto');
 
 const ROOT = path.join(__dirname, '..');
 const EXT = path.join(ROOT, 'extension');
@@ -58,6 +59,19 @@ test('manifest.json ist gültig und verweist nur auf vorhandene Dateien', () => 
   }
   // Die Befehle, auf die background.js hört, sind im Manifest eingetragen
   for (const [, cmd] of bg.matchAll(/cmd === '([^']+)'/g)) assert.ok(m.commands[cmd], `Befehl ${cmd} fehlt im Manifest`);
+});
+
+// Ohne Schlüssel leitet Chromium die ID einer entpackten Erweiterung aus ihrem Pfad ab:
+// Ein verschobener oder neu geklonter Ordner wäre eine andere Erweiterung mit leerem
+// Speicher (#156). Die README nennt die feste ID.
+test('manifest.json hat einen festen Schlüssel, die README nennt die ID daraus', () => {
+  const { key } = readJson(path.join(EXT, 'manifest.json'));
+  assert.match(key || '', /^[A-Za-z0-9+/]+=*$/, 'Schlüssel fehlt');
+  const der = Buffer.from(key, 'base64');
+  assert.equal(crypto.createPublicKey({ key: der, format: 'der', type: 'spki' }).asymmetricKeyType, 'rsa');
+  const id = [...crypto.createHash('sha256').update(der).digest('hex').slice(0, 32)].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
+  assert.equal(id, 'jchklfejnmfphkbcpnhdejmeoncejjbe');
+  for (const f of ['README.md', 'README.de.md']) assert.ok(fs.readFileSync(path.join(ROOT, f), 'utf8').includes(id), `${f} nennt die ID nicht`);
 });
 
 test('manifest.json nennt eine Mindestversion, die alle benutzten Schnittstellen hat', () => {
