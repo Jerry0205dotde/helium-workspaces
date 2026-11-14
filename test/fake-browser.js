@@ -17,7 +17,8 @@
 //   extensionId). Tabs kommen nach einem Browserstart ohne Stummschaltung wieder.
 // - storage.session ist nach einem Browserstart und nach dem Neuladen der Erweiterung
 //   leer, beim Neustart nur des Service Workers bleibt es erhalten.
-// - Ein neu angelegter Tab meldet kurz darauf status 'complete' (geladen).
+// - Ein neu angelegter Tab meldet kurz darauf status 'complete' (geladen). Mit
+//   holdLoads = true erst bei releaseLoads(), etwa um den Worker dazwischen neu zu starten.
 // - tabs.discard gibt dem Tab eine neue ID (tabs.onReplaced) und hebt seine
 //   Stummschaltung auf, wie Helium 0.21.3 mit Chromium 157. Ein entladener Tab lädt neu,
 //   sobald er aktiv wird.
@@ -116,6 +117,8 @@ class Browser {
     this.downloads = []; // Download-Verlauf
     this.downloadMode = 'complete';
     this.downloadSeq = 1;
+    this.holdLoads = false;
+    this.heldLoads = [];
     this.chrome = this.buildApi(null); // für Bedienschritte im Test, wie von Hand im Browser
   }
 
@@ -339,11 +342,18 @@ class Browser {
 
   // Meldet kurz darauf, dass der Tab fertig geladen hat (nach der Antwort des Aufrufs)
   loaded(t) {
+    if (this.holdLoads) return void this.heldLoads.push(t);
     setImmediate(() => {
       for (const w of this.windows) {
         if (w.tabs.includes(t) && !t.discarded) this.fire('tabs.onUpdated', t.id, { status: 'complete' }, this.tabInfo(t, w));
       }
     });
+  }
+
+  // Lässt die mit holdLoads zurückgehaltenen Tabs fertig laden
+  releaseLoads() {
+    this.holdLoads = false;
+    for (const t of this.heldLoads.splice(0)) this.loaded(t);
   }
 
   // Entlädt den Tab; er bekommt eine neue ID

@@ -129,6 +129,28 @@ test('Aus der Sicherung angelegte Tabs werden nach dem Laden entladen, der aktiv
   check(env, ALL);
 });
 
+test('Neustart des Service Workers zwischen Anlegen aus der Sicherung und Laden: die Tabs werden trotzdem entladen (#125)', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  b.restart({ restore: 'none' });
+  b.holdLoads = true;
+  let w = b.startWorker('startup');
+  await w.settle();
+  check(env, ALL);
+  assert.equal(discards(b), 0);
+  // Der Worker wird wegen Untätigkeit beendet, bevor die Tabs fertig geladen haben
+  w = b.startWorker(null);
+  await w.settle();
+  b.releaseLoads();
+  await w.settle();
+  const active = ['a1', 'a2', 'a3', 'a4'].filter((n) => where(env, n).tab.active);
+  assert.equal(active.length, 1);
+  for (const n of ['a1', 'a2', 'a3', 'a4']) assert.equal(!!where(env, n).tab.discarded, !active.includes(n), n);
+  assert.equal(!!where(env, 'p1').tab.discarded, false, 'angehefteter Tab wurde entladen');
+  assert.equal(b.session.data.unloadLater, undefined, 'die Liste ist nach dem Entladen nicht leer');
+  check(env, ALL);
+});
+
 test('Neue ID durch Entladen: ein unterbrochener Wechsel kennt den Tab weiterhin als alten Tab', async () => {
   const env = await setup(SPEC);
   const { b, w, win } = env;

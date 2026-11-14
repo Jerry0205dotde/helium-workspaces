@@ -55,7 +55,7 @@ async function recreate(list, windowId, pinned = false, join = false, have = [])
     const t = have[n++] || (await openEntry(e, { windowId, pinned }, list, failed));
     if (!t) continue;
     ids.push(t.id);
-    if (!pinned) unloadLater.add(t.id);
+    if (!pinned) await unloadLaterAdd(t.id);
     if (e.g && !pinned) {
       if (!groups.has(e.g)) groups.set(e.g, []);
       groups.get(e.g).push({ id: t.id, e });
