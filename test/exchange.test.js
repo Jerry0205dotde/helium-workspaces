@@ -525,6 +525,21 @@ test('Export zählt angeheftete Tabs wie die Sicherung: doppelte in einem Fenste
   assert.deepEqual(file.pinned.map((e) => e.url), ['p1', 'p2', 'p1'].map(url));
 });
 
+test('Rundlauf mit zwei Fenstern: der eigene Export ergänzt keine angehefteten Tabs', async () => {
+  for (const mode of ['merge', 'replace']) {
+    const env = await pinnedTwiceInSecondWindow();
+    const text = JSON.stringify(await request(env, { type: 'export' }));
+    const preview = await request(env, { type: 'importPreview', text });
+    assert.deepEqual([preview.pinned, preview.pinnedAdd], [3, 0], mode);
+    const res = await request(env, { type: 'import', text, mode, confirmed: true });
+    assert.deepEqual([res.pinned, res.pinnedSkipped], [0, 3], mode);
+    await env.w.settle();
+    const first = env.b.windows.find((w) => w.id === env.win).tabs.filter((t) => t.pinned).map((t) => t.url);
+    assert.deepEqual(first, ['p1', 'p2'].map(url), mode);
+    assert.deepEqual(env.b.local.data.backupPinned.map((e) => e.url), ['p1', 'p2', 'p1'].map(url), mode);
+  }
+});
+
 test('Import ergänzt angeheftete Tabs, bis die Sicherung sie so oft enthält wie die Datei', async () => {
   for (const mode of ['merge', 'replace']) {
     const env = await pinnedTwiceInSecondWindow();
