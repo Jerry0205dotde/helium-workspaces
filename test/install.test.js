@@ -37,7 +37,8 @@ function which(name) {
   throw new Error(`${name} nicht gefunden`);
 }
 
-// installed: ob kpackagetool6 -s das Paket findet, dbus: ob qdbus6 KWin erreicht,
+// installed: ob kpackagetool6 -s das Paket findet, updateError: Fehlermeldung, mit der -u trotzdem
+// scheitert, dbus: ob qdbus6 KWin erreicht,
 // token: was kreadconfig6 als eingetragenen Schlüssel liefert, setup(dir): vorbereiten,
 // gibt den Pfad des auszuführenden install.sh zurück, profiles: Pfad unter ~/.config → Inhalt
 // der Preferences-Datei dort, input: was auf die Frage nach dem Schlüssel eingetippt wird,
@@ -45,7 +46,7 @@ function which(name) {
 // das Ergebnis steht in checked, qdbus: unter welchem Namen es qdbus gibt (null: gar nicht),
 // missing: Programme, die fehlen. Mit einem der beiden sieht install.sh nur die nachgebildeten
 // Befehle und die echten aus SYSTEM_TOOLS, damit echte KDE-Programme den Test nicht stören.
-function run(args, { installed = true, dbus = true, token = '', setup, check, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' }, qdbus = 'qdbus6', missing = [] } = {}) {
+function run(args, { installed = true, updateError = '', dbus = true, token = '', setup, check, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' }, qdbus = 'qdbus6', missing = [] } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-install-'));
   const home = path.join(dir, 'home');
   for (const [p, content] of Object.entries(profiles)) {
@@ -60,8 +61,10 @@ function run(args, { installed = true, dbus = true, token = '', setup, check, pr
     missing.includes(name) ||
     fs.writeFileSync(path.join(bin, name), `#!/bin/bash\necho "${name} $*" >> "${log}"\n${body}\n`, { mode: 0o755 });
   if (qdbus) fake(qdbus, dbus ? 'echo true' : 'echo "Could not connect to D-Bus server" >&2; exit 1');
-  // Wie das echte kpackagetool6: -u scheitert, solange das Paket nicht installiert ist
-  fake('kpackagetool6', `case "$2" in -s) exit ${installed ? 0 : 3} ;; -u) exit ${installed ? 0 : 1} ;; esac; exit 0`);
+  // Wie das echte kpackagetool6: -u scheitert, solange das Paket nicht installiert ist,
+  // mit updateError auch bei installiertem Paket, etwa wegen fehlender Rechte
+  const update = updateError ? `echo "${updateError}" >&2; exit 4` : `exit ${installed ? 0 : 1}`;
+  fake('kpackagetool6', `case "$2" in -s) exit ${installed ? 0 : 3} ;; -u) ${update} ;; esac; exit 0`);
   fake('kwriteconfig6', 'exit 0');
   fake('kreadconfig6', `[ "$6" = token ] && echo "${token}"; exit 0`);
   // install.sh --uninstall wartet, bis KWin das neu geladene Skript ausgeführt hat
@@ -323,6 +326,8 @@ test('Ein ungültiger Schlüssel bricht ab, bevor etwas eingetragen ist', () => 
 });
 
 const READ_TOKEN = 'kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token';
+// Ob das Paket schon installiert ist, entscheidet zwischen -u und -i (#163)
+const SHOW = 'kpackagetool6 --type=KWin/Script -s helium-workspaces';
 // Nach dem Eintragen: einschalten und das Skript neu laden
 const ENABLE_AND_RELOAD = [
   'kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true',
@@ -351,7 +356,7 @@ test('Erstinstallation: installiert das Paket, trägt den Schlüssel ein und lä
   const kwin = path.join(r.dir, 'repo', 'kwin');
   assert.deepEqual(r.calls, [
     READ_TOKEN,
-    `kpackagetool6 --type=KWin/Script -u ${kwin}`,
+    SHOW,
     `kpackagetool6 --type=KWin/Script -i ${kwin}`,
     writeToken(TOKEN),
     ...ENABLE_AND_RELOAD,
@@ -365,10 +370,18 @@ test('Erneute Installation: Enter an der Frage behält den eingetragenen Schlüs
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.calls, [
     READ_TOKEN,
+    SHOW,
     `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
     writeToken(TOKEN),
     ...ENABLE_AND_RELOAD,
   ]);
+});
+
+test('Scheitert das Aktualisieren, bricht install.sh mit der Meldung von kpackagetool6 ab, ohne zu installieren (#163)', () => {
+  const r = run([TOKEN], { updateError: 'Error: Permission denied' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /Error: Permission denied/);
+  assert.deepEqual(r.calls, [READ_TOKEN, SHOW, `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`]);
 });
 
 test('Ein neuer Schlüssel an der Frage ersetzt den eingetragenen', () => {
@@ -400,6 +413,7 @@ test('--browsers trägt die Liste nach dem Schlüssel ein, ohne Leerzeichen und 
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(r.calls, [
       READ_TOKEN,
+      SHOW,
       `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
       writeToken(TOKEN),
       writeBrowsers('helium,brave-browser'),
@@ -420,6 +434,7 @@ test("--browsers '' stellt die Standardliste wieder her", () => {
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(r.calls, [
       READ_TOKEN,
+      SHOW,
       `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
       writeToken(TOKEN),
       writeBrowsers('--delete'),
