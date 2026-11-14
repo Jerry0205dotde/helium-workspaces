@@ -104,6 +104,7 @@ async function unloadStashes() {
 // Aufruf für dasselbe Paar ändert nichts mehr.
 async function replaceTabId(from, to) {
   const swap = (id) => (id === from ? to : id);
+  if (ownTabs.delete(from)) ownTabs.add(to);
   const s = await sess();
   for (const [ws, id] of Object.entries(s.lastTab)) s.lastTab[ws] = swap(id);
   if (from in s.tabOrigin) {
@@ -111,12 +112,13 @@ async function replaceTabId(from, to) {
     delete s.tabOrigin[from];
   }
   await saveSess(s);
-  const { pendingSwitch: p, startCopies, startSeen } = await chrome.storage.session.get(['pendingSwitch', 'startCopies', 'startSeen']);
+  const { pendingSwitch: p, startCopies, startSeen, startNew = {} } = await chrome.storage.session.get(['pendingSwitch', 'startCopies', 'startSeen', 'startNew']);
   if (p) await setPending({ ...p, oldTabs: p.oldTabs.map(swap) });
   if (startCopies) {
     await chrome.storage.session.set({
       startCopies: startCopies.map((c) => ({ ...c, id: swap(c.id) })),
       startSeen: (startSeen || []).map(swap),
+      startNew: Object.fromEntries(Object.entries(startNew).map(([id, at]) => [swap(+id), at])),
     });
   }
   const { stashMuted } = await chrome.storage.local.get('stashMuted');

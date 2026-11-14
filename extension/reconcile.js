@@ -312,23 +312,38 @@ async function restoreStart(wins, wsId) {
 // ein weiteres Mal offen, werden die Kopien geschlossen; Chromiums Tabs behalten ihren
 // Verlauf. Landen sie in einem anderen Workspace (vorher gewechselt), bleiben die Kopien.
 // Das gilt nur in der ersten Minute nach dem Start: Später öffnet eher man selbst eine
-// der Seiten noch einmal, und die Kopie samt Eingaben darin bleibt.
+// der Seiten noch einmal, und die Kopie samt Eingaben darin bleibt. Auch in der ersten
+// Minute zählen nur Tabs, die wie Chromiums Wiederherstellung gemeinsam erscheinen: in
+// einem Schwung (START_BURST) mindestens so viele wie die Kopien, mindestens zwei. Öffnet
+// man eine der Seiten selbst neu, bleiben beide.
+const START_BURST = 5000;
 async function dropStartCopies(s, stash) {
-  const keys = ['startCopies', 'startSeen', 'startCopiesUntil'];
-  const { startCopies, startSeen, startCopiesUntil } = await chrome.storage.session.get(keys);
-  if (!startCopies) return false;
-  if (!(Date.now() <= startCopiesUntil)) {
-    await chrome.storage.session.remove(keys);
+  const keys = ['startCopies', 'startSeen', 'startCopiesUntil', 'startNew'];
+  const { startCopies, startSeen, startCopiesUntil, startNew = {} } = await chrome.storage.session.get(keys);
+  if (!startCopies || !(Date.now() <= startCopiesUntil)) {
+    ownTabs.clear();
+    if (startCopies) await chrome.storage.session.remove(keys);
     return false;
   }
   const tabs = await chrome.tabs.query({});
   const wsOf = (t) => s.windowWs[t.windowId] || [...stash].find(([, w]) => w.id === t.windowId)?.[0];
   const key = (t) => `${wsOf(t)} ${urlOf(t)}`;
   const live = startCopies.filter((c) => tabs.some((t) => t.id === c.id && urlOf(t) === c.url));
-  const seen = new Set(startSeen);
-  const have = tabs.filter((t) => !seen.has(t.id)).map((t) => ({ url: key(t) }));
+  // Selbst angelegte Tabs gelten wie die beim Aufbau vorhandenen als gesehen
+  const own = [...ownTabs];
+  ownTabs.clear();
+  const seen = new Set([...startSeen, ...own]);
+  // Wann jeder neue Tab zuerst auftauchte; der letzte Schwung zählt als Wiederherstellung
+  const now = Date.now();
+  const added = tabs.filter((t) => !seen.has(t.id));
+  const when = Object.fromEntries(added.map((t) => [t.id, startNew[t.id] ?? now]));
+  await chrome.storage.session.set({ startNew: when, ...(own.length ? { startSeen: [...seen] } : {}) });
+  const last = Math.max(0, ...Object.values(when));
+  const burst = added.filter((t) => when[t.id] >= last - START_BURST);
+  const have = burst.map((t) => ({ url: key(t) }));
   const want = live.map((c) => ({ url: key(tabs.find((t) => t.id === c.id)) }));
-  if (live.length && missingIn(want, have).length) return false; // noch nicht (alle) wiederhergestellt
+  // noch nicht (alle) wiederhergestellt, oder nur einzeln selbst geöffnet
+  if (live.length && (missingIn(want, have).length || burst.length < Math.max(live.length, 2))) return false;
   await chrome.storage.session.remove(keys);
   if (!live.length) return false;
   await moving(() => chrome.tabs.remove(live.map((c) => c.id)));

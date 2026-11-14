@@ -6,6 +6,8 @@ const SHOWN = 'shown';
 const COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#64748b'];
 
 let switching = 0; // > 0, solange wir selbst Tabs verschieben
+// Dabei selbst angelegte Tabs; dropStartCopies merkt sie sich als nicht wiederhergestellt
+const ownTabs = new Set();
 
 // Führt fn aus, während die Tab-Ereignisse die eigenen Änderungen übergehen
 async function moving(fn) {
