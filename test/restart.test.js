@@ -92,8 +92,9 @@ test('Beim Wiederherstellen verlorene Tabs werden an ihrer Stelle und in ihrer G
 });
 
 test('Ein kurz nach dem Start geschlossener Tab kommt nicht aus der Sicherung zurück (#150)', async () => {
-  // auch, wenn der Tab vorher noch zu einer anderen Seite gewechselt ist
-  for (const navigated of [false, true]) {
+  // auch, wenn der Tab vorher noch zu einer anderen Seite gewechselt ist, und wenn er
+  // genau dann geschlossen wird, während die Sicherung mit der neuen Seite gespeichert wird
+  for (const how of ['direkt', 'nach Seitenwechsel', 'beim Sichern']) {
     const env = await setup(SPEC);
     const { b } = env;
     b.restart();
@@ -102,18 +103,25 @@ test('Ein kurz nach dem Start geschlossener Tab kommt nicht aus der Sicherung zu
     check(env, ALL);
     // Noch in den ersten 20 s: Tab schließen, danach Seitenwechsel, die den Snapshot hinauszögern
     const a4 = where(env, 'a4').tab.id;
-    if (navigated) {
+    if (how !== 'direkt') {
       await b.chrome.tabs.update(a4, { url: url('x0') });
       await w.advance(100);
     }
-    await b.chrome.tabs.remove(a4);
+    if (how === 'beim Sichern') {
+      // Der Snapshot nach dem Seitenwechsel ist nach 300 ms fällig
+      const f = b.during('storage.local.set', () => b.removeTab(a4), { when: (o) => !!o.backup });
+      await w.advance(200);
+      assert.equal(f.hits, 1);
+    } else {
+      await b.chrome.tabs.remove(a4);
+    }
     const a1 = where(env, 'a1').tab.id;
     for (const name of ['x1', 'x2', 'x3']) {
       await w.advance(200);
       await b.chrome.tabs.update(a1, { url: url(name) });
     }
     await w.settle();
-    assert.equal(b.tabsByUrl(url('a4')).length, 0, `geschlossener Tab wurde wieder geöffnet (navigated: ${navigated})`);
+    for (const u of ['a4', 'x0']) assert.equal(b.tabsByUrl(url(u)).length, 0, `geschlossener Tab wurde wieder geöffnet (${how})`);
     b.calls = b.calls.filter((c) => !(c.name === 'tabs.update' && ['x0', 'x1', 'x2', 'x3'].map(url).includes(c.args[1]?.url)));
     check(env, { ...ALL, A: ['x3', SPEC.workspaces.A[1], SPEC.workspaces.A[2]] });
   }
