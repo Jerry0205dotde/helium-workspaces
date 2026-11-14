@@ -5,7 +5,7 @@
     "Description": "Hides the stash windows of the Workspaces extension for Helium",
     "Description[de]": "Versteckt die Ablage-Fenster der Workspaces-Erweiterung für Helium",
     "License": "GPL-3.0-or-later",
-    "Version": "0.2.17",
+    "Version": "0.2.18",
     "EnabledByDefault": true
   },
   "X-Plasma-API": "javascript",
