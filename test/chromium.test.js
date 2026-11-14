@@ -2,7 +2,8 @@
 // Die Handschritte aus der README gegen einen echten Chromium: Wechsel mit Gruppe und
 // angeheftetem Tab, Neuladen der Erweiterung, Beenden und Neustart mit „Dort
 // weitermachen, wo ich aufgehört habe“ und mit „Neuer Tab“, Schließen per X und
-// Neustart. Läuft nur, wenn CHROME auf einen Chromium-Browser zeigt, z. B.:
+// Neustart, dazu der Umstieg auf die feste Erweiterungs-ID. Läuft nur, wenn CHROME auf
+// einen Chromium-Browser zeigt, z. B.:
 //
 //   CHROME=/usr/bin/chromium node --test test/chromium.test.js
 //
@@ -16,10 +17,9 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
-const { Chromium, EXT_ID, waitFor } = require('./chromium');
+const { Chromium, EXT, EXT_ID, extIdOf, waitFor } = require('./chromium');
 const { messages } = require('./i18n');
 
-const STASH = `chrome-extension://${EXT_ID}/stash.html#`;
 const NEWTAB = /^chrome:\/\/(newtab|new-tab-page)\//;
 
 const SPEC = {
@@ -72,11 +72,16 @@ const STATE = `
   };`;
 
 class Env {
-  constructor(bin, base) {
+  constructor(bin, base, ext) {
     this.base = base;
     this.profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-chromium-'));
-    this.browser = new Chromium(bin, this.profile);
+    this.browser = new Chromium(bin, this.profile, ext);
     this.ids = {};
+  }
+
+  // Adresse der Ablage-Seite unter der ID, die die Erweiterung gerade hat
+  get stash() {
+    return `chrome-extension://${this.browser.extId}/stash.html#`;
   }
 
   name(url) {
@@ -111,8 +116,8 @@ class Env {
     const stashed = {};
     for (const w of st.windows) {
       const first = w.tabs[0];
-      if (first?.url?.startsWith(STASH)) {
-        const name = nameOf(first.url.slice(STASH.length));
+      if (first?.url?.startsWith(this.stash)) {
+        const name = nameOf(first.url.slice(this.stash.length));
         assert.ok(name, `Ablage ohne Workspace: ${first.url}`);
         assert.ok(!stashed[name], `zwei Ablagen für ${name}`);
         assert.ok(first.pinned, `Ablage-Seite von ${name} ist nicht angeheftet`);
@@ -146,7 +151,7 @@ class Env {
         assert.ok(!live, `${w.name} hat kein Fenster`);
       }
     }
-    return { main: st.windows.find((w) => !w.tabs[0]?.url?.startsWith(STASH)), shows: mains[0] };
+    return { main: st.windows.find((w) => !w.tabs[0]?.url?.startsWith(this.stash)), shows: mains[0] };
   }
 
   // Fenster und Tabs in Kurzform, für Fehlermeldungen
@@ -155,7 +160,7 @@ class Env {
     return st.windows
       .map((w) => {
         const first = w.tabs[0]?.url || '';
-        const head = first.startsWith(STASH) ? `Ablage ${ws(first.slice(STASH.length))}` : `Hauptfenster ${ws(st.windowWs[w.id])}`;
+        const head = first.startsWith(this.stash) ? `Ablage ${ws(first.slice(this.stash.length))}` : `Hauptfenster ${ws(st.windowWs[w.id])}`;
         const tabs = w.tabs.map((t) => `${t.pinned ? '📌' : ''}${this.name(t.url)}${t.groupId >= 0 ? `(g${t.groupId})` : ''}${t.status === 'complete' ? '' : `(${t.status}${t.discarded ? ', verworfen' : ''})`}`);
         return `  ${w.id} ${head} [${w.state}]: ${tabs.join(' ')}`;
       })
@@ -235,6 +240,23 @@ async function openTabs(env, windowId, items, pinned = false) {
   );
 }
 
+// Baut SPEC im ersten Fenster auf, zuletzt zeigt es A
+async function build(env, st) {
+  const b = env.browser;
+  const win = st.windows[0].id;
+  await openTabs(env, win, SPEC.pinned.map(norm), true);
+  await openTabs(env, win, SPEC.workspaces.A);
+  await b.action('(id) => updateWs(id, { name: "A" })', st.workspaces[0].id);
+  for (const name of ['B', 'C']) {
+    env.ids[name] = (await b.action('(n) => createWs(n)', name)).id;
+    await b.action('(w, ws) => switchTo(w, ws)', win, env.ids[name]);
+    await openTabs(env, win, SPEC.workspaces[name]);
+  }
+  env.ids.A = st.workspaces[0].id;
+  await env.switchTo('A');
+  await env.settled({ live: true });
+}
+
 const bin = process.env.CHROME;
 
 test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 600000 }, async (t) => {
@@ -271,18 +293,7 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     const where = await b.sw("return tr('exWhereWsNamed', 2, 'X');");
     assert.equal(where, msgs.exWhereWsNamed.message.replace('$1', '2').replace('$2', 'X'));
     assert.equal(await b.sw('return chrome.action.getTitle({});'), 'Workspaces', 'Titel aus dem Manifest');
-    const win = st.windows[0].id;
-    await openTabs(env, win, SPEC.pinned.map(norm), true);
-    await openTabs(env, win, SPEC.workspaces.A);
-    await b.action('(id) => updateWs(id, { name: "A" })', st.workspaces[0].id);
-    for (const name of ['B', 'C']) {
-      env.ids[name] = (await b.action('(n) => createWs(n)', name)).id;
-      await b.action('(w, ws) => switchTo(w, ws)', win, env.ids[name]);
-      await openTabs(env, win, SPEC.workspaces[name]);
-    }
-    env.ids.A = st.workspaces[0].id;
-    await env.switchTo('A');
-    await env.settled({ live: true });
+    await build(env, st);
   });
 
   await step('Wechsel hin und her: Gruppen und angehefteter Tab bleiben, nichts lädt neu', async () => {
@@ -303,7 +314,7 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
        const windowId = tabs.find((t) => (t.url || t.pendingUrl) === page).windowId;
        const opener = tabs.find((t) => t.windowId === windowId && !t.pinned);
        return (await chrome.tabs.create({ windowId, openerTabId: opener.id, url, active: false })).id;`,
-      STASH + env.ids.B,
+      env.stash + env.ids.B,
       base + 'neu',
     );
     const mutedInfo = () => b.sw('return (await chrome.tabs.get(args[0])).mutedInfo;', id);
@@ -319,11 +330,11 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
       `const t = (await chrome.tabs.query({})).find((x) => (x.url || x.pendingUrl) === args[0]);
        await chrome.tabs.remove(t.id);
        return t.windowId;`,
-      STASH + env.ids.B,
+      env.stash + env.ids.B,
     );
     await waitFor(async () => {
       const tabs = await b.sw('return chrome.tabs.query({ windowId: args[0] });', win);
-      assert.equal(tabs[0]?.url, STASH + env.ids.B, 'Ablage-Seite von B fehlt');
+      assert.equal(tabs[0]?.url, env.stash + env.ids.B, 'Ablage-Seite von B fehlt');
     });
     await env.settled({ live: true });
   });
@@ -335,7 +346,7 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     await b.action('(u, ws, w) => openLinkInWs(u, ws, w)', base + 'link', env.ids.C, main.id);
     const id = await waitFor(async () => {
       const st = await env.state();
-      const stash = st.windows.find((w) => w.tabs[0]?.url === STASH + env.ids.C);
+      const stash = st.windows.find((w) => w.tabs[0]?.url === env.stash + env.ids.C);
       assert.deepEqual(stash.tabs.slice(1).map((t) => env.name(t.url)), ['c1', 'c2', 'link']);
       assert.equal(env.name(st.backup[env.ids.C].stash.at(-1).url), 'link', 'Sicherung von C');
       assert.equal(st.windowWs[main.id], env.ids[shows], 'das Hauptfenster hat gewechselt');
@@ -444,4 +455,59 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
       await env.cycle(['B', 'C', 'A']);
     });
   }
+});
+
+// Der Umstieg aus der README: Eine Installation ohne Schlüssel im Manifest hat eine ID aus
+// dem Pfad. Mit dem Schlüssel bekommt sie beim Neuladen die feste ID und leeren Speicher,
+// Chromium schließt die Ablage-Seiten der alten ID. Ersetzen mit dem vorher gemachten
+// Export übernimmt dann die alten Fenster samt Tabs (#156).
+test('Echter Chromium: Umstieg auf die feste Erweiterungs-ID per Export und Ersetzen', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 300000 }, async (t) => {
+  const { server, hits, base } = await startServer();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-ext-'));
+  fs.cpSync(EXT, dir, { recursive: true });
+  const manifest = path.join(dir, 'manifest.json');
+  const { key, ...old } = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+  assert.ok(key, 'kein Schlüssel im Manifest');
+  fs.writeFileSync(manifest, JSON.stringify(old));
+  const env = new Env(bin, base, dir);
+  const b = env.browser;
+  t.after(async () => {
+    await b.kill();
+    server.close();
+    for (const d of [env.profile, dir]) fs.rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  });
+
+  await env.launch('last');
+  assert.notEqual(b.extId, EXT_ID);
+  await build(env, await env.state());
+  const file = JSON.stringify(await b.action('() => exportAll()'));
+  const tabIds = (st) => st.windows.flatMap((w) => w.tabs.filter((x) => !x.url.startsWith('chrome-extension:')).map((x) => `${x.id} ${x.url}`)).sort();
+  const before = tabIds(await env.state());
+  const loads = new Map(hits);
+
+  // Wie git pull und Neuladen unter chrome://extensions
+  fs.copyFileSync(path.join(EXT, 'manifest.json'), manifest);
+  b.sw('chrome.runtime.reload();').catch(() => {});
+  b.extId = extIdOf(dir);
+  assert.equal(b.extId, EXT_ID);
+  await b.attachWorker();
+  const fresh = await waitFor(async () => {
+    const st = await env.state();
+    assert.ok(Object.keys(st.windowWs).length, 'noch kein Hauptfenster zugeordnet');
+    return st;
+  });
+  assert.equal(fresh.workspaces.length, 1, 'Speicher der neuen ID ist nicht leer');
+  assert.ok(!fresh.windows.some((w) => w.tabs.some((x) => x.url.startsWith('chrome-extension:'))), 'Ablage-Seite der alten ID noch offen');
+  assert.deepEqual(fresh.windows.map((w) => w.state).sort(), ['minimized', 'minimized', 'minimized', 'normal']);
+
+  const res = await b.action('(text) => importExchange(text, "replace", true)', file);
+  assert.deepEqual([res.kept, res.closed, res.failed], [9, 0, 0]);
+  for (const w of (await env.state()).workspaces) env.ids[w.name] = w.id;
+  const r = await env.settled({ live: true });
+  assert.equal(r.shows, 'A');
+  assert.equal(r.st.windows.length, 3, 'die leere alte Ablage ist noch offen');
+  assert.deepEqual(tabIds(r.st), before, 'Tabs wurden geschlossen oder neu angelegt');
+  await env.cycle();
+  assert.deepEqual(new Map(hits), loads, 'eine Seite wurde neu geladen');
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });

@@ -11,10 +11,16 @@ const crypto = require('node:crypto');
 
 const EXT = path.join(__dirname, '..', 'extension');
 
-// ID einer entpackt geladenen Erweiterung: SHA-256 des Pfads, Hex-Ziffern als a–p
-const EXT_ID = [...crypto.createHash('sha256').update(fs.realpathSync(EXT)).digest('hex').slice(0, 32)]
-  .map((c) => String.fromCharCode(97 + parseInt(c, 16)))
-  .join('');
+// ID einer entpackt geladenen Erweiterung: SHA-256 des öffentlichen Schlüssels aus dem
+// Manifest, ohne Schlüssel des Pfads, Hex-Ziffern als a–p
+function extIdOf(dir) {
+  const { key } = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+  const src = key ? Buffer.from(key, 'base64') : fs.realpathSync(dir);
+  return [...crypto.createHash('sha256').update(src).digest('hex').slice(0, 32)]
+    .map((c) => String.fromCharCode(97 + parseInt(c, 16)))
+    .join('');
+}
+const EXT_ID = extIdOf(EXT);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -49,9 +55,13 @@ function setPrefs(profile, restore) {
 }
 
 class Chromium {
-  constructor(bin, profile) {
+  // ext: Ordner der Erweiterung. Ändert sich ihre ID (Schlüssel im Manifest ergänzt), vor
+  // attachWorker() extId neu setzen.
+  constructor(bin, profile, ext = EXT) {
     this.bin = bin;
     this.profile = profile;
+    this.ext = ext;
+    this.extId = extIdOf(ext);
   }
 
   // Startet den Browser mit dem Profil. Beim ersten Start wird die Erweiterung wie über
@@ -98,8 +108,8 @@ class Chromium {
     });
     await this.send('Target.setDiscoverTargets', { discover: true });
     if (!this.installed) {
-      const { id } = await this.send('Extensions.loadUnpacked', { path: EXT });
-      if (id !== EXT_ID) throw new Error(`unerwartete Erweiterungs-ID ${id}`);
+      const { id } = await this.send('Extensions.loadUnpacked', { path: this.ext });
+      if (id !== this.extId) throw new Error(`unerwartete Erweiterungs-ID ${id}`);
       this.installed = true;
     }
     await this.attachWorker();
@@ -146,7 +156,7 @@ class Chromium {
       if (this.worker && !this.worker.detached && targetInfos.some((x) => x.targetId === this.worker.targetId)) {
         throw new Error('alter Service Worker läuft noch');
       }
-      const t = targetInfos.find((x) => x.type === 'service_worker' && x.url === `chrome-extension://${EXT_ID}/background.js`);
+      const t = targetInfos.find((x) => x.type === 'service_worker' && x.url === `chrome-extension://${this.extId}/background.js`);
       if (!t) throw new Error('Service Worker der Erweiterung nicht gefunden');
       return t;
     });
@@ -202,4 +212,4 @@ class Chromium {
   }
 }
 
-module.exports = { Chromium, EXT_ID, waitFor, sleep };
+module.exports = { Chromium, EXT, EXT_ID, extIdOf, waitFor, sleep };
