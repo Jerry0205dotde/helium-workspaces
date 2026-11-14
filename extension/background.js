@@ -156,6 +156,7 @@ async function stateFor(windowId) {
     current: s.windowWs[windowId] || null,
     colors: COLORS,
     backupError: backupError || null,
+    storage: await sessionUsage(),
     muteStash: !!muteStash,
     unloadAfter: await getUnloadAfter(),
     unloadChoices: UNLOAD_CHOICES,

@@ -143,6 +143,24 @@
   "backupFailingHint": {
     "message": "If a window is lost, all changes since then are missing."
   },
+  "storageFull": {
+    "message": "Extension storage $1% full"
+  },
+  "storageFullHint": {
+    "message": "Once it is full, it can no longer switch workspaces or reliably save tabs. Close tabs or windows you do not need."
+  },
+  "storageFullUpdate": {
+    "message": "From Chrome 112 on, the storage is ten times larger."
+  },
+  "storageTight": {
+    "message": "This browser gives the extension only $1 MB of storage"
+  },
+  "storageTightHint": {
+    "message": "With very many tabs it can fill up, and then it can no longer switch workspaces or reliably save tabs. From Chrome 112 on it is 10 MB, and this notice goes away."
+  },
+  "storageUsed": {
+    "message": "In use: $1%"
+  },
   "colorBlue": {
     "message": "Blue"
   },
@@ -499,6 +517,9 @@
   },
   "iconTitleMissing": {
     "message": "Workspace: $1 – $2"
+  },
+  "iconTitleStorageFull": {
+    "message": "Extension storage almost full, tabs will soon no longer be saved"
   },
   "menuMove": {
     "message": "Move tab to workspace"

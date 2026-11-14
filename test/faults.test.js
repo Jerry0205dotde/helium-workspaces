@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { setup, check, ok, url, where, shows } = require('./harness');
+const { setup, check, ok, url, where, shows, fillSession } = require('./harness');
 
 const SPEC = {
   pinned: ['p1'],
@@ -315,6 +315,64 @@ test('Scheitert das Speichern der Sicherung, meldet das Popup es, bis es wieder 
   await w.settle();
   assert.equal((await ok(w.request({ type: 'state', windowId: win }))).backupError, null);
   assert.match(backupJson(env), /x1\.test.*x2\.test.*x3\.test/);
+});
+
+test('Speicher: bei 10 MB kein Hinweis, bei 1 MB (Chrome vor 112) einer, auch ohne getBytesInUse', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  const storage = async () => (await ok(w.request({ type: 'state', windowId: win }))).storage;
+  let st = await storage();
+  assert.deepEqual([st.quota, st.tight, st.full], [10 * 1024 * 1024, false, false]);
+  assert.equal(st.used, b.session.bytes());
+
+  b.sessionQuota = 1024 * 1024;
+  st = await storage();
+  assert.deepEqual([st.quota, st.tight, st.full], [1024 * 1024, true, false]);
+  assert.ok(st.used > 0);
+
+  // Browser ohne storage.session.getBytesInUse: geschätzt wie Chromium
+  b.sessionBytesInUse = false;
+  st = await storage();
+  assert.equal(st.used, b.session.bytes());
+  assert.equal(st.full, false);
+});
+
+test('Speicher ab 98 % voll: Popup und Plakette warnen, bis wieder Platz ist', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  b.sessionQuota = 1024 * 1024;
+  const badges = async () => {
+    const tabs = await b.chrome.tabs.query({ windowId: win });
+    const last = (name, id) => b.calls.filter((c) => c.name === name && c.args[0].tabId === id).at(-1)?.args[0];
+    return tabs.map((t) => [last('action.setBadgeText', t.id)?.text, last('action.setTitle', t.id)?.title]);
+  };
+
+  fillSession(b, 0.975);
+  await b.chrome.tabs.create({ windowId: win, url: url('x1'), active: false });
+  await w.settle();
+  assert.equal((await ok(w.request({ type: 'state', windowId: win }))).storage.full, false, 'warnt schon unter 98 %');
+  for (const [text] of await badges()) assert.equal(text, '');
+
+  fillSession(b, 0.985);
+  await b.chrome.tabs.create({ windowId: win, url: url('x2'), active: false });
+  await w.settle();
+  const st = (await ok(w.request({ type: 'state', windowId: win }))).storage;
+  assert.equal(st.full, true);
+  assert.equal(Math.floor((st.used / st.quota) * 100), 98);
+  for (const [text, title] of await badges()) {
+    assert.equal(text, '!');
+    assert.equal(title, 'Workspace: A\nSpeicher der Erweiterung fast voll, Tabs werden bald nicht mehr gesichert');
+  }
+
+  // Wieder Platz: Plakette verschwindet nach der nächsten Sicherung
+  delete b.session.data.filler;
+  await b.chrome.tabs.create({ windowId: win, url: url('x3'), active: false });
+  await w.settle();
+  for (const [text, title] of await badges()) {
+    assert.equal(text, '');
+    assert.equal(title, 'Workspace: A');
+  }
+  assert.equal((await ok(w.request({ type: 'state', windowId: win }))).storage.full, false);
 });
 
 test('Ablage lässt sich beim Löschen nicht schließen: Workspace bleibt, kein „Wiederhergestellt“', async () => {

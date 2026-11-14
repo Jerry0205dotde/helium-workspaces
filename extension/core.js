@@ -60,6 +60,35 @@ async function saveSess(s) {
   await chrome.storage.session.set(s);
 }
 
+// storage.session hat eine feste Größe: 10 MB, in Chrome vor Version 112 nur 1 MB. Ist sie
+// voll, scheitert jedes Speichern des Laufzeitzustands: Wechsel brechen ab, und neue
+// Fenster kommen nicht mehr in die Sicherung. Bei 1 MB zeigt das Popup einen Hinweis,
+// ab 98 % warnen Popup und Plakette.
+const SESSION_ROOMY = 10 * 1024 * 1024;
+const SESSION_FULL = 0.98;
+let sessionFull = false;
+
+async function sessionUsage() {
+  const area = chrome.storage.session;
+  const quota = area.QUOTA_BYTES || SESSION_ROOMY;
+  let used;
+  try {
+    used = await area.getBytesInUse(null);
+  } catch {
+    // Ohne getBytesInUse wie Chromium schätzen: Schlüssel, Wert als JSON und etwa 64 Byte je Eintrag
+    used = Object.entries(await area.get(null)).reduce((n, [k, v]) => n + k.length + JSON.stringify(v).length + 64, 0);
+  }
+  const full = used >= quota * SESSION_FULL;
+  if (full !== sessionFull) {
+    sessionFull = full;
+    await updateAllIcons();
+  }
+  return { used, quota, tight: quota < SESSION_ROOMY, full };
+}
+
+// Nach jeder Sicherung; ein Fehler beim Messen soll nichts anderes aufhalten
+const checkSession = () => sessionUsage().catch((e) => console.warn('[workspaces] Speicher messen', e));
+
 // Gesicherte Tabs eines Workspace: erst die gezeigten, dann die der Ablage
 const savedOf = (b) => [...(b?.shown || []), ...(b?.stash || [])];
 

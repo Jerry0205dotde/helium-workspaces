@@ -39,11 +39,14 @@ async function setTabIcon(tabId, wsId, src) {
   if (!ws) return;
   // Unvollständig wiederhergestellt: Zahl der fehlenden Tabs als Plakette
   const missing = src.backup[wsId]?.failed?.length || 0;
-  const title = missing ? tr('iconTitleMissing', ws.name, plural(missing, 'tabsNotRestored')) : tr('iconTitle', ws.name);
+  let title = missing ? tr('iconTitleMissing', ws.name, plural(missing, 'tabsNotRestored')) : tr('iconTitle', ws.name);
+  // Speicher fast voll (sessionUsage): „!“, wenn keine Zahl fehlender Tabs dasteht
+  if (sessionFull) title += '\n' + tr('iconTitleStorageFull');
+  const badge = missing ? String(missing) : sessionFull ? '!' : '';
   await chrome.action.setIcon({ tabId, imageData: iconFor(ws) }).catch(() => {});
   await chrome.action.setTitle({ tabId, title }).catch(() => {});
-  await chrome.action.setBadgeText({ tabId, text: missing ? String(missing) : '' }).catch(() => {});
-  if (missing) await chrome.action.setBadgeBackgroundColor({ tabId, color: '#dc2626' }).catch(() => {});
+  await chrome.action.setBadgeText({ tabId, text: badge }).catch(() => {});
+  if (badge) await chrome.action.setBadgeBackgroundColor({ tabId, color: '#dc2626' }).catch(() => {});
 }
 
 async function updateIcons(windowId, src) {

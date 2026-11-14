@@ -60,7 +60,15 @@ class StorageArea {
     return out;
   }
 
+  // Wie Chromium für storage.session misst: Schlüssel, Wert als JSON und etwa 64 Byte je Eintrag
+  bytes(data = this.data) {
+    return Object.entries(data).reduce((n, [k, v]) => n + k.length + JSON.stringify(v).length + 64, 0);
+  }
+
   set(items) {
+    if (this.name === 'session' && this.bytes({ ...this.data, ...clone(items) }) > this.browser.sessionQuota) {
+      throw new Error('Session storage quota bytes exceeded. Values were not stored.');
+    }
     const changes = {};
     for (const [k, v] of Object.entries(items)) {
       changes[k] = { oldValue: this.data[k], newValue: clone(v) };
@@ -93,6 +101,10 @@ class Browser {
     this.groups = new Map(); // id → { id, windowId, title, color, collapsed }
     this.local = new StorageArea(this, 'local');
     this.session = new StorageArea(this, 'session');
+    // Größe von storage.session: 10 MB, vor Chrome 112 1 MB. sessionBytesInUse = false
+    // wie ein Browser ohne storage.session.getBytesInUse.
+    this.sessionQuota = 10 * 1024 * 1024;
+    this.sessionBytesInUse = true;
     this.listeners = new Map(); // gehören zum laufenden Service Worker
     this.faults = [];
     this.calls = [];
@@ -499,6 +511,7 @@ class Browser {
   buildApi(owner) {
     const b = this;
     const api = (name, fn) => this.api(name, fn, owner);
+    const bytesInUse = api('storage.session.getBytesInUse', () => b.session.bytes());
     return {
       runtime: {
         id: new URL(b.origin).host,
@@ -518,6 +531,12 @@ class Browser {
           get: api('storage.session.get', (k) => b.session.get(k)),
           set: api('storage.session.set', (i) => b.session.set(i)),
           remove: api('storage.session.remove', (k) => b.session.remove(k)),
+          get QUOTA_BYTES() {
+            return b.sessionQuota;
+          },
+          get getBytesInUse() {
+            return b.sessionBytesInUse ? bytesInUse : undefined;
+          },
         },
         onChanged: b.event('storage.onChanged'),
       },

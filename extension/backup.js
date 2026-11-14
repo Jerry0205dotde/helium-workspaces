@@ -52,7 +52,7 @@ async function refreshImage() {
 function scheduleSnapshot() {
   changes++;
   refreshImage();
-  debounce('snapshot', 300, () => snapshot(), 2000);
+  debounce('snapshot', 300, () => snapshot().finally(checkSession), 2000);
 }
 
 function serTab(t, groups) {
