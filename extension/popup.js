@@ -192,8 +192,10 @@ function render(focus) {
 
     const row = el('div', 'row');
     const main = btn('main', undefined, `ws:${ws.id}`);
+    // Der volle Name, weil das Popup lange Namen mit … abschneidet (#162)
+    main.title = ws.name;
     if (i < 9) {
-      main.title = tr('keyN', i + 1);
+      main.title += `\n${tr('keyN', i + 1)}`;
       main.setAttribute('aria-keyshortcuts', String(i + 1));
     }
     if (ws.id === state.current) main.setAttribute('aria-current', 'true');
