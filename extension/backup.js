@@ -11,6 +11,10 @@ const closing = new Map();
 const isClosing = (id) => Date.now() - (closing.get(id) ?? -Infinity) < 10000;
 let changes = 0; // Tab-Änderungen seit dem Start des Service Workers
 let savedChanges = 0; // davon in der Sicherung enthalten
+// Selbst geschlossene Tabs, die die Sicherung noch enthält ({ windowId, url, at }, at ist
+// der Stand von changes). repairFromBackup ergänzt sie nicht wieder (#150). Die Adresse
+// kommt aus dem Abbild; fehlt sie dort, ist sie null.
+const closedTabs = [];
 
 let knownGroups = []; // letzte Antwort der Gruppenabfrage
 
@@ -53,6 +57,11 @@ function scheduleSnapshot() {
   changes++;
   refreshImage();
   debounce('snapshot', 300, () => snapshot().finally(checkSession), 2000);
+}
+
+function noteClosed(tabId, windowId) {
+  const t = image.get(windowId)?.win.tabs.find((x) => x.id === tabId);
+  closedTabs.push({ windowId, url: t ? urlOf(t) : null, at: changes });
 }
 
 function serTab(t, groups) {
@@ -143,5 +152,6 @@ async function snapshot(gone) {
     throw e;
   }
   savedChanges = Math.max(savedChanges, at);
+  for (let i = closedTabs.length - 1; i >= 0; i--) if (closedTabs[i].at <= savedChanges) closedTabs.splice(i, 1);
   await chrome.storage.session.remove('backupError');
 }

@@ -91,6 +91,26 @@ test('Beim Wiederherstellen verlorene Tabs werden an ihrer Stelle und in ihrer G
   await cycle(env);
 });
 
+test('Ein kurz nach dem Start geschlossener Tab kommt nicht aus der Sicherung zurück (#150)', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  b.restart();
+  const w = b.startWorker('startup');
+  await w.settle();
+  check(env, ALL);
+  // Noch in den ersten 20 s: Tab schließen, danach Seitenwechsel, die den Snapshot hinauszögern
+  await b.chrome.tabs.remove(where(env, 'a4').tab.id);
+  const a1 = where(env, 'a1').tab.id;
+  for (const name of ['x1', 'x2', 'x3']) {
+    await w.advance(200);
+    await b.chrome.tabs.update(a1, { url: url(name) });
+  }
+  await w.settle();
+  assert.equal(b.tabsByUrl(url('a4')).length, 0, 'geschlossener Tab wurde wieder geöffnet');
+  b.calls = b.calls.filter((c) => !(c.name === 'tabs.update' && ['x1', 'x2', 'x3'].map(url).includes(c.args[1]?.url)));
+  check(env, { ...ALL, A: ['x3', SPEC.workspaces.A[1], SPEC.workspaces.A[2]] });
+});
+
 test('Ein verlorener Tab lässt sich nicht ergänzen: wird samt Gruppe aufbewahrt und erneut versucht', async () => {
   const env = await setup(SPEC);
   const { b } = env;

@@ -204,6 +204,16 @@ async function repairFromBackup(cfg, s, stash, mains) {
     const need = new Map();
     for (const e of saved) need.set(e.url, (need.get(e.url) || 0) + 1);
     for (const u of live.map(urlOf)) if (need.has(u)) need.set(u, need.get(u) - 1);
+    // Seit der letzten Sicherung selbst geschlossene Tabs fehlen gewollt
+    for (const c of closedTabs) {
+      if (c.at <= savedChanges || ![...wins, sw].some((w) => w?.id === c.windowId)) continue;
+      if (c.url === null) budget--;
+      else if (need.get(c.url) > 0) {
+        need.set(c.url, need.get(c.url) - 1);
+        budget--;
+      }
+    }
+    if (budget <= 0) continue;
     // Kandidaten zuerst aus Lücken, in denen die Sicherung mehr Einträge hat als die
     // Fenster; gleich viele abweichende Tabs sind eher umgeleitete Seiten.
     const gap = [];
