@@ -271,6 +271,7 @@ function copy(dir) {
   const repo = path.join(dir, 'repo');
   fs.mkdirSync(path.join(repo, 'extension'), { recursive: true });
   fs.copyFileSync(INSTALL, path.join(repo, 'install.sh'));
+  fs.cpSync(path.join(ROOT, 'kwin'), path.join(repo, 'kwin'), { recursive: true });
   fs.writeFileSync(path.join(repo, 'extension', 'token.js'), `const TOKEN = '${TOKEN}';\n`);
   return path.join(repo, 'install.sh');
 }
@@ -288,7 +289,7 @@ test('Erstinstallation: installiert das Paket, trägt den Schlüssel ein und lä
     ...ENABLE_AND_RELOAD,
   ]);
   assert.equal(r.checked, false, 'extension/token.js liegt noch da');
-  assert.equal(r.stdout, 'Fertig.\n');
+  assert.equal(r.stdout, DONE_DE);
 });
 
 test('Erneute Installation: Enter an der Frage behält den eingetragenen Schlüssel', () => {
