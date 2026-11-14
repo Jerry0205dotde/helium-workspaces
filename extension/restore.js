@@ -44,7 +44,7 @@ async function groupEntry(tabIds, windowId, e, groupId = null) {
 // have sind Tabs, die ein abgebrochener Aufruf für die ersten Einträge schon angelegt
 // hat: Sie werden nicht noch einmal angelegt, aber mit dem Rest gruppiert. gone sind die
 // Indizes der Einträge in list, die dabei gescheitert sind: Sie bekommen keinen Tab aus
-// have und kommen nach failed. Scheitert ein Eintrag, erfährt onFail seinen Index (#148).
+// have und kommen nach failed. Scheitert ein Eintrag, erfährt onFail Index und Eintrag (#148).
 // Nicht angeheftete Tabs werden nach dem ersten Laden entladen, solange sie nicht aktiv sind.
 async function recreate(list, windowId, pinned = false, join = false, have = [], gone = [], onFail = null) {
   const ids = [];
@@ -60,7 +60,7 @@ async function recreate(list, windowId, pinned = false, join = false, have = [],
     }
     const t = have[n++] || (await openEntry(e, { windowId, pinned }, list, failed));
     if (!t) {
-      await onFail?.(i);
+      await onFail?.(i, e);
       continue;
     }
     ids.push(t.id);

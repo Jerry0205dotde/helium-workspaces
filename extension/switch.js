@@ -28,12 +28,12 @@ async function setPending(p) {
   else await chrome.storage.session.remove('pendingSwitch');
 }
 
-// Merkt im begonnenen Wechsel, dass Eintrag i der Sicherung nicht angelegt werden konnte.
-// Endet der Service Worker danach, ordnet finishSwitch() die schon angelegten Tabs so
-// den richtigen Einträgen zu und bewahrt die gescheiterten auf (#148).
-async function noteFailed(i) {
+// Merkt im begonnenen Wechsel, dass Eintrag i (e) der Sicherung nicht angelegt werden
+// konnte. Endet der Service Worker danach, ordnet finishSwitch() die schon angelegten Tabs
+// so den richtigen Einträgen zu und bewahrt die gescheiterten auf (#148).
+async function noteFailed(i, e) {
   const p = await getPending();
-  if (p) await setPending({ ...p, failed: [...(p.failed || []), i] });
+  if (p) await setPending({ ...p, failed: [...(p.failed || []), { i, url: e.url }] });
 }
 
 // Setzt einen unterbrochenen Wechsel fort, bevor etwas anderes die Zuordnung liest.
@@ -137,7 +137,10 @@ async function finishSwitch() {
       // Service Worker endete beim Neuanlegen aus der Sicherung: den Rest ergänzen und
       // die Gruppen anlegen, auch für die schon angekommenen Tabs
       const list = savedOf((await getBackup()).backup[p.to]);
-      const r = await recreate(list, p.windowId, false, false, arrived, p.failed || [], noteFailed);
+      // Hat keepFailed() die gescheiterten Einträge schon aus der Liste genommen (ein
+      // späterer Schritt scheiterte), passen ihre Indizes nicht mehr und zählen nicht
+      const gone = (p.failed || []).filter((f) => list[f.i]?.url === f.url).map((f) => f.i);
+      const r = await recreate(list, p.windowId, false, false, arrived, gone, noteFailed);
       await keepFailed(p.to, r.failed);
     }
 
