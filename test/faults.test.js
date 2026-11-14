@@ -273,6 +273,39 @@ test('Service Worker endet beim Anlegen aus der Sicherung: die Gruppe bleibt gan
   }
 });
 
+test('Service Worker endet beim Anlegen aus der Sicherung nach einem gescheiterten Tab: Zuordnung bleibt richtig (#148)', async () => {
+  for (const moveFails of [false, true]) {
+    const env = await fromBackup();
+    const { b } = env;
+    const main = b.mains()[0].id;
+    // b1 scheitert, b2 entsteht, der Worker endet vor b3
+    b.fail('tabs.create', { when: (o) => o.url === url('b1') });
+    b.fail('tabs.create', { hang: true, when: (o) => o.url === url('b3') });
+    env.w.send({ type: 'switch', windowId: main, wsId: env.ids.B });
+    await env.w.settle();
+    assert.equal(b.session.data.pendingSwitch?.restoring, true);
+    // Scheitert danach das Wegräumen der alten Tabs, setzt ein weiterer Versuch den
+    // Wechsel fort, nachdem b1 schon aus der Liste der Sicherung entfernt ist
+    if (moveFails) b.fail('tabs.move', { when: (_, o) => o.windowId !== main });
+    const w = b.startWorker(null);
+    await w.settle();
+    await checkResumed148(env, main, w);
+  }
+});
+
+async function checkResumed148(env, main, w) {
+  const { b } = env;
+  assert.equal(shows(env, main), 'B');
+  const failed = b.local.data.backup[env.ids.B].failed;
+  assert.deepEqual(failed?.map((e) => e.url), [url('b1')], 'gescheiterter Tab fehlt in der Sicherung');
+  assert.deepEqual(failed[0].gs, [url('b2')]);
+  check(env, { ...ALL, B: SPEC.workspaces.B.slice(1) });
+  // Erneuter Versuch holt b1 in die Gruppe von b2
+  await ok(w.request({ type: 'retry', windowId: main, wsId: env.ids.B }));
+  assert.equal(b.local.data.backup[env.ids.B].failed?.length ?? 0, 0);
+  check(env, ALL);
+}
+
 test('Scheiternder Speicherzugriff beim Sichern hinterlässt keine halbe Sicherung', async () => {
   const env = await setup(SPEC);
   const { b, w, win } = env;
