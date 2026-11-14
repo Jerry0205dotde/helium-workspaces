@@ -4,7 +4,8 @@
 // Schlüssel steht in kwinrc (von install.sh gesetzt), damit Webseiten sich nicht als
 // Ablage ausgeben können. Verliert ein Fenster die Markierung (z. B. Erweiterung
 // deaktiviert), taucht es wieder in der Taskleiste auf, damit keine Tabs unsichtbar
-// verloren gehen.
+// verloren gehen. Ohne Schlüssel (install.sh --uninstall löscht ihn zuerst) holt das
+// Skript alle Ablagen zurück.
 const TOKEN = String(readConfig("token", ""));
 const PREFIX = "HWS-Ablage ";
 const MARK = PREFIX + TOKEN + " ";
@@ -20,10 +21,10 @@ function isBrowser(w) {
 }
 
 function check(w) {
-    if (!TOKEN || !w || !w.normalWindow) return;
+    if (!w || !w.normalWindow) return;
     const id = String(w.internalId);
     const caption = w.caption || "";
-    const marked = caption.indexOf(MARK) !== -1;
+    const marked = TOKEN !== "" && caption.indexOf(MARK) !== -1;
     if (marked && isBrowser(w)) {
         hidden[id] = true;
         if (!w.skipTaskbar) w.skipTaskbar = true;

@@ -6,7 +6,8 @@
 # --browsers legt kommagetrennt die Fensterklassen (X11) bzw. App-IDs (Wayland) der Browser
 # fest, deren Ablagen versteckt werden, z. B. --browsers helium,brave-browser. Eine leere
 # Liste stellt die Standardliste wieder her, ohne --browsers bleibt die bisherige Einstellung.
-# ./install.sh --uninstall entlädt und entfernt das KWin-Skript samt seiner Einträge in kwinrc.
+# ./install.sh --uninstall holt versteckte Ablagen zurück in die Taskleiste, entlädt und entfernt
+# dann das KWin-Skript samt seiner Einträge in kwinrc.
 # ./install.sh --update holt mit git pull den neuen Stand und richtet das KWin-Skript ohne
 # Rückfrage neu ein, Schlüssel und Browserliste bleiben.
 # Nach der Installation weist das Skript auf Profile von Helium, Google Chrome und Chromium hin,
@@ -67,14 +68,24 @@ if [ -n "$UPDATE" ]; then
 fi
 
 if [ -n "$UNINSTALL" ]; then
-  # Zuerst entladen, sonst läuft das Skript bis zum nächsten Start von KWin weiter. Erreicht
-  # qdbus6 KWin nicht, bricht das Skript hier ab, bevor etwas entfernt ist.
-  qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
-  if kpackagetool6 --type=KWin/Script -s helium-workspaces >/dev/null 2>&1; then
-    kpackagetool6 --type=KWin/Script -r helium-workspaces >/dev/null
-  fi
-  kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete
+  # Erreicht qdbus6 KWin nicht, bricht das Skript hier ab, bevor etwas entfernt ist.
+  qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces >/dev/null
+  INSTALLED=""
+  kpackagetool6 --type=KWin/Script -s helium-workspaces >/dev/null 2>&1 && INSTALLED=1
   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
+  if [ -n "$INSTALLED" ]; then
+    # Ohne Schlüssel neu geladen holt das KWin-Skript alle versteckten Ablagen zurück in die
+    # Taskleiste. Ältere Fassungen tun das nicht, deshalb zuerst die aus diesem Ordner. KWin
+    # führt das Skript erst kurz nach dem Laden aus, deshalb die Pause.
+    kpackagetool6 --type=KWin/Script -u "$DIR/kwin" >/dev/null
+    qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
+    qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null
+    sleep 1
+  fi
+  # Dann entladen, sonst läuft das Skript bis zum nächsten Start von KWin weiter
+  qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
+  [ -z "$INSTALLED" ] || kpackagetool6 --type=KWin/Script -r helium-workspaces >/dev/null
+  kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete
   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers --delete
   t "KWin-Skript entfernt." "KWin script removed."
   exit 0

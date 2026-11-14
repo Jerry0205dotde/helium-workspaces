@@ -205,21 +205,20 @@ Otherwise click **Errors** or **service worker** on "Workspaces". Messages of th
 
 ## Uninstalling
 
-Without the extension the stash windows lose their marker, but their tabs stay in the windows. Only the running KWin script brings these windows back to the taskbar. To make sure no tabs keep running invisibly, follow this order:
+Without the extension the stash windows lose their marker, but their tabs stay in the windows. To make sure no tabs keep running invisibly:
 
 1. **Back up.** In the workspace list, open **Export / import** and save the export.
 2. **Show every workspace once.** Switch through all workspaces once so that each one exists as a window. Workspaces that only exist in the backup (for example after a start with the new tab page) are created in the process. Resolve "tabs not restored" notices with **Try again**.
-3. **Make the stashes visible.** In `chrome://extensions`, **disable** the extension with the toggle; do not remove it yet. The KWin script then brings the stash windows back to the taskbar and Alt+Tab. They stay minimized until you click them. Each window contains the tabs of one workspace. Merge or close the tabs as you like. Leftover tabs with the address `chrome-extension://…/stash.html#…` are empty and can be closed.
-4. **Remove the KWin script.** Only now, because hidden windows do not reappear without the running script:
+3. **Remove the KWin script.**
 
    ```bash
    ./install.sh --uninstall
    ```
 
-   This unloads the script, removes it and deletes its entries from `kwinrc`. As with installing, run it in a terminal inside the Plasma session. If it cannot reach KWin, it stops without removing anything.
+   This brings the stash windows back to the taskbar and Alt+Tab, then unloads the script, removes it and deletes its entries from `kwinrc`. As with installing, run it in a terminal inside the Plasma session. If it cannot reach KWin, it stops without removing anything.
+4. **Remove the extension.** In `chrome://extensions`, click **Remove** on "Workspaces". This deletes the workspaces and the backup from the profile. After that the repository folder can be deleted.
 
-   If the script was removed too early, quit Helium and start it again. After that the windows are visible normally again.
-5. **Remove the extension.** In `chrome://extensions`, click **Remove** on "Workspaces". This deletes the workspaces and the backup from the profile. After that the repository folder can be deleted.
+The stash windows stay minimized until you click them. Each one contains the tabs of one workspace. Merge or close the tabs as you like. Leftover tabs with the address `chrome-extension://…/stash.html#…` are empty and can be closed. If a window still stays invisible, quit Helium and start it again.
 
 ## A few notes
 

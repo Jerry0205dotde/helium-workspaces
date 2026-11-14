@@ -48,6 +48,8 @@ function run(args, { installed = true, dbus = true, token = '', setup, check, pr
   fake('kpackagetool6', `case "$2" in -s) exit ${installed ? 0 : 3} ;; -u) exit ${installed ? 0 : 1} ;; esac; exit 0`);
   fake('kwriteconfig6', 'exit 0');
   fake('kreadconfig6', `[ "$6" = token ] && echo "${token}"; exit 0`);
+  // install.sh --uninstall wartet, bis KWin das neu geladene Skript ausgeführt hat
+  fake('sleep', 'exit 0');
   try {
     const script = setup ? setup(dir) : INSTALL;
     const env = { ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home };
@@ -104,15 +106,21 @@ function repos(dir, { diverge = false } = {}) {
   return path.join(local, 'install.sh');
 }
 
-test('--uninstall entlädt erst, entfernt dann Paket und kwinrc-Einträge', () => {
+test('--uninstall lädt das Skript ohne Schlüssel neu, damit es die Ablagen zurückholt, und entfernt es dann (#122)', () => {
   const r = uninstall();
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.calls, [
-    'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces',
+    'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces',
     'kpackagetool6 --type=KWin/Script -s helium-workspaces',
+    'kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete',
+    // Die Fassung aus dem Repo, ältere holen ohne Schlüssel nichts zurück
+    `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
+    'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces',
+    'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start',
+    'sleep 1',
+    'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces',
     'kpackagetool6 --type=KWin/Script -r helium-workspaces',
     'kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete',
-    'kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete',
     'kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers --delete',
   ]);
   assert.match(r.stdout, /KWin-Skript entfernt\./);
@@ -121,14 +129,16 @@ test('--uninstall entlädt erst, entfernt dann Paket und kwinrc-Einträge', () =
 test('--uninstall läuft auch, wenn das Paket schon fehlt', () => {
   const r = uninstall({ installed: false });
   assert.equal(r.status, 0, r.stderr);
-  assert.ok(!r.calls.some((c) => c.includes(' -r ')), 'versucht ein fehlendes Paket zu entfernen');
+  assert.ok(!r.calls.some((c) => / -[ru] /.test(c)), 'fasst ein fehlendes Paket an');
+  assert.ok(!r.calls.some((c) => c.endsWith('Scripting.start')), 'lädt ein fehlendes Skript');
   assert.ok(r.calls.some((c) => c.includes('--key token --delete')));
+  assert.ok(r.calls.includes('qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces'));
 });
 
 test('--uninstall entfernt nichts, wenn KWin nicht erreichbar ist', () => {
   const r = uninstall({ dbus: false });
   assert.notEqual(r.status, 0);
-  assert.deepEqual(r.calls, ['qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces']);
+  assert.deepEqual(r.calls, ['qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces']);
 });
 
 test('--update holt den neuen Stand und richtet ihn mit dem eingetragenen Schlüssel ein', () => {
