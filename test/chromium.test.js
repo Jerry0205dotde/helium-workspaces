@@ -321,6 +321,39 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     await env.cycle(['A', 'B', 'C']);
   });
 
+  await step('Sicherung scheitert beim Schließen per X: Ablagen bleiben offen und verlieren den Schlüssel im Titel', async () => {
+    const { main } = await env.switchTo('A');
+    // Wie bei voller Speichergrenze scheitert die Sicherung
+    await b.sw(
+      `globalThis.realSet = chrome.storage.local.set;
+       chrome.storage.local.set = (o) => ('backup' in o ? Promise.reject(new Error('Speicher voll')) : realSet.call(chrome.storage.local, o));`,
+    );
+    // Eine Änderung, deren Sicherung beim Schließen nachgeholt wird
+    await b.sw(
+      `await chrome.tabs.create({ windowId: args[0], url: args[1], active: false });
+       await chrome.windows.remove(args[0]);`,
+      main.id,
+      `${base}x1`,
+    );
+    const st = await waitFor(async () => {
+      const s = await env.state();
+      assert.equal(s.windows.length, 3, 'Ablagen wurden geschlossen');
+      for (const w of s.windows) {
+        const [id] = w.tabs[0].url.split('#').slice(1);
+        const name = s.workspaces.find((x) => x.id === id)?.name;
+        assert.equal(w.tabs[0].url, `chrome-extension://${EXT_ID}/stash.html?shown#${id}`);
+        assert.equal(w.tabs[0].title, `HWS-Ablage · ${name}`, 'Titel der sichtbar gemachten Ablage');
+      }
+      return s;
+    });
+    assert.ok(!st.windows.some((w) => w.tabs[0].title.includes(st.token)), 'Schlüssel noch im Titel');
+    // Der nächste Abgleich baut ein Hauptfenster aus der Sicherung auf und versteckt die Ablagen
+    await b.sw('chrome.storage.local.set = realSet; delete globalThis.realSet;');
+    await b.sw('await serial(reconcile);');
+    const r = await env.settled({ live: true });
+    assert.equal(r.shows, 'A');
+  });
+
   for (const restore of ['last', 'newtab']) {
     await step(`Schließen per X und Neustart (${restore === 'last' ? '„Dort weitermachen“' : '„Neuer Tab“'})`, async () => {
       const { main } = await env.switchTo('A');
