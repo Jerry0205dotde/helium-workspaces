@@ -67,7 +67,7 @@ async function recreate(list, windowId, pinned = false, join = false, have = [],
     if (!pinned) await unloadLaterAdd(t.id);
     if (e.g && !pinned) {
       if (!groups.has(e.g)) groups.set(e.g, []);
-      groups.get(e.g).push({ id: t.id, e });
+      groups.get(e.g).push({ id: t.id, e, i });
     }
   }
   for (const members of groups.values()) {
@@ -95,6 +95,7 @@ async function recreate(list, windowId, pinned = false, join = false, have = [],
           await chrome.tabs.remove(m.id);
           ids.splice(ids.indexOf(m.id), 1);
           failed.push(failedEntry(m.e, list));
+          await onFail?.(m.i, m.e);
         } catch {
           // Tab bleibt ohne Gruppe erhalten
         }

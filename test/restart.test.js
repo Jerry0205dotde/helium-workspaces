@@ -511,3 +511,94 @@ test('Ältere Installation ohne Schlüssel bekommt ihn beim nächsten Start des 
   assert.match(token, /^[0-9a-f]{24}$/);
   assert.equal(await ok(w.request({ type: 'token' })), token);
 });
+
+// Start ohne Sitzungswiederherstellung: B und C liegen nur in der Sicherung. Danach ist die
+// Startphase vorbei, in der repairFromBackup fehlende Tabs ergänzt.
+async function onlyBackedUp() {
+  const env = await setup(SPEC);
+  env.b.restart({ restore: 'none', keepPinned: true });
+  env.b.startWorker('startup');
+  await env.w.settle();
+  check(env, ALL);
+  env.b.now += 60000;
+  return { env, main: env.b.mains()[0].id };
+}
+
+// Endet der Worker, während die Ablage eines Workspace ohne Fenster beim Verschieben eines
+// Tabs aus der Sicherung entsteht (nach b0 oder vor Titel und Farbe der Gruppe), ergänzt
+// der nächste den Rest. Kein Snapshot ersetzt die Sicherung vorher durch die halbe Ablage.
+test('Service Worker endet beim Aufbau der Ablage für einen verschobenen Tab: der Rest wird ergänzt (#149)', async () => {
+  for (const api of ['tabs.create', 'tabGroups.update']) {
+    const { env, main } = await onlyBackedUp();
+    const { b, ids } = env;
+    if (api === 'tabs.create') b.fail(api, { hang: true, after: 1, when: (o) => o.windowId !== main });
+    else b.fail(api, { hang: true });
+    env.w.send({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: ids.B });
+    await env.w.settle();
+    assert.equal(b.session.data.pendingStash?.ws, ids.B);
+    const w = b.startWorker(null);
+    await w.settle();
+    // Eine weitere Änderung löst einen Snapshot aus
+    await b.chrome.tabs.create({ windowId: main, url: url('a5'), active: false });
+    await w.settle();
+    // a1 bleibt in A: Das Verschieben war noch nicht ausgeführt
+    const expected = { ...ALL, A: [...SPEC.workspaces.A, 'a5'] };
+    check(env, expected);
+    await ok(w.request({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: ids.B }));
+    expected.A = expected.A.slice(1);
+    expected.B = [...SPEC.workspaces.B, 'a1'];
+    check(env, expected);
+    await cycle(env, expected);
+  }
+});
+
+test('Service Worker endet beim Aufbau der Ablage nach einem gescheiterten Tab: Zuordnung bleibt richtig (#149)', async () => {
+  const { env, main } = await onlyBackedUp();
+  const { b, ids } = env;
+  // b1 scheitert, b2 entsteht, der Worker endet vor b3
+  b.fail('tabs.create', { when: (o) => o.url === url('b1') });
+  b.fail('tabs.create', { hang: true, when: (o) => o.url === url('b3') });
+  env.w.send({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: ids.B });
+  await env.w.settle();
+  const w = b.startWorker(null);
+  await w.settle();
+  const failed = b.local.data.backup[ids.B].failed;
+  assert.deepEqual(failed?.map((e) => e.url), [url('b1')], 'gescheiterter Tab fehlt in der Sicherung');
+  assert.deepEqual(failed[0].gs, [url('b2')]);
+  check(env, { ...ALL, B: SPEC.workspaces.B.filter((e) => e.url !== 'b1') });
+  await ok(w.request({ type: 'retry', windowId: main, wsId: ids.B }));
+  check(env, ALL);
+});
+
+test('Service Worker endet, während eine nicht anlegbare Gruppe der Ablage wieder entfernt wird: Zuordnung bleibt richtig (#149)', async () => {
+  const { env, main } = await onlyBackedUp();
+  const { b, ids } = env;
+  // Die Gruppe aus b1 und b2 scheitert, b1 ist schon wieder entfernt, der Worker endet vor b2
+  b.fail('tabs.group');
+  b.fail('tabs.remove', { hang: true, after: 1 });
+  env.w.send({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: ids.B });
+  await env.w.settle();
+  const w = b.startWorker(null);
+  await w.settle();
+  const failed = b.local.data.backup[ids.B].failed;
+  assert.deepEqual(failed?.map((e) => e.url), [url('b1')], 'gescheiterter Tab fehlt in der Sicherung');
+  check(env, { ...ALL, B: SPEC.workspaces.B.filter((e) => e.url !== 'b1') });
+  await ok(w.request({ type: 'retry', windowId: main, wsId: ids.B }));
+  check(env, ALL);
+});
+
+test('Scheitert der Aufbau der Ablage für einen verschobenen Tab, wird danach wieder gesichert (#149)', async () => {
+  const { env, main } = await onlyBackedUp();
+  const { b, ids } = env;
+  // Der erste neue Tab löst noch einen Abgleich aus, der die Kopien vom Start vergisst
+  await b.chrome.tabs.create({ windowId: main, url: url('a5'), active: false });
+  await env.w.settle();
+  assert.equal(b.session.data.startCopies, undefined);
+  b.fail('windows.create');
+  const r = await env.w.request({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: ids.B });
+  assert.equal(r.ok, false);
+  await env.w.settle();
+  await b.chrome.tabs.create({ windowId: main, url: url('a6'), active: false });
+  await env.w.settle();
+  check(env, { ...ALL, A: [...SPEC.workspaces.A, 'a5', 'a6'] });
+});

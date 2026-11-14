@@ -1,18 +1,62 @@
 // Hintergrundlogik: Workspace wechseln, Tab in einen anderen Workspace verschieben
 
+// Eine Ablage, die gerade aus der Sicherung entsteht, steht in storage.session
+// ('pendingStash': ihr Workspace ws, gescheiterte Einträge failed wie bei noteFailed). Bis
+// sie vollständig ist, sichert snapshot() nichts, sonst ersetzten ihre ersten Tabs die
+// Sicherung. Endet der Service Worker vorher oder scheitert der Aufbau, ergänzt
+// resumeStash() den Rest.
 async function ensureStash(wsId, restoreBackup) {
   const { stash } = await scan();
   const w = stash.get(wsId);
   if (w) return { windowId: w.id, tabId: w.tabs.find(isStashTab).id };
-  const win = await chrome.windows.create({ url: `${STASH_PAGE}#${wsId}`, focused: false, state: 'minimized' });
-  const tabId = win.tabs[0].id;
-  await chrome.tabs.update(tabId, { pinned: true });
-  if (restoreBackup) {
-    const b = (await getBackup()).backup[wsId];
-    if (b) await keepFailed(wsId, (await recreate(savedOf(b), win.id)).failed);
-    await chrome.tabs.update(tabId, { active: true });
+  const b = restoreBackup && (await getBackup()).backup[wsId];
+  if (b) await chrome.storage.session.set({ pendingStash: { ws: wsId } });
+  try {
+    const win = await chrome.windows.create({ url: `${STASH_PAGE}#${wsId}`, focused: false, state: 'minimized' });
+    const tabId = win.tabs[0].id;
+    await chrome.tabs.update(tabId, { pinned: true });
+    if (restoreBackup) {
+      if (b) {
+        await keepFailed(wsId, (await recreate(savedOf(b), win.id, false, false, [], [], noteStashFailed)).failed);
+        await chrome.storage.session.remove('pendingStash');
+      }
+      await chrome.tabs.update(tabId, { active: true });
+    }
+    return { windowId: win.id, tabId, created: true };
+  } catch (err) {
+    if (b) scheduleReconcile(); // schließt den Aufbau ab, bis dahin keine Snapshots
+    throw err;
   }
-  return { windowId: win.id, tabId, created: true };
+}
+
+async function getPendingStash() {
+  return (await chrome.storage.session.get('pendingStash')).pendingStash || null;
+}
+
+async function noteStashFailed(i, e) {
+  const p = await getPendingStash();
+  if (p) await chrome.storage.session.set({ pendingStash: { ...p, failed: [...(p.failed || []), { i, url: e.url }] } });
+}
+
+// Ergänzt eine unvollständig aus der Sicherung angelegte Ablage (siehe ensureStash) um die
+// fehlenden Tabs und gruppiert sie samt den schon angelegten.
+async function resumeStash() {
+  const p = await getPendingStash();
+  if (!p) return false;
+  const w = (await scan()).stash.get(p.ws);
+  if (w) {
+    console.info('[workspaces] ergänze unvollständige Ablage aus der Sicherung:', p.ws);
+    const list = savedOf((await getBackup()).backup[p.ws]);
+    // Wie in finishSwitch(): nur Einträge, die noch an ihrer Stelle stehen
+    const gone = (p.failed || []).filter((f) => list[f.i]?.url === f.url).map((f) => f.i);
+    await moving(async () => {
+      const r = await recreate(list, w.id, false, false, stashTabsOf(w), gone, noteStashFailed);
+      await keepFailed(p.ws, r.failed);
+      await chrome.tabs.update(w.tabs.find(isStashTab).id, { active: true });
+    });
+  }
+  await chrome.storage.session.remove('pendingStash');
+  return true;
 }
 
 // Ein begonnener Wechsel steht in storage.session ('pendingSwitch': Fenster, alter und
@@ -36,10 +80,12 @@ async function noteFailed(i, e) {
   if (p) await setPending({ ...p, failed: [...(p.failed || []), { i, url: e.url }] });
 }
 
-// Setzt einen unterbrochenen Wechsel fort, bevor etwas anderes die Zuordnung liest.
+// Setzt einen unterbrochenen Wechsel oder Aufbau einer Ablage fort, bevor etwas anderes die
+// Zuordnung liest.
 async function resumeSwitch() {
+  const resumed = await resumeStash();
   const p = await getPending();
-  if (!p) return false;
+  if (!p) return resumed;
   console.info('[workspaces] setze unterbrochenen Wechsel fort:', p.from, '→', p.to);
   console.info('[workspaces] Ergebnis:', await finishSwitch());
   return true;
