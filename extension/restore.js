@@ -42,18 +42,27 @@ async function groupEntry(tabIds, windowId, e, groupId = null) {
 // und jedem Browserstart. Mit join treten sie beim erneuten Versuch der Gruppe bei,
 // in der ein Geschwister-Tab liegt (das Fenster zeigt dann nur diesen Workspace).
 // have sind Tabs, die ein abgebrochener Aufruf für die ersten Einträge schon angelegt
-// hat: Sie werden nicht noch einmal angelegt, aber mit dem Rest gruppiert.
+// hat: Sie werden nicht noch einmal angelegt, aber mit dem Rest gruppiert. gone sind die
+// Indizes der Einträge in list, die dabei gescheitert sind: Sie bekommen keinen Tab aus
+// have und kommen nach failed. Scheitert ein Eintrag, erfährt onFail seinen Index (#148).
 // Nicht angeheftete Tabs werden nach dem ersten Laden entladen, solange sie nicht aktiv sind.
-async function recreate(list, windowId, pinned = false, join = false, have = []) {
+async function recreate(list, windowId, pinned = false, join = false, have = [], gone = [], onFail = null) {
   const ids = [];
   const failed = [];
   const groups = new Map();
   const used = new Set(); // in diesem Aufruf belegte Gruppen gehören zu einer anderen Sicherung
   let n = 0;
-  for (const e of list) {
+  for (const [i, e] of list.entries()) {
     if (!e.url) continue;
+    if (gone.includes(i)) {
+      failed.push(pinned ? e : failedEntry(e, list));
+      continue;
+    }
     const t = have[n++] || (await openEntry(e, { windowId, pinned }, list, failed));
-    if (!t) continue;
+    if (!t) {
+      await onFail?.(i);
+      continue;
+    }
     ids.push(t.id);
     if (!pinned) await unloadLaterAdd(t.id);
     if (e.g && !pinned) {
