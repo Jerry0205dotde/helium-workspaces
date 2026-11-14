@@ -131,6 +131,7 @@ Workspaces auf ein anderes Gerät bringt der Export (siehe unten). Er enthält d
 | Ganze Tab-Gruppe schieben | in einem Tab der Gruppe Rechtsklick auf die Seite → **Gruppe in Workspace verschieben** |
 | Workspaces exportieren oder importieren | in der Liste → **Exportieren / Importieren** |
 | Ton eines Workspace ausschalten | in der Liste auf 🔊 neben dem Workspace klicken (erscheint, solange darin etwas zu hören ist) |
+| Ton wieder einschalten | in der Liste auf 🔇 neben dem Workspace klicken (erscheint, solange darin etwas stumm läuft, das sonst zu hören wäre) |
 | Nicht gezeigte Workspaces immer stumm | in der Liste **Ablagen stummschalten** anhaken. Beim Zurückholen bekommen die Tabs ihren Ton wieder, von Hand stummgeschaltete bleiben stumm. |
 | Tabs nicht gezeigter Workspaces entladen | in der Liste → **Ablagen entladen nach** |
 
