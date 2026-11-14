@@ -22,6 +22,9 @@
 //   Stummschaltung auf, wie Helium 0.21.3 mit Chromium 157. Ein entladener Tab lädt neu,
 //   sobald er aktiv wird.
 // - Wecker (chrome.alarms) klingeln nur, während ein Test mit advance() Zeit vergehen lässt.
+// - Downloads (chrome.downloads) landen in files unter DOWNLOADS, das einen Neustart und
+//   das Entfernen der Erweiterung übersteht. downloadMode: 'complete' (sofort fertig),
+//   'hold' (bis finishDownload, wie bei offenem Dialog zum Speicherort) oder 'interrupt'.
 // Ereignisse werden sofort zugestellt, noch bevor der auslösende API-Aufruf zurückkehrt.
 
 const fs = require('node:fs');
@@ -34,6 +37,7 @@ const NEWTAB = 'chrome://newtab/';
 const GROUP_COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
 
 const DE = i18n.messages('de');
+const DOWNLOADS = '/home/test/Downloads/';
 
 const clone = (v) => (v === undefined ? undefined : structuredClone(v));
 
@@ -96,6 +100,10 @@ class Browser {
     this.worker = null;
     this.menus = [];
     this.alarms = new Map(); // Name → { name, scheduledTime, periodInMinutes }
+    this.files = new Map(); // Pfad → Inhalt, die Dateien im Download-Ordner
+    this.downloads = []; // Download-Verlauf
+    this.downloadMode = 'complete';
+    this.downloadSeq = 1;
     this.chrome = this.buildApi(null); // für Bedienschritte im Test, wie von Hand im Browser
   }
 
@@ -437,6 +445,54 @@ class Browser {
     return { w: null, tabs: [] };
   }
 
+  // ------------------------------------------------------------ Downloads
+
+  download({ url, filename, conflictAction = 'uniquify' }, owner) {
+    const m = /^data:[^;,]*;base64,(.*)$/s.exec(url);
+    if (!m) throw new Error('Nur data:-URLs mit base64 nachgebildet');
+    let file = DOWNLOADS + filename;
+    if (conflictAction === 'uniquify') {
+      for (let n = 1; this.files.has(file); n++) file = DOWNLOADS + filename.replace(/(\.[^.\/]*)?$/, ` (${n})$1`);
+    }
+    const item = {
+      id: this.downloadSeq++,
+      url,
+      filename: file,
+      state: 'in_progress',
+      startTime: new Date(this.now).toISOString(),
+      exists: true,
+      ...(owner ? { byExtensionId: new URL(this.origin).host } : {}),
+      content: Buffer.from(m[1], 'base64').toString('utf8'),
+    };
+    this.downloads.push(item);
+    if (this.downloadMode === 'complete') this.finishDownload(item.id);
+    if (this.downloadMode === 'interrupt') this.finishDownload(item.id, 'FILE_NO_SPACE');
+    return item.id;
+  }
+
+  // Beendet einen Download, mit error als abgebrochen
+  finishDownload(id, error) {
+    const item = this.downloads.find((d) => d.id === id);
+    item.state = error ? 'interrupted' : 'complete';
+    if (error) item.error = error;
+    else this.files.set(item.filename, item.content);
+    this.fire('downloads.onChanged', { id, state: { previous: 'in_progress', current: item.state } });
+  }
+
+  searchDownloads({ id, filenameRegex, state, orderBy = [] } = {}) {
+    const re = filenameRegex && new RegExp(filenameRegex);
+    const list = this.downloads
+      .filter((d) => (id === undefined || d.id === id) && (!re || re.test(d.filename)) && (!state || d.state === state))
+      .map(({ content, ...d }) => ({ ...d, exists: d.state === 'complete' ? this.files.has(d.filename) : d.exists }));
+    if (orderBy[0] === '-startTime') list.sort((a, b) => b.startTime.localeCompare(a.startTime) || b.id - a.id);
+    return list;
+  }
+
+  // Dateien, die gerade im Download-Ordner unter dir liegen, nach Namen sortiert
+  filesIn(dir) {
+    return [...this.files.keys()].filter((f) => f.startsWith(DOWNLOADS + dir + '/')).sort();
+  }
+
   // ------------------------------------------------------------ chrome.*
 
   // owner: der Worker, dem dieses chrome-Objekt gehört (null für Aktionen im Test)
@@ -682,6 +738,20 @@ class Browser {
         clear: api('alarms.clear', (name) => b.alarms.delete(name)),
         onAlarm: b.event('alarms.onAlarm'),
       },
+      downloads: {
+        download: api('downloads.download', (o) => b.download(o, owner)),
+        search: api('downloads.search', (q) => b.searchDownloads(q)),
+        removeFile: api('downloads.removeFile', (id) => {
+          const d = b.downloads.find((x) => x.id === id);
+          if (d?.state !== 'complete') throw new Error('Download must be complete');
+          b.files.delete(d.filename);
+        }),
+        erase: api('downloads.erase', ({ id }) => {
+          b.downloads = b.downloads.filter((x) => x.id !== id);
+          return [id];
+        }),
+        onChanged: b.event('downloads.onChanged'),
+      },
     };
   }
 
@@ -911,6 +981,8 @@ class Worker {
       clearTimeout: (id) => this.timers.delete(id),
       OffscreenCanvas: FakeCanvas,
       URL,
+      TextEncoder,
+      btoa,
       __now: () => browser.now,
       __random: seeded(workerSeed++),
     };
@@ -922,7 +994,11 @@ class Worker {
       for (const f of files) this.run(path.join(EXT_DIR, f));
     };
     this.ctx = vm.createContext(sandbox);
-    vm.runInContext('Date.now = () => __now(); Math.random = __random;', this.ctx);
+    // new Date() ohne Argument folgt ebenfalls der Uhr des Tests
+    vm.runInContext(
+      'Date = class extends Date { constructor(...a) { super(...(a.length ? a : [__now()])); } static now() { return __now(); } }; Math.random = __random;',
+      this.ctx,
+    );
     this.run(path.join(EXT_DIR, 'background.js'));
   }
 
@@ -998,4 +1074,4 @@ class Worker {
   }
 }
 
-module.exports = { Browser, NEWTAB };
+module.exports = { Browser, NEWTAB, DOWNLOADS };

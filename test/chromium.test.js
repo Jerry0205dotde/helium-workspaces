@@ -294,6 +294,31 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     assert.deepEqual(after.st.windows.flatMap((w) => w.tabs.map((x) => `${x.id} ${x.url}`)).sort(), tabIds, 'Tabs wurden ersetzt');
   });
 
+  await step('Automatische Sicherung: Datei im Download-Ordner, die letzten zehn bleiben', async () => {
+    const dir = path.join(env.profile, 'Downloads', 'helium-workspaces');
+    const st = await b.sw('const r = await userAction(() => setAutoBackup(1)); await r?.done; return autoBackupState();');
+    assert.equal(st.last.state, 'complete');
+    assert.equal(path.dirname(st.last.file), dir);
+    const data = JSON.parse(fs.readFileSync(st.last.file, 'utf8'));
+    assert.deepEqual(data.workspaces.map((w) => w.name).sort(), ['A', 'B', 'C']);
+    assert.deepEqual(data.workspaces.flatMap((w) => w.tabs.map((x) => env.name(x.url))).sort(), Object.values(SPEC.workspaces).flat().map((e) => norm(e).name).sort());
+    // Elf weitere Sicherungen: Die ältesten verschwinden aus dem Ordner und dem Verlauf
+    for (let i = 0; i < 11; i++) {
+      await b.sw('await chrome.storage.local.set({ autoBackupAt: 0 }); const r = await userAction(() => autoBackupIfDue(15000)); await r?.done;');
+    }
+    await waitFor(() => assert.equal(fs.readdirSync(dir).length, 10));
+    // Die Dateinamen enthalten nur die Minute, eine spätere übernimmt den Namen einer
+    // gelöschten. Deshalb über die IDs im Verlauf: Es bleiben die zehn neuesten.
+    const { ids, last } = await b.sw(`
+      const own = (await chrome.downloads.search({ orderBy: ['-startTime'] })).filter((d) => d.byExtensionId === chrome.runtime.id);
+      const { autoBackupId } = await chrome.storage.local.get('autoBackupId');
+      return { ids: own.map((d) => d.id), last: autoBackupId };`);
+    assert.deepEqual(ids, Array.from({ length: 10 }, (_, i) => last - i));
+    await b.sw('await userAction(() => setAutoBackup(0));');
+    assert.equal(await b.sw("return !!(await chrome.alarms.get('autoBackup'));"), false);
+    await env.settled({ live: true });
+  });
+
   await step('Neuladen der Erweiterung: Ablagen werden wiedererkannt, Wechseln geht weiter', async () => {
     const loads = new Map(hits);
     b.sw('chrome.runtime.reload();').catch(() => {});

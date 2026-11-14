@@ -604,5 +604,44 @@
   },
   "workspaceN": {
     "message": "Workspace $1"
+  },
+  "autoHeading": {
+    "message": "Automatic backup"
+  },
+  "autoText": {
+    "message": "Regularly saves an export to Downloads/$1/ and keeps the last $2. This way the workspaces survive even if the extension is removed or the profile breaks."
+  },
+  "autoLabel": {
+    "message": "Frequency"
+  },
+  "autoNever": {
+    "message": "never"
+  },
+  "autoDaily": {
+    "message": "daily"
+  },
+  "autoWeekly": {
+    "message": "weekly"
+  },
+  "autoLast": {
+    "message": "Last on $1: $2"
+  },
+  "autoLastAt": {
+    "message": "Last on $1."
+  },
+  "autoPending": {
+    "message": "Started on $1, the file is not saved yet."
+  },
+  "autoFailed": {
+    "message": "Automatic backup on $1 failed"
+  },
+  "autoFailedHint": {
+    "message": "Details under Export / Import. The next backup will try again."
+  },
+  "autoBackupInvalid": {
+    "message": "Unknown interval for the automatic backup."
+  },
+  "autoBackupInterrupted": {
+    "message": "Download interrupted ($1)"
   }
 }

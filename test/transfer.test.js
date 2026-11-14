@@ -1,6 +1,6 @@
 'use strict';
 // Export- und Importseite im echten Chromium: Datei wählen, Vorschau, Zusammenführen,
-// Ersetzen erst nach Nachfrage und Doppelklicks. Die Nachrichten gehen an die
+// Ersetzen erst nach Nachfrage und Doppelklicks, automatische Sicherung. Die Nachrichten gehen an die
 // Hintergrundlogik in der Nachbildung.
 
 const { test, before, after } = require('node:test');
@@ -56,7 +56,7 @@ pageTest('Datei wählen zeigt die Vorschau, ohne etwas zu ändern', async ({ p, 
   assert.match(await p.text('#summary'), /^Die Datei ist gültig: 1 Workspace, 2 Tabs/);
   assert.match(await p.text('#replace-list'), /Löscht 2 Workspaces \(„A“, „B“\) und schließt 3 Tabs\./);
   assert.match(await p.text('#replace-list'), /Bis zum nächsten Browserstart lässt sich das im Popup rückgängig machen\./);
-  assert.deepEqual(p.sent.filter((m) => m.type !== 'token').map((m) => m.type), ['importPreview']);
+  assert.deepEqual(p.sent.filter((m) => !['token', 'autoBackupState'].includes(m.type)).map((m) => m.type), ['importPreview']);
   assert.deepEqual(imports(), []);
   assert.deepEqual(names(), ['A', 'B']);
 });
@@ -137,6 +137,43 @@ test('Export meldet, was gespeichert wurde', { skip }, async () => {
     await p.click('#export');
     assert.deepEqual(p.sent.filter((m) => m.type === 'export').length, 1);
     assert.equal(await p.text('#export-result'), '2 Workspaces mit 3 Tabs und 1 angeheftetem Tab exportiert.');
+  } finally {
+    await p.close();
+  }
+});
+
+test('Automatische Sicherung: Auswahl sichert gleich und nennt die Datei, Fehler werden angezeigt', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  const p = await browser.open('transfer.html', env);
+  const choose = async (v) => {
+    await p.eval(`(() => { const s = document.getElementById('auto'); s.value = '${v}'; s.dispatchEvent(new Event('change')); })()`);
+    await p.idle();
+  };
+  try {
+    assert.match(await p.text('#auto-text'), /Downloads\/helium-workspaces\/ .* die letzten 10\./);
+    assert.deepEqual(await p.eval('[...document.querySelectorAll("#auto option")].map((o) => o.textContent)'), ['nie', 'täglich', 'wöchentlich']);
+    assert.equal(await p.eval('document.getElementById("auto").value'), '0');
+    assert.equal(await p.text('#auto-info'), '');
+
+    await choose('1');
+    assert.deepEqual(p.sent.filter((m) => m.type === 'autoBackup'), [{ type: 'autoBackup', days: 1 }]);
+    const [file] = env.b.filesIn('helium-workspaces');
+    assert.match(await p.text('#auto-info'), new RegExp(`^Zuletzt am .+: ${file.replace(/[.()]/g, '\\$&')}$`));
+    assert.equal(await p.eval('document.getElementById("auto-error").hidden'), true);
+
+    // Ein abgebrochener Download erscheint als Fehler
+    env.b.downloadMode = 'interrupt';
+    await env.w.advance(25 * 3600000);
+    await p.eval('location.reload()');
+    await p.idle();
+    await new Promise((r) => setTimeout(r, 300));
+    await p.idle();
+    assert.equal(await p.eval('document.getElementById("auto").value'), '1');
+    assert.match(await p.text('#auto-error'), /^Automatische Sicherung am .+ fehlgeschlagen.*FILE_NO_SPACE/);
+
+    await choose('0');
+    assert.equal(env.b.alarms.has('autoBackup'), false);
+    assert.equal(await p.eval('document.getElementById("auto-error").hidden'), true);
   } finally {
     await p.close();
   }

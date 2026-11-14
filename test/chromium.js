@@ -43,6 +43,8 @@ function setPrefs(profile, restore) {
   } catch {}
   prefs.session = { ...prefs.session, restore_on_startup: restore === 'last' ? 1 : 5 };
   prefs.extensions = { ...prefs.extensions, ui: { ...prefs.extensions?.ui, developer_mode: true } };
+  // Downloads (die automatische Sicherung) landen im Testprofil, ohne Rückfrage
+  prefs.download = { ...prefs.download, default_directory: path.join(profile, 'Downloads'), prompt_for_download: false };
   fs.writeFileSync(file, JSON.stringify(prefs));
 }
 

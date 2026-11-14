@@ -22,13 +22,13 @@ function showError(text, err) {
 async function run(statusText, fn) {
   if (busy) return;
   busy = true;
-  for (const b of document.querySelectorAll('button, input')) b.disabled = true;
+  for (const b of document.querySelectorAll('button, input, select')) b.disabled = true;
   $('status').textContent = statusText;
   try {
     await fn();
   } finally {
     busy = false;
-    for (const b of document.querySelectorAll('button, input')) b.disabled = false;
+    for (const b of document.querySelectorAll('button, input, select')) b.disabled = false;
     $('status').textContent = '';
   }
 }
@@ -58,6 +58,43 @@ $('export').addEventListener('click', () =>
     }
   }),
 );
+
+// ---------------------------------------------------------------- Automatische Sicherung
+
+const when = (t) => new Date(t).toLocaleString(tr('lang'), { dateStyle: 'short', timeStyle: 'short' });
+const autoLabel = (d) => (!d ? tr('autoNever') : d === 1 ? tr('autoDaily') : tr('autoWeekly'));
+
+function renderAuto(a) {
+  $('auto-text').textContent = tr('autoText', a.dir, a.keep);
+  $('auto').replaceChildren(...a.choices.map((d) => {
+    const o = el('option', null, autoLabel(d));
+    o.value = String(d);
+    return o;
+  }));
+  $('auto').value = String(a.days);
+  const last = a.last;
+  $('auto-info').textContent = !last ? ''
+    : last.state === 'complete' ? tr('autoLast', when(last.at), last.file)
+    : last.state === 'in_progress' ? tr('autoPending', when(last.at))
+    : tr('autoLastAt', when(last.at));
+  const box = $('auto-error');
+  box.hidden = !a.error;
+  box.replaceChildren(...(a.error ? [el('p', 'msg', tr('autoFailed', when(a.error.at))), el('p', 'detail', errorText(a.error.message))] : []));
+}
+
+$('auto').addEventListener('change', () => {
+  const days = Number($('auto').value);
+  run(tr('saving'), async () => {
+    try {
+      renderAuto(await send({ type: 'autoBackup', days }));
+    } catch (e) {
+      await send({ type: 'autoBackupState' }).then(renderAuto, () => {});
+      $('auto-info').textContent = `${tr('settingFailed')} ${errorText(e)}`;
+    }
+  });
+});
+
+send({ type: 'autoBackupState' }).then(renderAuto, (e) => ($('auto-info').textContent = errorText(e)));
 
 // ---------------------------------------------------------------- Import
 

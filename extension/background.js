@@ -25,6 +25,7 @@ importScripts(
   'backup.js',
   'reconcile.js',
   'export-import.js',
+  'autobackup.js',
   'icons.js',
   'sound.js',
   'menus.js',
@@ -35,13 +36,19 @@ importScripts(
 chrome.windows.onCreated.addListener(() => scheduleReconcile(), { windowTypes: ['normal'] });
 chrome.windows.onRemoved.addListener((id) => serial(() => onWindowRemoved(id)), { windowTypes: ['normal'] });
 
+// Beim Beenden kommen noch Fokuswechsel (etwa vom Download-Hinweis der automatischen
+// Sicherung), deren Speichern dann scheitert. Das ist harmlos.
 chrome.windows.onFocusChanged.addListener(async (winId) => {
   if (winId === chrome.windows.WINDOW_ID_NONE) return;
-  const s = await sess();
-  const ws = s.windowWs[winId];
-  if (!ws) return;
-  await chrome.storage.local.set({ lastWs: ws });
-  await chrome.storage.session.set({ lastMain: winId });
+  try {
+    const s = await sess();
+    const ws = s.windowWs[winId];
+    if (!ws) return;
+    await chrome.storage.local.set({ lastWs: ws });
+    await chrome.storage.session.set({ lastMain: winId });
+  } catch (e) {
+    console.warn('[workspaces] Fokuswechsel nicht gespeichert', e);
+  }
 });
 
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
@@ -107,6 +114,7 @@ chrome.tabs.onReplaced.addListener((added, removed) => {
 });
 chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === 'unload') serial(unloadStashes);
+  if (a.name === 'autoBackup') userAction(() => autoBackupIfDue());
 });
 chrome.tabGroups.onUpdated.addListener(() => scheduleSnapshot());
 
@@ -151,6 +159,7 @@ async function stateFor(windowId) {
     muteStash: !!muteStash,
     unloadAfter: await getUnloadAfter(),
     unloadChoices: UNLOAD_CHOICES,
+    autoBackupError: (await autoBackupState()).error,
   };
 }
 
@@ -187,6 +196,14 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return userAction(() => chrome.storage.local.set({ muteStash: !!msg.on }));
       case 'unloadAfter':
         return serial(() => setUnloadAfter(msg.minutes));
+      case 'autoBackupState':
+        return autoBackupState();
+      case 'autoBackup': {
+        // Die Exportseite nennt gleich die erste Datei
+        const r = await userAction(() => setAutoBackup(msg.days));
+        await r?.done;
+        return autoBackupState();
+      }
       case 'export':
         return userAction(exportAll);
       case 'importPreview':
@@ -226,4 +243,5 @@ chrome.runtime.onStartup.addListener(() =>
 // Bei jedem Start, damit auch eine ältere Installation ohne Neuladen ihren Schlüssel bekommt
 serial(ensureToken);
 serial(scheduleUnload);
+serial(scheduleAutoBackup);
 scheduleReconcile();
