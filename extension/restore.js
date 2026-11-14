@@ -180,12 +180,12 @@ async function keepLater(wsId, later, from = null) {
 let feedTimer = null;
 async function feedLater() {
   clearTimeout(feedTimer);
+  if ((await getPending()) || (await getPendingStash())) return;
+  let changed = await resumeFeed();
   const { backup } = await getBackup();
   const todo = Object.keys(backup).filter((ws) => backup[ws].later?.length);
-  if (!todo.length || (await getPending()) || (await getPendingStash())) return;
   const s = await sess();
   const { stash, mains } = await scan();
-  let changed = false;
   let more = false;
   for (const ws of todo) {
     const { sw, showing } = windowsOf(ws, s, stash, mains);
@@ -195,16 +195,8 @@ async function feedLater() {
       more = true;
       break;
     }
-    const r = await moving(() => recreate(backup[ws].later, win.id, false, true));
-    const { backup: now } = await getBackup();
-    const b = now[ws];
-    if (r.later.length) b.later = r.later;
-    else delete b.later;
-    if (r.failed.length) b.failed = [...(b.failed || []), ...r.failed];
-    await chrome.storage.local.set({ backup: now });
-    await noteStartCopies(ws, r.ids);
+    if (await feedInto(ws, win.id)) more = true;
     changed = true;
-    if (r.later.length) more = true;
   }
   if (more) {
     const { wait } = await restoredLoading();
@@ -213,15 +205,62 @@ async function feedLater() {
   if (!changed) return;
   await updateAllIcons();
   await snapshot();
+  await syncMute(); // moving() übergeht die Stummschaltung neuer Tabs in einer Ablage
 }
 
-// Nach restoreStart sind auch die nachgelegten Tabs Kopien, die dropStartCopies schließt,
-// wenn Chromium die Sitzung doch noch wiederherstellt
-async function noteStartCopies(ws, ids) {
-  const { startCopies, startWs } = await chrome.storage.session.get(['startCopies', 'startWs']);
+// Legt zurückgestellte Tabs von ws im Fenster windowId an. Währenddessen steht in
+// storage.session, welche Tabs schon vorher darin lagen ('pendingFeed'), damit resumeFeed
+// nach einem Ende des Service Workers die schon angelegten erkennt; bis dahin sichert
+// snapshot() nichts. have: die schon angelegten. true, wenn noch Einträge übrig sind.
+async function feedInto(ws, windowId, have = []) {
+  if (!have.length) {
+    const known = (await chrome.tabs.query({ windowId })).map((t) => t.id);
+    await chrome.storage.session.set({ pendingFeed: { ws, windowId, known } });
+  }
+  const list = (await getBackup()).backup[ws]?.later || [];
+  const r = await moving(() => recreate(list, windowId, false, true, have));
+  const { backup } = await getBackup();
+  const b = backup[ws];
+  if (b) {
+    if (r.later.length) b.later = r.later;
+    else delete b.later;
+    if (r.failed.length) b.failed = [...(b.failed || []), ...r.failed];
+    await chrome.storage.local.set({ backup });
+  }
+  await chrome.storage.session.remove('pendingFeed');
+  await noteStartFed(ws, r.ids);
+  return r.later.length > 0;
+}
+
+// Setzt ein unterbrochenes Nachlegen fort: Tabs, die seither im Fenster dazugekommen sind
+// und der Reihe nach zu den zurückgestellten Einträgen passen, sind schon angelegt.
+async function resumeFeed() {
+  const { pendingFeed: f } = await chrome.storage.session.get('pendingFeed');
+  if (!f) return false;
+  const list = (await getBackup()).backup[f.ws]?.later || [];
+  const tabs = await chrome.tabs.query({ windowId: f.windowId }).catch(() => []);
+  if (!list.length || !tabs.length) {
+    await chrome.storage.session.remove('pendingFeed');
+    return false;
+  }
+  const have = [];
+  for (const t of tabs) {
+    if (f.known.includes(t.id) || t.pinned || isStashTab(t)) continue;
+    if (urlOf(t) !== list[have.length]?.url) break;
+    have.push(t);
+  }
+  console.info('[workspaces] setze unterbrochenes Nachlegen fort:', f.ws, have.length);
+  await feedInto(f.ws, f.windowId, have);
+  return true;
+}
+
+// Nach restoreStart merkt sich dropStartCopies die nachgelegten Tabs (startFed): Stellt
+// Chromium die Sitzung doch noch wieder her, sind die darunter, die es auch kannte, Kopien
+async function noteStartFed(ws, ids) {
+  const { startCopies, startWs, startFed = [] } = await chrome.storage.session.get(['startCopies', 'startWs', 'startFed']);
   if (!startCopies || startWs !== ws || !ids.length) return;
   const added = (await chrome.tabs.query({})).filter((t) => ids.includes(t.id)).map((t) => ({ id: t.id, url: urlOf(t) }));
-  await chrome.storage.session.set({ startCopies: [...startCopies, ...added] });
+  await chrome.storage.session.set({ startFed: [...startFed, ...added] });
 }
 
 // Legt die fehlgeschlagenen Tabs eines Workspace erneut an, im Fenster windowId.

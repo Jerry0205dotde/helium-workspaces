@@ -113,6 +113,7 @@ async function snapshot(gone) {
   // Wechsel oder Aufbau einer Ablage noch nicht abgeschlossen
   if (await getPending()) return;
   if (await getPendingStash()) return;
+  if ((await chrome.storage.session.get('pendingFeed')).pendingFeed) return; // feedInto
   const at = changes;
   const cfg = await getConfig();
   const s = await sess();

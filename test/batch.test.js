@@ -175,3 +175,78 @@ test('Fenster eines Workspace bewusst geschlossen, während Tabs zurückgestellt
   assert.deepEqual(open(b), []);
   assert.deepEqual(backupOf(env), []);
 });
+
+test('Service Worker endet mitten im Nachlegen: schon angelegte Tabs kommen nicht doppelt', async () => {
+  const { env } = await startHeld();
+  const { b } = env;
+  // Zwei Plätze frei (zuerst lädt der angeheftete p1): b5 und b6 kommen in einem Zug. Der
+  // Worker endet, als b6 angelegt wird, bevor er sich merken kann, dass beide nicht mehr
+  // zurückgestellt sind.
+  b.during('tabs.create', () => b.worker.kill(), { when: (p) => p.url === url('b6') });
+  b.loadOnly(3);
+  await tick(env);
+  assert.deepEqual(open(b), B.slice(0, 6));
+  b.startWorker(null);
+  await tick(env);
+  await loadOneByOne(env);
+  assert.deepEqual(order(env), B.map(url));
+  check(env, ALL);
+});
+
+test('Absturz während des Nachlegens, dann „Wiederherstellen“: Was Chromium nicht kannte, bleibt (#158)', async () => {
+  const { env } = await startHeld();
+  const { b } = env;
+  b.loadOnly(3);
+  await tick(env);
+  assert.deepEqual(open(b), B.slice(0, 6));
+  b.restart({ restore: 'crash' });
+  b.holdLoads = false;
+  b.startWorker('startup');
+  await tick(env);
+  b.restoreAfterCrash();
+  await b.worker.settle();
+  assert.equal(b.mains().length, 1);
+  assert.deepEqual(order(env), B.map(url));
+  check(env, ALL);
+});
+
+test('Absturz, Aufbau aus der Sicherung und „Wiederherstellen“ mitten im Nachlegen: nichts doppelt, nichts fehlt', async () => {
+  for (const fed of [0, 2]) {
+    const env = await setup(BIG);
+    const { b } = env;
+    await ok(b.worker.request({ type: 'switch', windowId: env.win, wsId: env.ids.B }));
+    b.restart({ restore: 'crash' });
+    b.holdLoads = true;
+    b.startWorker('startup');
+    await tick(env);
+    assert.deepEqual(open(b), B.slice(0, 6));
+    b.loadOnly(fed && fed + 1); // zuerst lädt der angeheftete p1
+    await tick(env);
+    assert.equal(open(b).length, 6 + fed);
+    b.restoreAfterCrash();
+    await tick(env);
+    b.releaseLoads();
+    await b.worker.settle();
+    assert.deepEqual(order(env).sort(), B.map(url).sort(), `nachgelegt: ${fed}`);
+    assert.equal(b.local.data.backup[env.ids.B].later, undefined);
+    check(env, ALL);
+  }
+});
+
+test('Mit „Ablagen stummschalten“ sind auch in die Ablage nachgelegte Tabs gleich stumm', async () => {
+  // Löschen und Rückgängig: B steht nur noch in der Sicherung (ohne Startkopien, deren
+  // Abgleich die Stummschaltung sonst nebenbei nachholt)
+  const env = await setup(BIG);
+  const { b, win } = env;
+  await request(env, { type: 'muteStash', on: true });
+  await request(env, { type: 'delete', wsId: env.ids.B });
+  await request(env, { type: 'undoDelete' });
+  b.holdLoads = true;
+  await request(env, { type: 'switch', windowId: win, wsId: env.ids.B });
+  assert.deepEqual(open(b), B.slice(0, 6));
+  await request(env, { type: 'switch', windowId: win, wsId: env.ids.A });
+  const loud = () => open(b).filter((n) => !b.tabsByUrl(url(n))[0].mutedInfo?.muted);
+  await loadOneByOne(env, () => assert.deepEqual(loud(), []));
+  assert.deepEqual(loud(), []);
+  check(env, ALL);
+});
