@@ -263,6 +263,21 @@ test('↪ verschiebt alle markierten Tabs und sagt das auch', { skip }, async ()
   }
 });
 
+test('Der Tooltip eines Eintrags zeigt den vollen Namen, bei 1 bis 9 mit der Taste dahinter (#162)', { skip }, async () => {
+  const long = 'Bachelorarbeit Kapitel 3 Literaturrecherche und Gliederung';
+  const names = [long, 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+  const env = await setup({ workspaces: Object.fromEntries(names.map((n, i) => [n, [`t${i}`]])) });
+  const page = await browser.open('popup.html', env);
+  try {
+    const title = (n) => page.eval(`document.querySelector('[data-focus="ws:${env.ids[n]}"]').title`);
+    assert.equal(await title(long), `${long}\nTaste 1`);
+    assert.equal(await title('I'), 'I\nTaste 9');
+    assert.equal(await title('J'), 'J');
+  } finally {
+    await page.close();
+  }
+});
+
 popupTest('Kopieren liefert den fertigen Befehl für install.sh samt Schlüssel (#111)', async ({ env, page }) => {
   const { token } = env.b.local.data;
   assert.match(token, /^[0-9a-f]{24}$/);
