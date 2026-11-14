@@ -570,6 +570,23 @@ test('Service Worker endet beim Aufbau der Ablage nach einem gescheiterten Tab: 
   check(env, ALL);
 });
 
+test('Service Worker endet, während eine nicht anlegbare Gruppe der Ablage wieder entfernt wird: Zuordnung bleibt richtig (#149)', async () => {
+  const { env, main } = await onlyBackedUp();
+  const { b, ids } = env;
+  // Die Gruppe aus b1 und b2 scheitert, b1 ist schon wieder entfernt, der Worker endet vor b2
+  b.fail('tabs.group');
+  b.fail('tabs.remove', { hang: true, after: 1 });
+  env.w.send({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: ids.B });
+  await env.w.settle();
+  const w = b.startWorker(null);
+  await w.settle();
+  const failed = b.local.data.backup[ids.B].failed;
+  assert.deepEqual(failed?.map((e) => e.url), [url('b1')], 'gescheiterter Tab fehlt in der Sicherung');
+  check(env, { ...ALL, B: SPEC.workspaces.B.filter((e) => e.url !== 'b1') });
+  await ok(w.request({ type: 'retry', windowId: main, wsId: ids.B }));
+  check(env, ALL);
+});
+
 test('Scheitert der Aufbau der Ablage für einen verschobenen Tab, wird danach wieder gesichert (#149)', async () => {
   const { env, main } = await onlyBackedUp();
   const { b, ids } = env;
