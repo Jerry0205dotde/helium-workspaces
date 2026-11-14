@@ -81,23 +81,47 @@ async function setUnloadAfter(minutes) {
   await scheduleUnload();
 }
 
+// Wann ein Tab zuletzt Ton abgespielt hat, steht in silentSince in storage.session: der
+// Zeitpunkt, an dem audible auf false ging. Ein Videocall, in dem gerade niemand spricht,
+// oder Musik zwischen zwei Titeln ist sonst genau beim Wecker still und würde entladen (#154).
+// Der Zeitpunkt wird beim Ereignis genommen, gespeichert wird nacheinander mit dem Entladen,
+// und nur, solange die Option eingeschaltet ist. Bis dahin steht er in silentPending, damit
+// ein Wecker, der schon läuft, den gerade still gewordenen Tab nicht entlädt.
+const silentPending = {};
+
+function noteSilent(tabId) {
+  const at = Date.now();
+  silentPending[tabId] = at;
+  serial(async () => {
+    if (silentPending[tabId] === at) delete silentPending[tabId];
+    if (!(await getUnloadAfter())) return;
+    const { silentSince = {} } = await chrome.storage.session.get('silentSince');
+    await chrome.storage.session.set({ silentSince: { ...silentSince, [tabId]: at } });
+  });
+}
+
 // Entlädt die Tabs der Ablagen, deren Workspace seit unloadAfter Minuten nicht mehr
 // gezeigt wird. Seit wann, steht in stashedAt (finishSwitch); eine Ablage ohne Eintrag
 // (nach Start oder Neuladen der Erweiterung) zählt ab jetzt. Tabs, deren Ton zu hören
-// ist, bleiben geladen.
+// ist oder in den letzten unloadAfter Minuten zu hören war, bleiben geladen.
 async function unloadStashes() {
   const minutes = await getUnloadAfter();
   if (!minutes || (await getPending())) return;
   const { stash } = await scan();
-  const { stashedAt = {} } = await chrome.storage.session.get('stashedAt');
+  const { stashedAt = {}, silentSince = {} } = await chrome.storage.session.get(['stashedAt', 'silentSince']);
   const now = Date.now();
+  const recent = (at) => now - at < minutes * 60000;
+  // silentPending je Tab neu lesen: Es kann sich während des Entladens noch füllen
+  const heard = (t) => !t.mutedInfo?.muted && (t.audible || recent(silentPending[t.id] ?? silentSince[t.id] ?? -Infinity));
   const next = {};
   for (const [ws, w] of stash) {
     next[ws] = stashedAt[ws] ?? now;
-    if (now - next[ws] < minutes * 60000) continue;
-    for (const t of stashTabsOf(w)) if (!t.audible || t.mutedInfo?.muted) await discard(t);
+    if (recent(next[ws])) continue;
+    for (const t of stashTabsOf(w)) if (!heard(t)) await discard(t);
   }
-  await chrome.storage.session.set({ stashedAt: next });
+  // Ältere Zeitpunkte verschonen niemanden mehr
+  const keep = Object.fromEntries(Object.entries({ ...silentSince, ...silentPending }).filter(([, at]) => recent(at)));
+  await chrome.storage.session.set({ stashedAt: next, silentSince: keep });
 }
 
 // Ein Tab hat durch Entladen eine neue ID bekommen: gemerkte IDs nachziehen. Ein zweiter

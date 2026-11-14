@@ -111,6 +111,7 @@ chrome.tabs.onRemoved.addListener((tabId, info) => {
 });
 chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (info.url || info.pinned !== undefined || info.groupId !== undefined) scheduleSnapshot();
+  if (info.audible === false) noteSilent(tabId);
   if (info.status === 'complete' && (await unloadLaterTake(tabId))) serial(() => unloadRestored(tabId));
   // Chromium setzt Symbol, Titel und Plakette eines Tabs beim Laden einer Seite zurück
   if (info.status === 'complete') {
