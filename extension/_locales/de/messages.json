@@ -557,6 +557,9 @@
   "iconTitleStorageFull": {
     "message": "Speicher der Erweiterung fast voll, Tabs werden bald nicht mehr gesichert"
   },
+  "menuLink": {
+    "message": "Link in Workspace öffnen"
+  },
   "menuMove": {
     "message": "Tab in Workspace verschieben"
   },

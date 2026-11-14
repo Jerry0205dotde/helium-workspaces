@@ -328,6 +328,24 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     await env.settled({ live: true });
   });
 
+  await step('Link in Workspace öffnen: Der Link kommt als Tab in die Ablage von C (#157)', async () => {
+    const { main, shows } = await env.settled({ live: true });
+    // Das Untermenü gibt es für jeden Workspace, nur auf Links
+    for (const id of Object.values(env.ids)) await b.sw('await chrome.contextMenus.update(args[0], {});', `link:${id}`);
+    await b.action('(u, ws, w) => openLinkInWs(u, ws, w)', base + 'link', env.ids.C, main.id);
+    const id = await waitFor(async () => {
+      const st = await env.state();
+      const stash = st.windows.find((w) => w.tabs[0]?.url === STASH + env.ids.C);
+      assert.deepEqual(stash.tabs.slice(1).map((t) => env.name(t.url)), ['c1', 'c2', 'link']);
+      assert.equal(env.name(st.backup[env.ids.C].stash.at(-1).url), 'link', 'Sicherung von C');
+      assert.equal(st.windowWs[main.id], env.ids[shows], 'das Hauptfenster hat gewechselt');
+      return stash.tabs.at(-1).id;
+    });
+    assert.equal((await b.sw('return (await chrome.tabs.get(args[0])).active;', id)), false, 'der Link ist in der Ablage vorne');
+    await b.sw('await chrome.tabs.remove(args[0]);', id);
+    await env.settled({ live: true });
+  });
+
   await step('Automatische Sicherung: Datei im Download-Ordner, die letzten zehn bleiben', async () => {
     const dir = path.join(env.profile, 'Downloads', 'helium-workspaces');
     const st = await b.sw('const r = await userAction(() => setAutoBackup(1)); await r?.done; return autoBackupState();');
