@@ -180,3 +180,47 @@ test('Nach dem Entfernen der Erweiterung bringt die letzte Datei alles in ein ne
   await ok(w.request({ type: 'switch', windowId: win, wsId: ids.A }));
   check(env, ALL);
 });
+
+test('Jetzt sichern nach einem Abbruch sichert sofort, nicht erst nach einer Woche (#160)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  b.downloadMode = 'interrupt';
+  await enable(w, 7);
+  assert.match((await ok(w.request({ type: 'state', windowId: win }))).autoBackupError.message, /FILE_NO_SPACE/);
+  b.downloadMode = 'complete';
+  await w.advance(HOUR);
+  assert.equal(files(b).length, 0);
+  await ok(w.request({ type: 'autoBackupNow' }));
+  assert.equal(files(b).length, 1);
+  assert.equal((await ok(w.request({ type: 'state', windowId: win }))).autoBackupError, null);
+  // Der Abstand zählt ab dieser Sicherung
+  await w.advance(6 * DAY);
+  assert.equal(files(b).length, 1);
+  await w.advance(DAY + HOUR);
+  assert.equal(files(b).length, 2);
+});
+
+test('Jetzt sichern tut nichts, solange die automatische Sicherung aus ist', async () => {
+  const env = await setup(SPEC);
+  const { b, w } = env;
+  await ok(w.request({ type: 'autoBackupNow' }));
+  assert.deepEqual(files(b), []);
+});
+
+test('Hinweis auf die automatische Sicherung: ab zwei Workspaces, solange sie aus ist, bis ✕ (#160)', async () => {
+  const hint = async (env) => (await ok(env.w.request({ type: 'state', windowId: env.win }))).autoHint;
+  assert.equal(await hint(await setup({ workspaces: { A: ['a1'] } })), false);
+
+  const env = await setup(SPEC);
+  assert.equal(await hint(env), true);
+  await enable(env.w, 1);
+  assert.equal(await hint(env), false);
+  await enable(env.w, 0);
+  assert.equal(await hint(env), true);
+  await ok(env.w.request({ type: 'hideAutoHint' }));
+  assert.equal(await hint(env), false);
+  // Auch nach einem Browserneustart
+  env.b.restart();
+  await env.b.startWorker('startup').settle();
+  assert.equal(await hint(env), false);
+});

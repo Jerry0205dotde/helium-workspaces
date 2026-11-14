@@ -676,5 +676,26 @@
   },
   "autoBackupInterrupted": {
     "message": "Download interrupted ($1)"
+  },
+  "autoHint": {
+    "message": "Automatic backup is off. If the extension is removed or the profile breaks, all workspaces are gone."
+  },
+  "autoHintSetup": {
+    "message": "Set up"
+  },
+  "autoHintSetupTitle": {
+    "message": "Opens Export / Import, where automatic backup can be turned on"
+  },
+  "autoHintHide": {
+    "message": "Don’t show this again"
+  },
+  "backupNow": {
+    "message": "Back up now"
+  },
+  "backingUp": {
+    "message": "Backing up …"
+  },
+  "backupNowFailed": {
+    "message": "Could not start the backup."
   }
 }

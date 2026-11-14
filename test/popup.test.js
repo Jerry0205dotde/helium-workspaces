@@ -291,3 +291,47 @@ popupTest('Kopieren liefert den fertigen Befehl für install.sh samt Schlüssel 
   assert.equal(await page.eval('window.__copied'), `./install.sh ${token}`);
   assert.equal(await page.eval(`document.getElementById('key-copy').textContent`), 'Kopiert');
 });
+
+const shownBox = (page, id) => page.eval(`!document.getElementById('${id}').hidden`);
+
+test('Hinweis auf die automatische Sicherung: Einrichten öffnet Exportieren / Importieren, ✕ blendet ihn aus (#160)', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  let page = await browser.open('popup.html', env);
+  try {
+    assert.equal(await shownBox(page, 'auto-hint'), true);
+    assert.match(await page.text('#auto-hint'), /automatische Sicherung ist aus/);
+    await page.click('[data-focus="auto-setup"]');
+    // Wie ⇅ Exportieren / Importieren: sucht die offene Seite oder öffnet sie
+    assert.ok(page.calls.some((c) => c.method === 'tabs.query' && c.args[0].url === 'chrome-extension://test/transfer.html'));
+    assert.equal(await page.closed(), true);
+  } finally {
+    await page.close();
+  }
+  page = await browser.open('popup.html', env);
+  try {
+    await page.click('[data-focus="auto-hide"]');
+    assert.deepEqual(page.sent.map((m) => m.type).filter((t) => t !== 'state' && t !== 'token'), ['hideAutoHint']);
+    assert.equal(await shownBox(page, 'auto-hint'), false);
+    assert.equal(env.b.local.data.autoHintOff, true);
+  } finally {
+    await page.close();
+  }
+});
+
+test('Gescheiterte automatische Sicherung: Jetzt sichern legt die Datei an und nimmt den Hinweis weg (#160)', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  env.b.downloadMode = 'interrupt';
+  await env.w.request({ type: 'autoBackup', days: 7 });
+  env.b.downloadMode = 'complete';
+  const page = await browser.open('popup.html', env);
+  try {
+    assert.equal(await shownBox(page, 'auto-error'), true);
+    assert.equal(await shownBox(page, 'auto-hint'), false);
+    await page.click('[data-focus="backup-now"]');
+    assert.ok(page.sent.some((m) => m.type === 'autoBackupNow'));
+    assert.equal(await shownBox(page, 'auto-error'), false);
+    assert.equal(env.b.filesIn('helium-workspaces').length, 1);
+  } finally {
+    await page.close();
+  }
+});

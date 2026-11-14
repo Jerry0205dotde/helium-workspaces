@@ -676,5 +676,26 @@
   },
   "autoBackupInterrupted": {
     "message": "Download abgebrochen ($1)"
+  },
+  "autoHint": {
+    "message": "Die automatische Sicherung ist aus. Wird die Erweiterung entfernt oder geht das Profil kaputt, sind alle Workspaces weg."
+  },
+  "autoHintSetup": {
+    "message": "Einrichten"
+  },
+  "autoHintSetupTitle": {
+    "message": "Öffnet Exportieren / Importieren, dort lässt sich die automatische Sicherung einschalten"
+  },
+  "autoHintHide": {
+    "message": "Hinweis nicht mehr zeigen"
+  },
+  "backupNow": {
+    "message": "Jetzt sichern"
+  },
+  "backingUp": {
+    "message": "Wird gesichert …"
+  },
+  "backupNowFailed": {
+    "message": "Sicherung konnte nicht gestartet werden."
   }
 }
