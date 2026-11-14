@@ -24,13 +24,28 @@ const GIT_ENV = {
   GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.invalid',
 };
 
+// Echte Programme, die install.sh außer den KDE-Befehlen aufruft
+const SYSTEM_TOOLS = ['dirname', 'sed', 'tr', 'rm', 'git'];
+function which(name) {
+  for (const dir of process.env.PATH.split(path.delimiter)) {
+    const file = path.join(dir, name);
+    try {
+      fs.accessSync(file, fs.constants.X_OK);
+      return file;
+    } catch {}
+  }
+  throw new Error(`${name} nicht gefunden`);
+}
+
 // installed: ob kpackagetool6 -s das Paket findet, dbus: ob qdbus6 KWin erreicht,
 // token: was kreadconfig6 als eingetragenen Schlüssel liefert, setup(dir): vorbereiten,
 // gibt den Pfad des auszuführenden install.sh zurück, profiles: Pfad unter ~/.config → Inhalt
 // der Preferences-Datei dort, input: was auf die Frage nach dem Schlüssel eingetippt wird,
 // env: Sprachvariablen (ohne Angabe Deutsch), check(dir): nach dem Lauf, vor dem Aufräumen,
-// das Ergebnis steht in checked
-function run(args, { installed = true, dbus = true, token = '', setup, check, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' } } = {}) {
+// das Ergebnis steht in checked, qdbus: unter welchem Namen es qdbus gibt (null: gar nicht),
+// missing: Programme, die fehlen. Mit einem der beiden sieht install.sh nur die nachgebildeten
+// Befehle und die echten aus SYSTEM_TOOLS, damit echte KDE-Programme den Test nicht stören.
+function run(args, { installed = true, dbus = true, token = '', setup, check, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' }, qdbus = 'qdbus6', missing = [] } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-install-'));
   const home = path.join(dir, 'home');
   for (const [p, content] of Object.entries(profiles)) {
@@ -42,8 +57,9 @@ function run(args, { installed = true, dbus = true, token = '', setup, check, pr
   fs.mkdirSync(bin);
   const log = path.join(dir, 'log');
   const fake = (name, body) =>
+    missing.includes(name) ||
     fs.writeFileSync(path.join(bin, name), `#!/bin/bash\necho "${name} $*" >> "${log}"\n${body}\n`, { mode: 0o755 });
-  fake('qdbus6', dbus ? 'echo true' : 'echo "Could not connect to D-Bus server" >&2; exit 1');
+  if (qdbus) fake(qdbus, dbus ? 'echo true' : 'echo "Could not connect to D-Bus server" >&2; exit 1');
   // Wie das echte kpackagetool6: -u scheitert, solange das Paket nicht installiert ist
   fake('kpackagetool6', `case "$2" in -s) exit ${installed ? 0 : 3} ;; -u) exit ${installed ? 0 : 1} ;; esac; exit 0`);
   fake('kwriteconfig6', 'exit 0');
@@ -52,10 +68,14 @@ function run(args, { installed = true, dbus = true, token = '', setup, check, pr
   fake('sleep', 'exit 0');
   try {
     const script = setup ? setup(dir) : INSTALL;
-    const env = { ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home };
+    const isolated = qdbus !== 'qdbus6' || missing.length > 0;
+    if (isolated) {
+      for (const tool of SYSTEM_TOOLS) if (!missing.includes(tool)) fs.symlinkSync(which(tool), path.join(bin, tool));
+    }
+    const env = { ...process.env, ...GIT_ENV, PATH: isolated ? bin : `${bin}:${process.env.PATH}`, HOME: home };
     for (const k of ['XDG_CONFIG_HOME', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_MESSAGES']) delete env[k];
     Object.assign(env, lang);
-    const r = spawnSync('bash', [script, ...args], { encoding: 'utf8', input, env });
+    const r = spawnSync(which('bash'), [script, ...args], { encoding: 'utf8', input, env });
     const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean) : [];
     const after = Object.fromEntries(
       Object.keys(profiles).map((p) => [p, fs.readFileSync(path.join(home, '.config', p, 'Preferences'), 'utf8')]),
@@ -183,6 +203,54 @@ test('--update nimmt keinen Schlüssel und keine Browserliste dazu', () => {
     const r = run(args, { token: TOKEN });
     assert.notEqual(r.status, 0, args.join(' '));
     assert.match(r.stderr, /--update nimmt keine weiteren Angaben/);
+    assert.deepEqual(r.calls, []);
+  }
+});
+
+test('Fehlt ein Programm, bricht install.sh ab, bevor etwas geändert ist (#123)', () => {
+  for (const [args, opts, listed] of [
+    [[TOKEN], { qdbus: null }, ['qdbus6 (qdbus-qt6, qdbus)']],
+    [[TOKEN], { missing: ['kwriteconfig6', 'kpackagetool6'] }, ['kpackagetool6', 'kwriteconfig6']],
+    [['--uninstall'], { qdbus: null, missing: ['kreadconfig6'] }, ['qdbus6 (qdbus-qt6, qdbus)', 'kreadconfig6']],
+    [['--update'], { token: TOKEN, missing: ['git'] }, ['git']],
+  ]) {
+    const r = run(args, opts);
+    assert.equal(r.status, 1, args.join(' '));
+    assert.equal(
+      r.stderr,
+      `Es fehlen Programme, die install.sh braucht:\n${listed.map((p) => `  ${p}\n`).join('')}Siehe Voraussetzungen in der README.\n`,
+    );
+    assert.deepEqual(r.calls, [], args.join(' '));
+  }
+});
+
+test('Ohne git läuft install.sh, solange es nicht mit --update aufgerufen wird', () => {
+  const r = run([TOKEN], { missing: ['git'] });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, DONE_DE);
+});
+
+test('Ohne qdbus6 nimmt install.sh qdbus-qt6 bzw. qdbus (#123)', () => {
+  for (const qdbus of ['qdbus-qt6', 'qdbus']) {
+    const r = run([TOKEN], { qdbus });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(r.calls.filter((c) => c.startsWith('qdbus')), ENABLE_AND_RELOAD.slice(1).map((c) => c.replace('qdbus6', qdbus)));
+    assert.equal(r.stdout, DONE_DE);
+
+    const removed = uninstall({ qdbus });
+    assert.equal(removed.status, 0, removed.stderr);
+    assert.ok(removed.calls.length > 0 && !removed.calls.some((c) => c.startsWith('qdbus6')), removed.calls.join('\n'));
+  }
+});
+
+test('--help zeigt den Kopfkommentar und ändert nichts, auch ohne KDE-Programme (#123)', () => {
+  for (const flag of ['--help', '-h']) {
+    const r = run([TOKEN, flag], { qdbus: null, missing: ['kpackagetool6', 'kreadconfig6', 'kwriteconfig6', 'git'] });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^Installiert bzw\. aktualisiert das KWin-Skript/);
+    assert.match(r.stdout, /^Aufruf: \.\/install\.sh \[--browsers Liste\] \[Schlüssel\]\./m);
+    assert.match(r.stdout, /\.\/install\.sh --help zeigt diesen Text\.\n$/);
+    assert.doesNotMatch(r.stdout, /^#|set -euo/m);
     assert.deepEqual(r.calls, []);
   }
 });

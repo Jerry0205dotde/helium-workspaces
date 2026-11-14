@@ -34,7 +34,7 @@ Three parts work together:
 
 - [Helium](https://github.com/imputnet/helium-linux) on Linux. Tested with Helium 0.21.
 - KDE Plasma 6 with KWin 6, on Wayland or X11. Other desktops do not hide the stash windows.
-- For `install.sh`: `bash`, `tr` and `git` as well as `kpackagetool6`, `kreadconfig6`, `kwriteconfig6` and `qdbus6`. On Arch the packages are called `coreutils`, `kpackage`, `kconfig` and `qt6-tools`.
+- For `install.sh`: `bash`, `sed`, `tr` and `git` as well as `kpackagetool6`, `kreadconfig6`, `kwriteconfig6` and `qdbus6`. On Arch the packages are called `coreutils`, `kpackage`, `kconfig` and `qt6-tools`. Instead of `qdbus6`, `install.sh` also accepts `qdbus-qt6` (as on Fedora) or `qdbus`. If anything is missing, `install.sh` lists the programs and stops before it changes anything.
 - A running Plasma session. `install.sh` loads the script straight into KWin over the D-Bus of that session. The safest way is to run it in a terminal inside the session.
 - In Helium, under *Settings → On startup*, the option **"Continue where you left off"**. With any other startup setting Helium does not restore the stash windows on startup. The extension then rebuilds the workspaces from its backup, but the tabs reload and lose their history (see [What is preserved](#what-is-preserved)). At the end, `install.sh` lists the Helium, Google Chrome and Chromium profiles that lack this option and changes nothing there.
 
@@ -85,7 +85,7 @@ Alternatively in System Settings under **Window Management → Window Rules**: c
 
    Paste it into a terminal in the repository folder and run it. It sets up the KWin script.
 
-   The last line of output is `Done, KWin script <version> installed.`. The KWin script is then installed, enabled and loaded, and it knows the key. `install.sh` answers in German if the session language is German (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES` or `LANG`), otherwise in English.
+   The last line of output is `Done, KWin script <version> installed.`. The KWin script is then installed, enabled and loaded, and it knows the key. `install.sh` answers in German if the session language is German (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES` or `LANG`), otherwise in English. `./install.sh --help` shows all options (in German).
 6. To check, create a second workspace and switch back and forth. No additional browser window may appear in the taskbar.
 
 Do not move the folder after loading it. Helium loads the extension from exactly this folder on every start. Leave developer mode turned on. Without it Helium disables unpacked extensions.
@@ -189,7 +189,7 @@ A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its fir
 
 ### `install.sh` aborts
 
-- **`command not found`** or **`Kommando nicht gefunden`**: a program from the [requirements](#requirements) is missing.
+- **`Programs that install.sh needs are missing`**: install the programs listed below it from the [requirements](#requirements). `install.sh` has not changed anything yet.
 - **`Invalid key`**: no key or an incomplete key was entered. In the popup, click **Copy** under **Key for install.sh** and run the copied command. The key consists of 24 characters `0`–`9` and `a`–`f`.
 - **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** or **`KWin script was not loaded`**: `install.sh` cannot reach KWin, for example over SSH or in a text console. The script is then already installed but not loaded. Run it again in a terminal inside the Plasma session.
 
@@ -230,7 +230,7 @@ This is a private hobby project. Expect bugs.
 node --test test/*.test.js
 ```
 
-This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. `install.sh` runs against stand-ins for the KDE commands: installing including the hint about the startup setting, `--uninstall`, and `--update`, which pulls with real `git` from a test repository. The messages of `install.sh` are checked in German and English. The same checks run in CI on every pull request.
+This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. `install.sh` runs against stand-ins for the KDE commands: installing including the hint about the startup setting, the check for missing programs, `--help`, `--uninstall`, and `--update`, which pulls with real `git` from a test repository. The messages of `install.sh` are checked in German and English. The same checks run in CI on every pull request.
 
 If anything in `extension/` changes, the version in [`manifest.json`](./extension/manifest.json) must be higher than on `main`, otherwise `static.test.js` fails. The version is shown in the bottom right of the popup, so after an update you can see whether the new code is running. The KWin script carries the same version in [`metadata.json`](./kwin/metadata.json), `static.test.js` checks that too, and `install.sh` names it at the end. The comparison is against `origin/main`; `VERSION_BASE` selects a different ref. If the ref is missing, the check is skipped.
 
