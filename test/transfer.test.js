@@ -147,6 +147,8 @@ test('Die Vorschau nennt die Einstellungen, die sich ändern, der Import überni
     assert.match(await p.text('#import-result'), /^Import abgeschlossen: 1 Workspace angelegt, 1 Tab übernommen, 2 Einstellungen übernommen\.$/);
     const { muteStash, unloadAfter, autoBackup } = env.b.local.data;
     assert.deepEqual({ muteStash, unloadAfter, autoBackup }, settings);
+    // Die Auswahl oben zeigt den übernommenen Wert
+    assert.equal(await p.eval('document.getElementById("auto").value'), '1');
 
     // Dieselbe Datei noch einmal: alles gilt schon
     const again = path.join(dir, `settings-again-${Date.now()}.json`);

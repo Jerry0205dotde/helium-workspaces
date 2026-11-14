@@ -240,6 +240,8 @@ $('import').addEventListener('click', (e) => {
       resetImport();
       $('file').value = '';
       $('import-result').textContent = msg;
+      // Die Datei kann „Automatisch sichern“ geändert haben, die Auswahl oben zeigt sonst den alten Wert
+      if (r.settings) await send({ type: 'autoBackupState' }).then(renderAuto, () => {});
     } catch (err) {
       resetConfirm();
       showError(tr('importFailed'), err);
