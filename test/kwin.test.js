@@ -74,6 +74,21 @@ test('Ohne Schlüssel in kwinrc wird nichts versteckt', () => {
   assert.ok(!w.skipTaskbar && !w.minimized);
 });
 
+test('Ohne Schlüssel holt das Skript alle versteckten Ablagen zurück (install.sh --uninstall)', () => {
+  const helium = stash('helium');
+  const chrome = stash('google-chrome');
+  run([helium, chrome]);
+  assert.ok(isHidden(helium) && isHidden(chrome));
+  // install.sh --uninstall löscht den Schlüssel und lädt das Skript neu, die Erweiterung markiert weiter
+  const k = run([helium, chrome], '');
+  for (const w of [helium, chrome]) assert.ok(!w.skipTaskbar && !w.skipSwitcher && !w.skipPager, `${w.resourceClass} bleibt versteckt`);
+  // Auch eine Ablage, die erst danach markiert wird, bleibt sichtbar
+  const later = stash('chromium');
+  k.add(later);
+  later.captionChanged.emit();
+  assert.ok(!later.skipTaskbar && !later.minimized);
+});
+
 test('Verliert eine Chrome-Ablage die Markierung, kommt sie zurück in die Taskleiste', () => {
   const w = stash('google-chrome');
   run([w]);

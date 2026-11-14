@@ -205,21 +205,20 @@ Sonst bei „Workspaces“ auf **Fehler** oder auf **Service Worker** klicken. M
 
 ## Deinstallieren
 
-Ohne die Erweiterung verlieren die Ablage-Fenster ihre Markierung, ihre Tabs bleiben aber in den Fenstern. Nur das laufende KWin-Skript holt diese Fenster zurück in die Taskleiste. Damit keine Tabs unsichtbar weiterlaufen, die Reihenfolge einhalten:
+Ohne die Erweiterung verlieren die Ablage-Fenster ihre Markierung, ihre Tabs bleiben aber in den Fenstern. Damit keine Tabs unsichtbar weiterlaufen:
 
 1. **Sichern.** In der Workspace-Liste **Exportieren / Importieren** öffnen und den Export speichern.
 2. **Alle Workspaces einmal anzeigen.** Einmal durch alle Workspaces wechseln, damit jeder als Fenster existiert. Workspaces, die nur in der Sicherung stehen (zum Beispiel nach einem Start mit neuer Tab-Seite), werden dabei angelegt. Hinweise „Tabs nicht wiederhergestellt“ mit **Erneut versuchen** erledigen.
-3. **Ablagen sichtbar machen.** In `chrome://extensions` die Erweiterung mit dem Schalter **deaktivieren**, noch nicht entfernen. Das KWin-Skript bringt die Ablage-Fenster daraufhin zurück in Taskleiste und Alt+Tab. Sie bleiben minimiert, bis man sie anklickt. Jedes Fenster enthält die Tabs eines Workspace. Die Tabs nach Wunsch zusammenführen oder schließen. Übrig gebliebene Tabs mit der Adresse `chrome-extension://…/stash.html#…` sind leer und können zu.
-4. **KWin-Skript entfernen.** Erst jetzt, denn ohne laufendes Skript tauchen versteckte Fenster nicht wieder auf:
+3. **KWin-Skript entfernen.**
 
    ```bash
    ./install.sh --uninstall
    ```
 
-   Das entlädt das Skript, entfernt es und löscht seine Einträge aus `kwinrc`. Wie beim Installieren in einem Terminal in der Plasma-Sitzung ausführen. Erreicht es KWin nicht, bricht es ab, ohne etwas zu entfernen.
+   Das holt die Ablage-Fenster zurück in Taskleiste und Alt+Tab, entlädt dann das Skript, entfernt es und löscht seine Einträge aus `kwinrc`. Wie beim Installieren in einem Terminal in der Plasma-Sitzung ausführen. Erreicht es KWin nicht, bricht es ab, ohne etwas zu entfernen.
+4. **Erweiterung entfernen.** In `chrome://extensions` bei „Workspaces“ auf **Entfernen** klicken. Das löscht die Workspaces und die Sicherung aus dem Profil. Danach kann der Repository-Ordner gelöscht werden.
 
-   Wurde das Skript zu früh entfernt, Helium beenden und neu starten. Danach sind die Fenster wieder normal sichtbar.
-5. **Erweiterung entfernen.** In `chrome://extensions` bei „Workspaces“ auf **Entfernen** klicken. Das löscht die Workspaces und die Sicherung aus dem Profil. Danach kann der Repository-Ordner gelöscht werden.
+Die Ablage-Fenster bleiben minimiert, bis man sie anklickt. Jedes enthält die Tabs eines Workspace. Die Tabs nach Wunsch zusammenführen oder schließen. Übrig gebliebene Tabs mit der Adresse `chrome-extension://…/stash.html#…` sind leer und können zu. Bleibt doch ein Fenster unsichtbar, Helium beenden und neu starten.
 
 ## Einige Hinweise
 
