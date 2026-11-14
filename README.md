@@ -112,7 +112,7 @@ Once, when updating from a version that kept the key in `extension/token.js`: af
 
 ### The key
 
-On its first start the extension generates a random key and keeps it in its storage in the Helium profile. Websites cannot read it there. The popup shows it under **Key for install.sh**, and `install.sh` writes it to `kwinrc`. That way every device has its own key. If the key in `kwinrc` does not match the one in the popup, the stash windows stay visible.
+On its first start the extension generates a random key and keeps it in its storage in the Helium profile. Websites cannot read it there. It does appear in the title of the stash tabs, though, and any other installed extension with the `tabs` permission can read that title. So the key protects against websites, not against other extensions. The popup shows it under **Key for install.sh**, and `install.sh` writes it to `kwinrc`. That way every device has its own key. If the key in `kwinrc` does not match the one in the popup, the stash windows stay visible.
 
 To bring workspaces to another device, use the export (see below). It does not contain the key.
 

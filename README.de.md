@@ -112,7 +112,7 @@ Einmalig beim Update von einer Version, in der der Schlüssel noch in `extension
 
 ### Der Schlüssel
 
-Die Erweiterung erzeugt beim ersten Start einen zufälligen Schlüssel und speichert ihn in ihrem Speicher im Helium-Profil. Webseiten können ihn dort nicht lesen. Das Popup zeigt ihn unter **Schlüssel für install.sh**, und `install.sh` trägt ihn in `kwinrc` ein. Jedes Gerät hat so seinen eigenen Schlüssel. Passt der Schlüssel in `kwinrc` nicht zu dem im Popup, bleiben die Ablage-Fenster sichtbar.
+Die Erweiterung erzeugt beim ersten Start einen zufälligen Schlüssel und speichert ihn in ihrem Speicher im Helium-Profil. Webseiten können ihn dort nicht lesen. Er steht aber im Titel der Ablage-Tabs, und den kann jede andere installierte Erweiterung mit der Berechtigung `tabs` lesen. Der Schlüssel schützt also vor Webseiten, nicht vor anderen Erweiterungen. Das Popup zeigt ihn unter **Schlüssel für install.sh**, und `install.sh` trägt ihn in `kwinrc` ein. Jedes Gerät hat so seinen eigenen Schlüssel. Passt der Schlüssel in `kwinrc` nicht zu dem im Popup, bleiben die Ablage-Fenster sichtbar.
 
 Workspaces auf ein anderes Gerät bringt der Export (siehe unten). Er enthält den Schlüssel nicht.
 
