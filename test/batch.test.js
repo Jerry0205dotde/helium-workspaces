@@ -319,3 +319,33 @@ test('Absturz während des Nachlegens und „Wiederherstellen“: getrennte Grup
   assert.notEqual(gid('b4'), gid('b10'), 'getrennte Gruppen zusammengelegt');
   assert.ok(gid('b4') >= 0 && gid('b10') >= 0);
 });
+
+test('Absturz während des Nachlegens und „Wiederherstellen“: dieselbe Adresse in zwei Gruppen führt nicht in die falsche', async () => {
+  // b5 hat dieselbe Adresse wie b2, liegt aber in der anderen Gruppe
+  const names = B.map((n) => (n === 'b5' ? 'b2' : n));
+  const color = (i) => (i >= 1 && i < 3 ? 'blue' : i >= 3 && i < 9 ? 'red' : null);
+  const spec = {
+    pinned: ['p1'],
+    workspaces: { A: ['a1', 'a2'], B: names.map((n, i) => (color(i) ? { url: n, group: color(i), color: color(i) } : n)) },
+  };
+  const env = await setup(spec);
+  const { b } = env;
+  b.restart({ restore: 'none' });
+  b.holdLoads = true;
+  b.startWorker('startup');
+  await tick(env);
+  await request(env, { type: 'switch', windowId: b.mains()[0].id, wsId: env.ids.B });
+  b.loadOnly(3);
+  await tick(env);
+  b.restart({ restore: 'crash' });
+  b.holdLoads = false;
+  b.startWorker('startup');
+  await tick(env);
+  b.restoreAfterCrash();
+  await b.worker.settle();
+  const tabs = b.mains()[0].tabs.filter((t) => !t.pinned);
+  assert.deepEqual(tabs.map((t) => t.url), names.map(url));
+  const groupColor = (t) => (t.groupId >= 0 ? b.groups.get(t.groupId).color : null);
+  assert.deepEqual(tabs.map(groupColor), names.map((_, i) => color(i)));
+  assert.equal(new Set(tabs.filter((t, i) => color(i) === 'red').map((t) => t.groupId)).size, 1, 'rote Gruppe zerteilt');
+});

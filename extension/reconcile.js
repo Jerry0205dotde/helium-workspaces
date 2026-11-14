@@ -373,15 +373,27 @@ async function dropStartCopies(s, stash) {
   });
   await moving(() => chrome.tabs.remove([...live, ...fed].map((c) => c.id)));
   // Die übrigen nachgelegten Tabs kannte Chromium nicht: Sie gehören hinter seine Tabs, und
-  // lagen sie mit Kopien in einer Gruppe, in die Gruppe, in der Chromium diese wiederhergestellt hat
+  // lagen sie mit Kopien in einer Gruppe, in die Gruppe mit gleichem Titel und gleicher Farbe,
+  // in der Chromium die meisten dieser Kopien wiederhergestellt hat. Ist das nicht eindeutig,
+  // bleibt ihre Gruppe für sich.
   const kept = (await chrome.tabs.query({})).filter((t) => startFed.some((c) => c.id === t.id && !fed.includes(c)));
   if (kept.length) {
     await moving(async () => {
       await moveOrdered(kept, kept[0].windowId);
+      const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
       for (const gid of new Set(kept.map((t) => t.groupId).filter((g) => g >= 0))) {
-        const copies = live.map((c) => tabs.find((t) => t.id === c.id)).filter((t) => t.groupId === gid);
-        const theirs = burst.find((t) => t.groupId >= 0 && copies.some((c) => key(c) === key(t)));
-        if (theirs) await groupEntry(kept.filter((t) => t.groupId === gid).map((t) => t.id), theirs.windowId, null, theirs.groupId);
+        const g = groups.get(gid);
+        const like = (t) => groups.get(t.groupId)?.title === g?.title && groups.get(t.groupId)?.color === g?.color;
+        const votes = new Map();
+        const pool = burst.filter((t) => t.groupId >= 0 && like(t));
+        for (const c of live.map((x) => tabs.find((t) => t.id === x.id)).filter((t) => t.groupId === gid)) {
+          const i = pool.findIndex((t) => key(t) === key(c));
+          if (i < 0) continue;
+          const [t] = pool.splice(i, 1);
+          votes.set(t.groupId, (votes.get(t.groupId) || 0) + 1);
+        }
+        const [best, next] = [...votes].sort((a, b) => b[1] - a[1]);
+        if (best && (!next || next[1] < best[1])) await groupEntry(kept.filter((t) => t.groupId === gid).map((t) => t.id), g.windowId, null, best[0]);
       }
     });
   }
