@@ -87,7 +87,10 @@ async function resumeSwitch() {
   const p = await getPending();
   if (!p) return resumed;
   console.info('[workspaces] setze unterbrochenen Wechsel fort:', p.from, '→', p.to);
-  console.info('[workspaces] Ergebnis:', await finishSwitch());
+  const r = await finishSwitch();
+  console.info('[workspaces] Ergebnis:', r);
+  // Die Tabs des Ziels tragen sonst das Symbol des alten Workspace
+  if (r === 'forward') await updateIcons(p.windowId);
   return true;
 }
 

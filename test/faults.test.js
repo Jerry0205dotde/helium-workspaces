@@ -63,6 +63,22 @@ test('Ein neuer Wechsel vor dem Abgleich setzt den unterbrochenen erst fort', as
   check(env, ALL);
 });
 
+test('Derselbe Wechsel erneut vor dem Abgleich: die Tabs zeigen das Symbol des Ziels', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const stashA = stashOf(env, 'A').id;
+  b.fail('tabGroups.move', { when: (_, o) => o.windowId === stashA });
+  const first = w.send({ type: 'switch', windowId: win, wsId: ids.B });
+  await w.advance(10);
+  assert.equal((await first).ok, false);
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await w.settle();
+  assert.equal(shows(env, win), 'B');
+  check(env, ALL);
+  const title = (id) => b.calls.filter((c) => c.name === 'action.setTitle' && c.args[0].tabId === id).at(-1)?.args[0].title;
+  for (const t of await b.chrome.tabs.query({ windowId: win })) assert.equal(title(t.id), 'Workspace: B');
+});
+
 test('Fehler beim Holen der Ziel-Tabs nach der ersten Gruppe: Wechsel wird zu Ende geführt', async () => {
   const env = await setup(SPEC);
   const { b, w, win, ids } = env;
