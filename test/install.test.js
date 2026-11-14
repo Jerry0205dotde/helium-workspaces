@@ -13,6 +13,10 @@ const { spawnSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 const INSTALL = path.join(ROOT, 'install.sh');
 const TOKEN = '0123456789abcdef01234567';
+// Die letzte Zeile einer Installation nennt die Version des KWin-Skripts (#117)
+const KWIN_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'kwin', 'metadata.json'), 'utf8')).KPlugin.Version;
+const DONE_DE = `Fertig, KWin-Skript ${KWIN_VERSION} installiert.\n`;
+const DONE_EN = `Done, KWin script ${KWIN_VERSION} installed.\n`;
 // Ohne Einstellungen des Nutzers, damit Signieren o. Ä. die Commits im Test nicht stört
 const GIT_ENV = {
   GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
@@ -67,21 +71,26 @@ function git(cwd, ...args) {
 }
 
 // Upstream-Repo mit install.sh, kwin/ und dem Manifest, davon ein Klon als Installation.
-// Danach bekommt upstream einen neuen Stand: höhere Version und ein install.sh, das sich
-// am Ende zu erkennen gibt. Liefert das install.sh des Klons.
+// Danach bekommt upstream einen neuen Stand: höhere Version in Manifest und KWin-Metadaten
+// und ein install.sh, das sich am Ende zu erkennen gibt. Liefert das install.sh des Klons.
 function repos(dir, { diverge = false } = {}) {
   const up = path.join(dir, 'up');
   fs.mkdirSync(path.join(up, 'extension'), { recursive: true });
   fs.copyFileSync(INSTALL, path.join(up, 'install.sh'));
   fs.cpSync(path.join(ROOT, 'kwin'), path.join(up, 'kwin'), { recursive: true });
   const manifest = path.join(up, 'extension', 'manifest.json');
-  fs.writeFileSync(manifest, '{\n  "manifest_version": 3,\n  "version": "1.0.0"\n}\n');
+  const metadata = path.join(up, 'kwin', 'metadata.json');
+  const setVersion = (v) => {
+    fs.writeFileSync(manifest, `{\n  "manifest_version": 3,\n  "version": "${v}"\n}\n`);
+    fs.writeFileSync(metadata, fs.readFileSync(metadata, 'utf8').replace(/"Version": "[^"]*"/, `"Version": "${v}"`));
+  };
+  setVersion('1.0.0');
   git(up, 'init', '-q', '-b', 'main');
   git(up, 'add', '-A');
   git(up, 'commit', '-q', '-m', 'alt');
   const local = path.join(dir, 'local');
   git(dir, 'clone', '-q', up, local);
-  fs.writeFileSync(manifest, '{\n  "manifest_version": 3,\n  "version": "1.1.0"\n}\n');
+  setVersion('1.1.0');
   fs.appendFileSync(path.join(up, 'install.sh'), 'echo "Neue Fassung von install.sh"\n');
   git(up, 'commit', '-q', '-am', 'neu');
   if (diverge) {
@@ -131,7 +140,8 @@ test('--update holt den neuen Stand und richtet ihn mit dem eingetragenen Schlü
   });
   assert.equal(r.status, 0, r.stderr);
   // Die geholte Fassung von install.sh lief, nicht die alte
-  assert.match(r.stdout, /Fertig\.\nNeue Fassung von install\.sh\n/);
+  // Sie nennt die Version des geholten KWin-Skripts
+  assert.match(r.stdout, /Fertig, KWin-Skript 1\.1\.0 installiert\.\nNeue Fassung von install\.sh\n/);
   assert.match(r.stdout, /chrome:\/\/extensions.*Neu laden.*Version 1\.1\.0\./);
   assert.ok(r.calls.includes(`kpackagetool6 --type=KWin/Script -u ${local}/kwin`), r.calls.join('\n'));
   assert.ok(r.calls.includes(`kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token ${TOKEN}`));
@@ -189,7 +199,7 @@ test('Installation weist auf Profile hin, die nicht dort weitermachen, wo man au
     '  Google Chrome: ~/.config/google-chrome/Default',
     '  Chromium: ~/.config/chromium/Profile 2',
   ]);
-  assert.match(r.stdout, /Fertig\.\n$/);
+  assert.ok(r.stdout.endsWith(DONE_DE), r.stdout);
   // Nur ein Hinweis, die Einstellungen bleiben unverändert
   assert.deepEqual(r.profiles, profiles);
 });
@@ -203,7 +213,7 @@ test('Installation gibt keinen Hinweis, wenn alle Profile dort weitermachen', ()
 test('Installation gibt keinen Hinweis ohne Browserprofile', () => {
   const r = run([TOKEN]);
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.stdout, 'Fertig.\n');
+  assert.equal(r.stdout, DONE_DE);
 });
 
 // Was install.sh als Schlüssel in kwinrc schreibt
@@ -213,7 +223,7 @@ test('Der kopierte Befehl aus dem Popup trägt den Schlüssel ein (#111)', () =>
   const r = run([TOKEN]);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(written(r), TOKEN);
-  assert.match(r.stdout, /Fertig\./);
+  assert.equal(r.stdout, DONE_DE);
 });
 
 test('Der Befehl aus dem Popup an der Frage eingefügt ergibt nur den Schlüssel (#111)', () => {
@@ -255,7 +265,7 @@ for (const [env, lang] of [
 
     const installed = run([TOKEN], { env });
     assert.equal(installed.status, 0, installed.stderr);
-    assert.equal(installed.stdout, de ? 'Fertig.\n' : 'Done.\n');
+    assert.equal(installed.stdout, de ? DONE_DE : DONE_EN);
 
     const badKey = run(['abc'], { env });
     assert.notEqual(badKey.status, 0);
@@ -272,7 +282,7 @@ for (const [env, lang] of [
 test('--update meldet sich auf Englisch, auch in der geholten Fassung von install.sh', () => {
   const r = run(['--update'], { token: TOKEN, env: { LANG: 'en_US.UTF-8' }, setup: (dir) => repos(dir) });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /Done\.\n/);
+  assert.match(r.stdout, /Done, KWin script 1\.1\.0 installed\.\n/);
   assert.match(r.stdout, /Now click Reload on "Workspaces" in chrome:\/\/extensions\. The popup then shows version 1\.1\.0 in the bottom right\./);
 });
 
@@ -286,6 +296,6 @@ test('Hinweis auf Profile auf Englisch', () => {
       'The browser then does not restore the stash windows on startup, and their tabs reload\n' +
       'and lose their history. If you use the extension in one of these profiles, choose that\n' +
       'option there under Settings → On startup.\n' +
-      'Done.\n',
+      DONE_EN,
   );
 });

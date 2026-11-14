@@ -108,6 +108,10 @@ test('KWin-Metadaten sind gültig und passen zu install.sh', () => {
   assert.match(id, /^[a-z0-9-]+$/);
   for (const k of ['Name', 'Description', 'License', 'Version']) assert.match(String(meta.KPlugin[k] || ''), /\S/, `KPlugin.${k} fehlt`);
   assert.ok(exists(path.join(KWIN, 'contents'), meta['X-Plasma-MainScript']), 'Hauptskript fehlt');
+  // Dieselbe Version wie die Erweiterung, install.sh nennt sie am Ende. So sieht man auf einem Gerät,
+  // ob das KWin-Skript zum Stand der Erweiterung passt (#117)
+  const version = readJson(path.join(EXT, 'manifest.json')).version;
+  assert.equal(meta.KPlugin.Version, version, `KPlugin.Version in kwin/metadata.json muss ${version} sein wie in extension/manifest.json`);
   const sh = fs.readFileSync(path.join(ROOT, 'install.sh'), 'utf8');
   for (const s of [`Script-${id}`, `${id}Enabled`, `unloadScript ${id}`, `isScriptLoaded ${id}`]) {
     assert.ok(sh.includes(s), `install.sh nutzt nicht die Id ${id} (${s})`);
