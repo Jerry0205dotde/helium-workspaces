@@ -203,6 +203,18 @@
   "muteFailed": {
     "message": "Could not mute the sound."
   },
+  "unmuteTitle": {
+    "message": "Unmute"
+  },
+  "unmuteLabel": {
+    "message": "Unmute “$1”"
+  },
+  "unmuting": {
+    "message": "Unmuting …"
+  },
+  "unmuteFailed": {
+    "message": "Could not unmute the sound."
+  },
   "moveTabTitle": {
     "message": "Move the current tab here"
   },

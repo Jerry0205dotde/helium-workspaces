@@ -137,6 +137,7 @@ async function stateFor(windowId) {
   const s = await sess();
   const { stash, mains } = await scan();
   const { backup } = await getBackup();
+  const { muteStash, deleted } = await chrome.storage.local.get(['muteStash', 'deleted']);
   const list = cfg.workspaces.map((ws) => {
     const { sw, showing } = windowsOf(ws.id, s, stash, mains);
     let count;
@@ -147,10 +148,10 @@ async function stateFor(windowId) {
     }
     const failed = backup[ws.id]?.failed?.length || 0;
     const audible = audibleOf(ws.id, s, stash, mains).length;
-    return { ...ws, count, failed, audible, elsewhere: showing.some((w) => w.id !== windowId) };
+    const silenced = silencedOf(ws.id, s, stash, mains, !!muteStash).length;
+    return { ...ws, count, failed, audible, silenced, elsewhere: showing.some((w) => w.id !== windowId) };
   });
   const { backupError } = await chrome.storage.session.get('backupError');
-  const { muteStash, deleted } = await chrome.storage.local.get(['muteStash', 'deleted']);
   return {
     workspaces: list,
     // Zuletzt gelöscht, für „Rückgängig“
@@ -195,6 +196,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return userAction(() => dismissFailed(msg.wsId));
       case 'mute':
         return userAction(() => muteWs(msg.wsId));
+      case 'unmute':
+        return userAction(() => unmuteWs(msg.wsId));
       case 'muteStash':
         return userAction(() => chrome.storage.local.set({ muteStash: !!msg.on }));
       case 'unloadAfter':

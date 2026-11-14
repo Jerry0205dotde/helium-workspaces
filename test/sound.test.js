@@ -179,3 +179,51 @@ test('Ein neuer Tab in einer Ablage ist gleich stumm, nicht erst bei der nächst
   assert.equal(muted(env, 'b4'), false);
   assert.equal(muted(env, 'b3'), false);
 });
+
+test('🔇 im Popup gibt stummgeschalteten Tabs ihren Ton zurück (#127)', async () => {
+  const env = await setup(SPEC);
+  play(env, 'a2', 'b1', 'b2', 'p1');
+  const sound = async () => Object.fromEntries((await state(env)).workspaces.map((x) => [x.name, [x.audible, x.silenced]]));
+  assert.deepEqual(await sound(), { A: [1, 0], B: [2, 0], C: [0, 0] });
+
+  // Stumm über 🔊, ein Tab dazu von Hand: 🔇 zählt beide, der angeheftete gehört zu keinem
+  await ok(env.w.request({ type: 'mute', wsId: env.ids.B }));
+  await env.b.chrome.tabs.update(where(env, 'p1').tab.id, { muted: true });
+  assert.deepEqual(await sound(), { A: [1, 0], B: [0, 2], C: [0, 0] });
+
+  await ok(env.w.request({ type: 'unmute', wsId: env.ids.B }));
+  assert.equal(muted(env, 'b1'), false);
+  assert.equal(muted(env, 'b2'), false);
+  assert.equal(muted(env, 'p1'), true);
+  assert.deepEqual(await sound(), { A: [1, 0], B: [2, 0], C: [0, 0] });
+
+  // Im aktuellen Workspace ebenso, ein stummer Tab ohne Ton zählt nicht
+  await ok(env.w.request({ type: 'mute', wsId: env.ids.A }));
+  await env.b.chrome.tabs.update(where(env, 'a1').tab.id, { muted: true });
+  assert.deepEqual(await sound(), { A: [0, 1], B: [2, 0], C: [0, 0] });
+  await ok(env.w.request({ type: 'unmute', wsId: env.ids.A }));
+  assert.equal(muted(env, 'a2'), false);
+  assert.equal(muted(env, 'a1'), true);
+  check(env, ALL);
+});
+
+test('Mit „Ablagen stummschalten“ zählt die Ablage nicht für 🔇, das Hauptfenster schon (#127)', async () => {
+  const env = await setup(SPEC);
+  play(env, 'a2', 'b1');
+  await ok(env.w.request({ type: 'mute', wsId: env.ids.A }));
+  await option(env, true);
+  const silenced = async () => Object.fromEntries((await state(env)).workspaces.map((x) => [x.name, x.silenced]));
+  // b1 hält die Option stumm, ein Klick würde nichts nützen
+  assert.equal(muted(env, 'b1'), true);
+  assert.deepEqual(await silenced(), { A: 1, B: 0, C: 0 });
+  await ok(env.w.request({ type: 'unmute', wsId: env.ids.B }));
+  assert.equal(muted(env, 'b1'), true);
+
+  // A in der Ablage: auch der über 🔊 stummgeschaltete Tab zählt dort nicht, im Hauptfenster wieder
+  await switchTo(env, 'B');
+  assert.deepEqual(await silenced(), { A: 0, B: 0, C: 0 });
+  await switchTo(env, 'A');
+  assert.deepEqual(await silenced(), { A: 1, B: 0, C: 0 });
+  await ok(env.w.request({ type: 'unmute', wsId: env.ids.A }));
+  assert.equal(muted(env, 'a2'), false);
+});

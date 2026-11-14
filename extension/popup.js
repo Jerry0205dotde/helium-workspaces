@@ -212,6 +212,14 @@ function render(focus) {
         run(tr('muting'), tr('muteFailed'), () =>
           send({ type: 'mute', wsId: ws.id }), { focus: [`ws:${ws.id}`] }));
       row.append(snd);
+    } else if (ws.silenced) {
+      const snd = btn('icon-btn sound', '🔇', `snd:${ws.id}`);
+      snd.title = tr('unmuteTitle');
+      snd.ariaLabel = tr('unmuteLabel', ws.name);
+      snd.addEventListener('click', () =>
+        run(tr('unmuting'), tr('unmuteFailed'), () =>
+          send({ type: 'unmute', wsId: ws.id }), { focus: [`ws:${ws.id}`] }));
+      row.append(snd);
     }
 
     const mv = btn('icon-btn', '↪', `mv:${ws.id}`);

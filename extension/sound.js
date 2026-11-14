@@ -34,16 +34,32 @@ async function scheduleMute() {
   if ((await chrome.storage.local.get('muteStash')).muteStash) debounce('mute', 300, syncMute);
 }
 
-// Tabs eines Workspace, die gerade hörbar Ton abspielen (angeheftete gehören zu keinem)
-function audibleOf(wsId, s, stash, mains) {
+// Tabs eines Workspace, die gerade Ton abspielen (angeheftete gehören zu keinem). Chromium
+// meldet audible auch für stumme Tabs, die sonst zu hören wären.
+function playingOf(wsId, s, stash, mains, withStash = true) {
   const { sw, showing } = windowsOf(wsId, s, stash, mains);
-  return [...showing.flatMap(movableTabsOf), ...(sw ? stashTabsOf(sw) : [])].filter((t) => t.audible && !t.mutedInfo?.muted);
+  return [...showing.flatMap(movableTabsOf), ...(sw && withStash ? stashTabsOf(sw) : [])].filter((t) => t.audible);
 }
 
-// Klick auf das Lautsprecher-Zeichen im Popup: bleibt stumm, bis man den Tab von Hand
-// wieder einschaltet, auch nach dem Zurückholen aus der Ablage
+const audibleOf = (wsId, s, stash, mains) => playingOf(wsId, s, stash, mains).filter((t) => !t.mutedInfo?.muted);
+
+// Stumme Tabs, die sonst zu hören wären. Ohne die Ablage, solange die Option „Ablagen
+// stummschalten“ an ist: syncMute schaltet Tabs dort gleich wieder stumm.
+const silencedOf = (wsId, s, stash, mains, muteStash) =>
+  playingOf(wsId, s, stash, mains, !muteStash).filter((t) => t.mutedInfo?.muted);
+
+// Klick auf das Lautsprecher-Zeichen im Popup: bleibt stumm, bis man den Ton über 🔇 im
+// Popup oder am Tab wieder einschaltet, auch nach dem Zurückholen aus der Ablage
 async function muteWs(wsId) {
   const s = await sess();
   const { stash, mains } = await scan();
   for (const t of audibleOf(wsId, s, stash, mains)) await chrome.tabs.update(t.id, { muted: true });
+}
+
+// Klick auf 🔇 im Popup: gibt den stummen Tabs ihren Ton zurück
+async function unmuteWs(wsId) {
+  const s = await sess();
+  const { stash, mains } = await scan();
+  const { muteStash } = await chrome.storage.local.get('muteStash');
+  for (const t of silencedOf(wsId, s, stash, mains, !!muteStash)) await chrome.tabs.update(t.id, { muted: false });
 }

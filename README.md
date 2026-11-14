@@ -131,6 +131,7 @@ To bring workspaces to another device, use the export (see below). It does not c
 | Move a whole tab group | In a tab of the group, right-click the page → **Move group to workspace** |
 | Export or import workspaces | in the list → **Export / import** |
 | Mute a workspace | in the list, click 🔊 next to the workspace (shown while something in it is audible) |
+| Unmute it again | in the list, click 🔇 next to the workspace (shown while something in it would be audible but is muted) |
 | Always mute workspaces that are not shown | in the list, tick **Mute stashes**. Tabs get their sound back when they return; tabs muted by hand stay muted. |
 | Unload the tabs of workspaces not shown | in the list → **Unload stashes after** |
 

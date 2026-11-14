@@ -203,6 +203,18 @@
   "muteFailed": {
     "message": "Ton konnte nicht ausgeschaltet werden."
   },
+  "unmuteTitle": {
+    "message": "Ton an"
+  },
+  "unmuteLabel": {
+    "message": "Ton für „$1“ einschalten"
+  },
+  "unmuting": {
+    "message": "Ton wird eingeschaltet …"
+  },
+  "unmuteFailed": {
+    "message": "Ton konnte nicht eingeschaltet werden."
+  },
   "moveTabTitle": {
     "message": "Aktuellen Tab hierhin verschieben"
   },
