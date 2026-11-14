@@ -78,6 +78,8 @@ if [ -n "$UNINSTALL" ]; then
     # Taskleiste. Ältere Fassungen tun das nicht, deshalb zuerst die aus diesem Ordner. KWin
     # führt das Skript erst kurz nach dem Laden aus, deshalb die Pause.
     kpackagetool6 --type=KWin/Script -u "$DIR/kwin" >/dev/null
+    # Auch ein in den Systemeinstellungen deaktiviertes Skript, sonst lädt KWin es nicht
+    kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true
     qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
     qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null
     sleep 1

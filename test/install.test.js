@@ -115,6 +115,8 @@ test('--uninstall lädt das Skript ohne Schlüssel neu, damit es die Ablagen zur
     'kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete',
     // Die Fassung aus dem Repo, ältere holen ohne Schlüssel nichts zurück
     `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
+    // Auch wenn es in den Systemeinstellungen deaktiviert war
+    'kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true',
     'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces',
     'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start',
     'sleep 1',
