@@ -8,6 +8,7 @@
   --input: #f6f6f6;
   --danger: #d33;
   --focus: #2563eb;
+  --warn: #b45309;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -20,6 +21,7 @@
     --input: #222222;
     --danger: #ff6b6b;
     --focus: #8ab4f8;
+    --warn: #fbbf24;
   }
 }
 * { box-sizing: border-box; }
@@ -167,17 +169,20 @@ fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
 body.busy .row, body.busy .main, body.busy .add { cursor: progress; }
 fieldset:disabled .row:hover, fieldset:disabled .add:hover, fieldset:disabled .option:hover { background: transparent; }
 fieldset:disabled .add:hover, fieldset:disabled .option:hover { color: var(--muted); }
-.error {
+.error,
+.warning {
   margin: 0 0 6px;
   padding: 8px;
   border: 1px solid var(--danger);
   border-radius: 8px;
   color: var(--fg);
 }
-.error p { margin: 0 0 6px; }
+.error p, .warning p { margin: 0 0 6px; }
 .error .msg { color: var(--danger); font-weight: 600; }
-.error .detail { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.error p:last-child { margin-bottom: 0; }
+.warning { border-color: var(--warn); }
+.warning .msg { color: var(--warn); font-weight: 600; }
+:is(.error, .warning) .detail { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+:is(.error, .warning) p:last-child { margin-bottom: 0; }
 body.busy footer .hint { display: none; }
 .setting {
   display: flex;

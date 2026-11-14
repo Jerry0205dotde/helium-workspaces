@@ -5,6 +5,7 @@ const statusEl = document.getElementById('status');
 const errorEl = document.getElementById('error');
 const backupErrorEl = document.getElementById('backup-error');
 const autoErrorEl = document.getElementById('auto-error');
+const storageEl = document.getElementById('storage-warning');
 const muteStashEl = document.getElementById('mute-stash');
 const undoEl = document.getElementById('undo');
 
@@ -116,6 +117,23 @@ function renderAutoError() {
   );
 }
 
+// Speicher für den Laufzeitzustand: Warnung ab 98 %, sonst ein Hinweis, wenn der Browser
+// nur 1 MB davon hat (Chrome vor Version 112)
+function renderStorage() {
+  const st = state.storage;
+  const show = !!st && (st.full || st.tight);
+  storageEl.hidden = !show;
+  if (!show) return storageEl.replaceChildren();
+  const percent = Math.min(100, Math.floor((st.used / st.quota) * 100));
+  const size = Math.round(st.quota / (1024 * 1024));
+  storageEl.className = st.full ? 'error' : 'warning';
+  storageEl.replaceChildren(
+    ...(st.full
+      ? [el('p', 'msg', tr('storageFull', percent)), el('p', null, tr('storageFullHint')), ...(st.tight ? [el('p', 'detail', tr('storageFullUpdate'))] : [])]
+      : [el('p', 'msg', tr('storageTight', size)), el('p', null, tr('storageTightHint')), el('p', 'detail', tr('storageUsed', percent))]),
+  );
+}
+
 // Wie lange ein Workspace nicht gezeigt sein muss, bis seine Tabs entladen werden
 const unloadEl = document.getElementById('unload');
 const unloadLabel = (m) => (!m ? tr('unloadNever') : m < 60 ? tr('unloadMinutes', m) : m === 60 ? tr('unloadHour') : tr('unloadHours', m / 60));
@@ -161,6 +179,7 @@ function renderUndo() {
 function render(focus) {
   renderBackupError();
   renderAutoError();
+  renderStorage();
   renderUndo();
   muteStashEl.checked = state.muteStash;
   renderUnload();

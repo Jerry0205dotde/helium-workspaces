@@ -5,7 +5,7 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { setup, url, where } = require('./harness');
+const { setup, url, where, fillSession } = require('./harness');
 const { Chromium, skipReason } = require('./page');
 
 const skip = skipReason();
@@ -207,6 +207,40 @@ test('Doppelklick auf ＋ legt nur einen Workspace an, der Fokus steht im neuen 
   } finally {
     await page.close();
   }
+});
+
+test('Speicher: kein Hinweis bei 10 MB, ein gelber bei 1 MB, eine rote Warnung ab 98 %', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'] } });
+  const shown = async () => {
+    const page = await browser.open('popup.html', env);
+    try {
+      await page.idle();
+      return await page.eval(`(() => { const e = document.getElementById('storage-warning'); return e.hidden ? null : [e.className, e.innerText]; })()`);
+    } finally {
+      await page.close();
+    }
+  };
+  assert.equal(await shown(), null);
+
+  env.b.sessionQuota = 1024 * 1024;
+  const [cls, text] = await shown();
+  assert.equal(cls, 'warning');
+  assert.match(text, /nur 1 MB Speicher/);
+  assert.match(text, /Ab Chrome 112 sind es 10 MB/);
+  assert.match(text, /Belegt: \d+ %/);
+
+  fillSession(env.b, 0.985);
+  const [cls2, text2] = await shown();
+  assert.equal(cls2, 'error');
+  assert.match(text2, /zu 98 % voll/);
+  assert.match(text2, /Ab Chrome 112 ist der Speicher zehnmal so groß/);
+
+  // Mit 10 MB und 98 % fehlt der Hinweis auf Chrome 112
+  env.b.sessionQuota = 10 * 1024 * 1024;
+  fillSession(env.b, 0.985);
+  const [cls3, text3] = await shown();
+  assert.equal(cls3, 'error');
+  assert.doesNotMatch(text3, /Chrome 112/);
 });
 
 test('↪ verschiebt alle markierten Tabs und sagt das auch', { skip }, async () => {

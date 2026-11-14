@@ -200,4 +200,11 @@ function tabIds(env) {
   return m;
 }
 
-module.exports = { setup, check, ok, url, where, shows, tabIds, openTabs, closeNewTabs, NEWTAB };
+// Füllt storage.session an der Grenze vorbei auf den Anteil share
+function fillSession(b, share) {
+  delete b.session.data.filler;
+  const n = Math.ceil(b.sessionQuota * share) - b.session.bytes() - b.session.bytes({ filler: '' });
+  b.session.data.filler = 'x'.repeat(Math.max(0, n));
+}
+
+module.exports = { setup, check, ok, url, where, shows, tabIds, openTabs, closeNewTabs, fillSession, NEWTAB };

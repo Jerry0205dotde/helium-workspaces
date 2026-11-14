@@ -143,6 +143,24 @@
   "backupFailingHint": {
     "message": "Geht ein Fenster verloren, fehlen alle Änderungen seitdem."
   },
+  "storageFull": {
+    "message": "Speicher der Erweiterung zu $1 % voll"
+  },
+  "storageFullHint": {
+    "message": "Ist er voll, kann sie Workspaces nicht mehr wechseln und Tabs nicht mehr zuverlässig sichern. Schließe Tabs oder Fenster, die du nicht brauchst."
+  },
+  "storageFullUpdate": {
+    "message": "Ab Chrome 112 ist der Speicher zehnmal so groß."
+  },
+  "storageTight": {
+    "message": "Dieser Browser gibt der Erweiterung nur $1 MB Speicher"
+  },
+  "storageTightHint": {
+    "message": "Bei sehr vielen Tabs kann er volllaufen, dann kann sie Workspaces nicht mehr wechseln und Tabs nicht mehr zuverlässig sichern. Ab Chrome 112 sind es 10 MB, und dieser Hinweis entfällt."
+  },
+  "storageUsed": {
+    "message": "Belegt: $1 %"
+  },
   "colorBlue": {
     "message": "Blau"
   },
@@ -499,6 +517,9 @@
   },
   "iconTitleMissing": {
     "message": "Workspace: $1 – $2"
+  },
+  "iconTitleStorageFull": {
+    "message": "Speicher der Erweiterung fast voll, Tabs werden bald nicht mehr gesichert"
   },
   "menuMove": {
     "message": "Tab in Workspace verschieben"

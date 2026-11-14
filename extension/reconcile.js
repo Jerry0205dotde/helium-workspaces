@@ -264,6 +264,7 @@ async function reconcile() {
   await saveSess(s);
 
   await updateAllIcons();
+  await checkSession();
   if (changed) await snapshot();
   await syncMute();
 }
