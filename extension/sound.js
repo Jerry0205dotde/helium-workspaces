@@ -5,7 +5,8 @@
 // storage.local, damit es das Neuladen der Erweiterung übersteht (onStartup verwirft es,
 // Tab-IDs gelten nur innerhalb einer Browsersitzung). Nur diese schaltet sie wieder ein, sobald sie in einem Hauptfenster
 // liegen oder die Option aus ist, und nur, solange sie noch von ihr stumm sind: Von Hand
-// stummgeschaltete Tabs bleiben stumm. Läuft nach jeder Aktion und jedem Abgleich.
+// stummgeschaltete Tabs bleiben stumm. Läuft nach jeder Aktion und jedem Abgleich und
+// kurz nachdem ein Tab außerhalb der Hauptfenster entsteht oder dorthin kommt.
 const mutedByUs = (t) => !!t.mutedInfo?.muted && t.mutedInfo.reason === 'extension' && t.mutedInfo.extensionId === chrome.runtime.id;
 
 async function syncMute() {
@@ -25,6 +26,12 @@ async function syncMute() {
   } catch (e) {
     console.warn('[workspaces] Stummschalten der Ablagen', e);
   }
+}
+
+// Öffnet ein Tab in einer Ablage einen neuen (etwa über target=_blank) oder zieht man
+// einen Tab hinein, wäre der sonst bis zur nächsten Aktion hörbar
+async function scheduleMute() {
+  if ((await chrome.storage.local.get('muteStash')).muteStash) debounce('mute', 300, syncMute);
 }
 
 // Tabs eines Workspace, die gerade hörbar Ton abspielen (angeheftete gehören zu keinem)

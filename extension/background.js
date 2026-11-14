@@ -79,6 +79,7 @@ chrome.tabs.onAttached.addListener(async (tabId, { newWindowId }) => {
   scheduleSnapshot();
   const s = await sess();
   if (s.windowWs[newWindowId]) await setTabIcon(tabId, s.windowWs[newWindowId]);
+  else await scheduleMute();
 });
 
 chrome.tabs.onCreated.addListener(async (tab) => {
@@ -86,6 +87,7 @@ chrome.tabs.onCreated.addListener(async (tab) => {
   scheduleSnapshot();
   const s = await sess();
   if (s.windowWs[tab.windowId]) await setTabIcon(tab.id, s.windowWs[tab.windowId]);
+  else await scheduleMute();
   // Wiederhergestellte Tabs ohne neues Fenster: dropStartCopies prüfen
   if ((await chrome.storage.session.get('startCopies')).startCopies) scheduleReconcile();
 });

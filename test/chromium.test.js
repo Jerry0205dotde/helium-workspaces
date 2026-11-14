@@ -294,6 +294,25 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     assert.deepEqual(after.st.windows.flatMap((w) => w.tabs.map((x) => `${x.id} ${x.url}`)).sort(), tabIds, 'Tabs wurden ersetzt');
   });
 
+  await step('Ablagen stummschalten: Ein neuer Tab in einer Ablage ist gleich stumm', async () => {
+    await b.sw('await userAction(() => chrome.storage.local.set({ muteStash: true }));');
+    // Wie target=_blank aus einem Tab der Ablage von B, ohne Aktion oder Abgleich danach
+    const id = await b.sw(
+      `const [page, url] = args;
+       const tabs = await chrome.tabs.query({});
+       const windowId = tabs.find((t) => (t.url || t.pendingUrl) === page).windowId;
+       const opener = tabs.find((t) => t.windowId === windowId && !t.pinned);
+       return (await chrome.tabs.create({ windowId, openerTabId: opener.id, url, active: false })).id;`,
+      STASH + env.ids.B,
+      base + 'neu',
+    );
+    const mutedInfo = () => b.sw('return (await chrome.tabs.get(args[0])).mutedInfo;', id);
+    await waitFor(async () => assert.deepEqual(await mutedInfo(), { muted: true, reason: 'extension', extensionId: EXT_ID }));
+    await b.sw('await chrome.tabs.remove(args[0]); await userAction(() => chrome.storage.local.set({ muteStash: false }));', id);
+    assert.deepEqual(await b.sw("return (await chrome.storage.local.get('stashMuted')).stashMuted;"), []);
+    await env.settled({ live: true });
+  });
+
   await step('Automatische Sicherung: Datei im Download-Ordner, die letzten zehn bleiben', async () => {
     const dir = path.join(env.profile, 'Downloads', 'helium-workspaces');
     const st = await b.sw('const r = await userAction(() => setAutoBackup(1)); await r?.done; return autoBackupState();');
