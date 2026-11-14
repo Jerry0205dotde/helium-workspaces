@@ -53,6 +53,18 @@ test('Der zuletzt aktive Tab eines Workspace ist nach dem Zurückwechseln wieder
   assert.equal(where(env, 'a3').tab.active, true);
 });
 
+test('Ein angehefteter Tab überschreibt nicht den zuletzt aktiven Tab des Workspace', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await b.chrome.tabs.update(where(env, 'a3').tab.id, { active: true });
+  await w.settle();
+  await b.chrome.tabs.update(where(env, 'p1').tab.id, { active: true });
+  await w.settle();
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.A }));
+  assert.equal(where(env, 'a3').tab.active, true);
+});
+
 test('Tastenkürzel wechseln reihum zum nächsten und vorherigen Workspace', async () => {
   const env = await setup(SPEC);
   const { b, w, win } = env;

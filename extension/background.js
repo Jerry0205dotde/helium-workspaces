@@ -54,9 +54,12 @@ chrome.windows.onFocusChanged.addListener(async (winId) => {
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
   if (switching) return;
   serial(async () => {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
     const s = await sess();
     const ws = s.windowWs[windowId];
     if (!ws) return showStashTab(tabId);
+    // Angeheftete Tabs gehören allen Workspaces und werden beim Wechsel nicht geholt
+    if (!tab || tab.pinned) return;
     s.lastTab[ws] = tabId;
     await saveSess(s);
   });
