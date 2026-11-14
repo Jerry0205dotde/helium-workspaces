@@ -5,8 +5,44 @@
 // neue ID (tabs.onReplaced, siehe replaceTabId). Vor dem ersten Eintrag in den Verlauf
 // entladen, verlöre er seine Adresse; ein solcher Tab bleibt deshalb geladen.
 
-// Aus der Sicherung angelegte Tabs, die nach dem ersten vollständigen Laden entladen werden
-const unloadLater = new Set();
+// Aus der Sicherung angelegte Tabs, die nach dem ersten vollständigen Laden entladen werden.
+// Die Liste steht in storage.session, damit sie einen Neustart des Service Workers zwischen
+// Anlegen und Laden übersteht (#125). Gearbeitet wird auf einer Kopie im Speicher, die der
+// Worker beim ersten Zugriff einmal liest; jede Änderung wird in der Reihenfolge gespeichert,
+// in der sie geschah. So gehen gleichzeitige Änderungen nicht verloren.
+let unloadLaterP = null;
+let unloadLaterSaved = Promise.resolve();
+
+function unloadLaterIds() {
+  unloadLaterP ??= chrome.storage.session
+    .get('unloadLater')
+    .then(({ unloadLater }) => new Set(unloadLater || []))
+    .catch(() => new Set());
+  return unloadLaterP;
+}
+
+function saveUnloadLater(ids) {
+  const list = [...ids];
+  const area = chrome.storage.session;
+  unloadLaterSaved = unloadLaterSaved
+    .then(() => (list.length ? area.set({ unloadLater: list }) : area.remove('unloadLater')))
+    .catch((e) => console.warn('[workspaces] unloadLater nicht gespeichert:', e));
+  return unloadLaterSaved;
+}
+
+async function unloadLaterAdd(tabId) {
+  const ids = await unloadLaterIds();
+  ids.add(tabId);
+  await saveUnloadLater(ids);
+}
+
+// true, wenn der Tab auf der Liste stand; er wird dabei gestrichen
+async function unloadLaterTake(tabId) {
+  const ids = await unloadLaterIds();
+  if (!ids.delete(tabId)) return false;
+  await saveUnloadLater(ids);
+  return true;
+}
 
 // Chromium vergisst dabei die Stummschaltung, deshalb wird sie danach wieder gesetzt. Die
 // neue ID wird gleich nachgezogen, nicht erst über tabs.onReplaced: Eine Aktion, die schon
