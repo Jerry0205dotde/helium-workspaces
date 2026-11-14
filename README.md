@@ -108,7 +108,7 @@ When reloading, Chromium closes all pages of the extension, including the stash 
 
 Do not remove and re-add the extension to update it. When it is removed, Helium deletes all workspaces and the backup.
 
-Once, when updating from a version that kept the key in `extension/token.js`: after the reload the extension creates a new key, and the stash windows are visible. So after step 2, run `./install.sh` and paste the new key from the popup. `install.sh` then deletes the old `extension/token.js`.
+Once, when updating from a version that kept the key in `extension/token.js`: after the reload the extension creates a new key, and the stash windows are visible. So after step 2, click **Copy** under **Key for install.sh** in the popup and run the command in the repository folder. `install.sh` then deletes the old `extension/token.js`.
 
 ### The key
 

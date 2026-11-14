@@ -108,7 +108,7 @@ Beim Neuladen schließt Chromium alle Seiten der Erweiterung, auch die Ablage-Ma
 
 Die Erweiterung zum Aktualisieren nicht entfernen und neu hinzufügen. Beim Entfernen löscht Helium alle Workspaces und die Sicherung.
 
-Einmalig beim Update von einer Version, in der der Schlüssel noch in `extension/token.js` stand: Nach dem Neuladen legt die Erweiterung einen neuen Schlüssel an, und die Ablage-Fenster sind sichtbar. Nach Schritt 2 deshalb `./install.sh` ausführen und den neuen Schlüssel aus dem Popup einfügen. `install.sh` löscht dabei die alte `extension/token.js`.
+Einmalig beim Update von einer Version, in der der Schlüssel noch in `extension/token.js` stand: Nach dem Neuladen legt die Erweiterung einen neuen Schlüssel an, und die Ablage-Fenster sind sichtbar. Nach Schritt 2 deshalb im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. `install.sh` löscht dabei die alte `extension/token.js`.
 
 ### Der Schlüssel
 
