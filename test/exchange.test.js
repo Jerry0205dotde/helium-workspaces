@@ -529,7 +529,7 @@ test('Umstieg auf die feste ID: Ersetzen mit dem Export übernimmt Hauptfenster 
   const preview = await request(now, { type: 'importPreview', text: JSON.stringify(file) });
   assert.deepEqual([preview.current.map((w) => w.open), preview.keep], [[10], 10]);
   const res = await importFile(now, file, 'replace', true);
-  assert.deepEqual(res, { created: 3, merged: 0, added: 10, skipped: 0, failed: 0, removed: 1, closed: 0, kept: 10, pinned: 0, pinnedSkipped: 2 });
+  assert.deepEqual(res, { created: 3, merged: 0, added: 10, skipped: 0, failed: 0, removed: 1, closed: 0, settings: 0, kept: 10, pinned: 0, pinnedSkipped: 2 });
   assert.deepEqual(b.local.data.workspaces, file.workspaces.map(({ id, name, color, emoji }) => ({ id, name, color, emoji })));
   assert.equal(shows(now, env.win), 'A');
   assert.deepEqual(b.windows.map((w) => w.state), ['normal', 'minimized', 'minimized']);

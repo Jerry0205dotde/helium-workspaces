@@ -94,7 +94,7 @@ Helium lädt die Erweiterung bei jedem Start aus genau diesem Ordner. Wird er ve
 
 Es gibt keine automatischen Updates. Helium lädt die Erweiterung direkt aus dem Repository-Ordner, eine neue Version kommt also erst an, wenn du sie selbst holst.
 
-Wer von Version 0.2.19 oder älter aktualisiert, braucht vorher einen Export: siehe [Umstieg auf die feste Erweiterungs-ID](#einmalig-umstieg-auf-die-feste-erweiterungs-id-ab-version-030).
+Wer von Version 0.2.23 oder älter aktualisiert, braucht vorher einen Export: siehe [Umstieg auf die feste Erweiterungs-ID](#einmalig-umstieg-auf-die-feste-erweiterungs-id-ab-version-030).
 
 1. Neuen Stand holen und das KWin-Skript aktualisieren:
 
@@ -112,13 +112,13 @@ Die Erweiterung zum Aktualisieren nicht entfernen und neu hinzufügen. Beim Entf
 
 #### Einmalig: Umstieg auf die feste Erweiterungs-ID (ab Version 0.3.0)
 
-Bis Version 0.2.19 hing die ID der Erweiterung vom Pfad ihres Ordners ab. Seit 0.3.0 legt das Feld `key` in `manifest.json` sie fest. Beim ersten Neuladen danach bekommt sie deshalb einmalig die neue ID `jchklfejnmfphkbcpnhdejmeoncejjbe`, und Helium behandelt sie wie eine neu installierte Erweiterung mit leerem Speicher: Workspaces, Sicherung, Einstellungen und Schlüssel fehlen, und Chromium schließt die Ablage-Seiten. Die Tabs bleiben in ihren Fenstern, die alten Ablagen sind danach normale minimierte Fenster. So kommt alles zurück:
+Bis Version 0.2.23 hing die ID der Erweiterung vom Pfad ihres Ordners ab. Seit 0.3.0 legt das Feld `key` in `manifest.json` sie fest. Beim ersten Neuladen danach bekommt sie deshalb einmalig die neue ID `jchklfejnmfphkbcpnhdejmeoncejjbe`, und Helium behandelt sie wie eine neu installierte Erweiterung mit leerem Speicher: Workspaces, Sicherung, Einstellungen und Schlüssel fehlen, und Chromium schließt die Ablage-Seiten. Die Tabs bleiben in ihren Fenstern, die alten Ablagen sind danach normale minimierte Fenster. So kommt alles zurück:
 
 1. **Vor dem Update exportieren:** In der Workspace-Liste **Exportieren / Importieren** öffnen und den Export speichern. Fehlt er, geht auch die neueste Datei der automatischen Sicherung aus `Downloads/helium-workspaces/`.
 2. **Aktualisieren** wie oben beschrieben: `./install.sh --update`, dann in `chrome://extensions` auf **Neu laden**. Die Workspace-Liste zeigt danach nur „Standard“. Helium bis nach dem Import nicht neu starten, sonst stellt es die alten Ablagen als normale Fenster wieder her, und sie bleiben auch danach sichtbar.
 3. **Importieren mit Ersetzen:** **Exportieren / Importieren** öffnen, die Datei aus Schritt 1 wählen, **Ersetzen** wählen und **Importieren** zweimal anklicken. Fenster, deren Tabs alle zu einem Workspace der Datei gehören, übernimmt die Erweiterung samt Tabs und Verlauf: Das sichtbare Fenster zeigt wieder seinen Workspace, die minimierten werden wieder Ablagen. Was darin fehlt, kommt aus der Datei dazu.
-4. **Neuen Schlüssel eintragen:** Im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. Bis dahin stehen die Ablage-Fenster in der Taskleiste.
-5. **Einstellungen neu setzen:** **Ablagen stummschalten**, **Ablagen entladen nach**, **Automatisch sichern** und selbst festgelegte Tastenkürzel unter `chrome://extensions/shortcuts`. Ältere automatische Sicherungen in `Downloads/helium-workspaces/` räumt die Erweiterung nicht mehr auf, sie lassen sich von Hand löschen.
+4. **Neuen Schlüssel eintragen:** Im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. Bis dahin stehen die Ablage-Fenster in der Taskleiste. `install.sh` nennt danach den alten und den neuen Schlüssel, den alten trägt `./install.sh --remove <alter Schlüssel>` aus.
+5. **Einstellungen prüfen:** **Ablagen stummschalten**, **Ablagen entladen nach** und **Automatisch sichern** übernimmt der Import aus einer Datei von Version 0.2.22 oder neuer, sonst neu setzen. Selbst festgelegte Tastenkürzel unter `chrome://extensions/shortcuts` neu festlegen. Ältere automatische Sicherungen in `Downloads/helium-workspaces/` räumt die Erweiterung nicht mehr auf, sie lassen sich von Hand löschen.
 
 In `chrome://extensions` steht danach zusätzlich ein ausgeschalteter Eintrag „Workspaces“ mit der alten ID. Er stört nicht, Helium lädt beim Start nur die Erweiterung mit der neuen ID.
 

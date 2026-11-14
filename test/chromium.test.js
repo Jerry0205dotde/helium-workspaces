@@ -330,11 +330,11 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
       `const t = (await chrome.tabs.query({})).find((x) => (x.url || x.pendingUrl) === args[0]);
        await chrome.tabs.remove(t.id);
        return t.windowId;`,
-      STASH + env.ids.B,
+      env.stash + env.ids.B,
     );
     await waitFor(async () => {
       const tabs = await b.sw('return chrome.tabs.query({ windowId: args[0] });', win);
-      assert.equal(tabs[0]?.url, STASH + env.ids.B, 'Ablage-Seite von B fehlt');
+      assert.equal(tabs[0]?.url, env.stash + env.ids.B, 'Ablage-Seite von B fehlt');
     });
     await env.settled({ live: true });
   });
@@ -346,7 +346,7 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     await b.action('(u, ws, w) => openLinkInWs(u, ws, w)', base + 'link', env.ids.C, main.id);
     const id = await waitFor(async () => {
       const st = await env.state();
-      const stash = st.windows.find((w) => w.tabs[0]?.url === STASH + env.ids.C);
+      const stash = st.windows.find((w) => w.tabs[0]?.url === env.stash + env.ids.C);
       assert.deepEqual(stash.tabs.slice(1).map((t) => env.name(t.url)), ['c1', 'c2', 'link']);
       assert.equal(env.name(st.backup[env.ids.C].stash.at(-1).url), 'link', 'Sicherung von C');
       assert.equal(st.windowWs[main.id], env.ids[shows], 'das Hauptfenster hat gewechselt');

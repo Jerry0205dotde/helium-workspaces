@@ -94,7 +94,7 @@ Helium loads the extension from exactly this folder on every start. If it is mov
 
 There are no automatic updates. Helium loads the extension straight from the repository folder, so a new version only arrives when you fetch it yourself.
 
-When updating from version 0.2.19 or older, you need an export first: see [switching to the fixed extension ID](#once-switching-to-the-fixed-extension-id-from-version-030).
+When updating from version 0.2.23 or older, you need an export first: see [switching to the fixed extension ID](#once-switching-to-the-fixed-extension-id-from-version-030).
 
 1. Fetch the new version and update the KWin script:
 
@@ -112,13 +112,13 @@ Do not remove and re-add the extension to update it. When it is removed, Helium 
 
 #### Once: switching to the fixed extension ID (from version 0.3.0)
 
-Up to version 0.2.19 the extension's ID depended on the path of its folder. Since 0.3.0 the `key` field in `manifest.json` fixes it. On the first reload after updating, the extension therefore gets the new ID `jchklfejnmfphkbcpnhdejmeoncejjbe` once, and Helium treats it as a newly installed extension with empty storage: workspaces, backup, settings and key are missing, and Chromium closes the stash pages. The tabs stay in their windows; the old stashes are now ordinary minimized windows. To get everything back:
+Up to version 0.2.23 the extension's ID depended on the path of its folder. Since 0.3.0 the `key` field in `manifest.json` fixes it. On the first reload after updating, the extension therefore gets the new ID `jchklfejnmfphkbcpnhdejmeoncejjbe` once, and Helium treats it as a newly installed extension with empty storage: workspaces, backup, settings and key are missing, and Chromium closes the stash pages. The tabs stay in their windows; the old stashes are now ordinary minimized windows. To get everything back:
 
 1. **Export before updating:** open **Export / Import** in the workspace list and save the export. Without one, the newest file of the automatic backup in `Downloads/helium-workspaces/` works too.
 2. **Update** as described above: `./install.sh --update`, then **Reload** in `chrome://extensions`. The workspace list then only shows "Default". Do not restart Helium until after the import, otherwise it restores the old stashes as normal windows and they stay visible afterwards.
 3. **Import with Replace:** open **Export / Import**, choose the file from step 1, select **Replace** and click **Import** twice. The extension takes over windows whose tabs all belong to a workspace in the file, tabs and history included: the visible window shows its workspace again, the minimized ones become stashes again. Whatever is missing in them is added from the file.
-4. **Enter the new key:** click **Copy** under **Key for install.sh** in the popup and run the command in the repository folder. Until then the stash windows show up in the taskbar.
-5. **Set the settings again:** **Mute stashes**, **Unload stashes after**, **Automatic backup** and any shortcuts you set yourself in `chrome://extensions/shortcuts`. The extension no longer cleans up older automatic backups in `Downloads/helium-workspaces/`; they can be deleted by hand.
+4. **Enter the new key:** click **Copy** under **Key for install.sh** in the popup and run the command in the repository folder. Until then the stash windows show up in the taskbar. `install.sh` then lists the old and the new key; `./install.sh --remove <old key>` removes the old one.
+5. **Check the settings:** the import takes **Mute stashes**, **Unload stashes after** and **Automatic backup** from a file made by version 0.2.22 or later; otherwise set them again. Set any shortcuts you chose yourself in `chrome://extensions/shortcuts` again. The extension no longer cleans up older automatic backups in `Downloads/helium-workspaces/`; they can be deleted by hand.
 
 Afterwards `chrome://extensions` also lists a switched-off "Workspaces" entry with the old ID. It does no harm; on start Helium only loads the extension with the new ID.
 
