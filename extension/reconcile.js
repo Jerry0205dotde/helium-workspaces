@@ -364,6 +364,9 @@ async function onWindowRemoved(winId) {
     // Letztes sichtbares Fenster geschlossen → Ablagen auch schließen, damit der
     // Browser wirklich beendet wird. Die Tabs stehen in der Sicherung; eine noch
     // ausstehende Sicherung vorher mit dem Abbild des Fensters nachholen.
+    // Läuft der Browser weiter (Inkognito-, Popup- oder App-Fenster), gilt das nächste
+    // Fenster als Start ohne Sitzungswiederherstellung: restoreStart baut es auf.
+    await chrome.storage.session.remove('startChecked');
     if (changes > savedChanges && img) {
       try {
         await snapshot({ ...img, ws });

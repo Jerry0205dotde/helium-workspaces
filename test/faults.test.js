@@ -402,3 +402,27 @@ test('Sicherung scheitert beim Schließen des letzten Fensters: Ablagen bleiben 
   check(env, { ...ALL, B: [...SPEC.workspaces.B.slice(0, 2), 'b4'] });
   for (const name of ['B', 'C']) assert.equal(stashOf(env, name).tabs[0].url, `${b.origin}stash.html#${ids[name]}`);
 });
+
+// Ohne Ablagen bleibt nach der gescheiterten Sicherung nichts offen. Hält ein Popup den
+// Browser am Leben, baut das nächste Fenster den Workspace aus der (älteren) Sicherung auf,
+// statt sie mit der neuen Tab-Seite zu überschreiben (#120).
+test('Sicherung scheitert beim Schließen des letzten Fensters ohne Ablagen: das nächste Fenster baut den Workspace auf', async () => {
+  const env = await setup({ pinned: SPEC.pinned, workspaces: { A: SPEC.workspaces.A } });
+  const { b, w, win } = env;
+  const popup = b.createWindow({ url: url('popup'), type: 'popup' });
+  await w.settle();
+  await b.chrome.tabs.create({ windowId: win, url: url('a5'), active: false });
+  await w.advance(10);
+  const set = b.fail('storage.local.set');
+  await b.closeWindowByX(win);
+  await w.settle();
+  assert.equal(set.hits, 1, 'Sicherung beim Schließen wurde nicht versucht');
+
+  b.now += 60000;
+  const main = (await b.chrome.windows.create({ focused: true })).id;
+  await w.settle();
+  assert.equal(shows(env, main), 'A');
+  await b.chrome.windows.remove(popup.id);
+  await w.settle();
+  check(env, { A: SPEC.workspaces.A, pinned: SPEC.pinned });
+});

@@ -152,6 +152,30 @@ test('Letztes Fenster per X geschlossen: nach dem Start ist alles wieder da', as
   }
 });
 
+test('Letztes Fenster geschlossen, der Browser läuft weiter: das nächste Fenster baut den Workspace aus der Sicherung auf', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  // Ein Popup-Fenster (z. B. Export/Import) hält den Browser am Leben
+  const popup = b.createWindow({ url: url('popup'), type: 'popup' });
+  await w.settle();
+  await b.closeWindowByX(win);
+  await w.settle();
+  assert.deepEqual(b.windows.map((x) => x.id), [popup.id], 'Ablage-Fenster wurden nicht geschlossen');
+
+  // Strg+N, etwas später
+  b.now += 60000;
+  const main = await newWindow(env);
+  assert.equal(shows(env, main), 'B');
+  await b.chrome.windows.remove(popup.id);
+  await w.settle();
+  check(env, ALL);
+  for (const name of ['A', 'C', 'B']) {
+    await ok(w.request({ type: 'switch', windowId: main, wsId: ids[name] }));
+    check(env, ALL);
+  }
+});
+
 // Wie Chromium beim Schließen per X verschwinden die Tabs einzeln. Währenddessen lädt
 // eine Seite in der Ablage von B weiter (Tab-Ereignis), und wait lässt Zeit vergehen.
 for (const [label, wait] of [
