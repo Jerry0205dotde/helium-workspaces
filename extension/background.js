@@ -36,13 +36,19 @@ importScripts(
 chrome.windows.onCreated.addListener(() => scheduleReconcile(), { windowTypes: ['normal'] });
 chrome.windows.onRemoved.addListener((id) => serial(() => onWindowRemoved(id)), { windowTypes: ['normal'] });
 
+// Beim Beenden kommen noch Fokuswechsel (etwa vom Download-Hinweis der automatischen
+// Sicherung), deren Speichern dann scheitert. Das ist harmlos.
 chrome.windows.onFocusChanged.addListener(async (winId) => {
   if (winId === chrome.windows.WINDOW_ID_NONE) return;
-  const s = await sess();
-  const ws = s.windowWs[winId];
-  if (!ws) return;
-  await chrome.storage.local.set({ lastWs: ws });
-  await chrome.storage.session.set({ lastMain: winId });
+  try {
+    const s = await sess();
+    const ws = s.windowWs[winId];
+    if (!ws) return;
+    await chrome.storage.local.set({ lastWs: ws });
+    await chrome.storage.session.set({ lastMain: winId });
+  } catch (e) {
+    console.warn('[workspaces] Fokuswechsel nicht gespeichert', e);
+  }
 });
 
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
