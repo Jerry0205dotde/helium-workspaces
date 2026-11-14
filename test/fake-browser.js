@@ -356,6 +356,13 @@ class Browser {
     for (const t of this.heldLoads.splice(0)) this.loaded(t);
   }
 
+  // Der Tab beginnt oder hört auf, Ton abzuspielen
+  setAudible(id, audible) {
+    const { t, w } = this.findTab(id);
+    t.audible = audible;
+    this.fire('tabs.onUpdated', t.id, { audible }, this.tabInfo(t, w));
+  }
+
   // Entlädt den Tab; er bekommt eine neue ID
   discardTab(id) {
     const { t, w } = this.findTab(id);

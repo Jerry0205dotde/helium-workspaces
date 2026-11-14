@@ -75,6 +75,45 @@ test('Ein Tab, der Ton abspielt, bleibt in der Ablage geladen', async () => {
   assert.deepEqual(discarded(env, ['a1', 'a4']), [true, false]);
 });
 
+test('Ein Tab, der kurz still ist, bleibt geladen, bis er so lange still ist wie eingestellt (#154)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await ok(w.request({ type: 'unloadAfter', minutes: 5 }));
+  // a4: Videocall, in dem gerade niemand spricht. a3: still, aber stummgeschaltet.
+  b.setAudible(where(env, 'a4').tab.id, true);
+  b.setAudible(where(env, 'a3').tab.id, true);
+  await b.chrome.tabs.update(where(env, 'a3').tab.id, { muted: true });
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await w.advance(3 * MIN);
+  b.setAudible(where(env, 'a4').tab.id, false);
+  b.setAudible(where(env, 'a3').tab.id, false);
+  await w.advance(3 * MIN);
+  assert.deepEqual(discarded(env, ['a1', 'a3', 'a4']), [true, true, false], 'kurz stiller Tab wurde entladen');
+  // Spricht wieder jemand, beginnt die stille Zeit von vorn
+  b.setAudible(where(env, 'a4').tab.id, true);
+  await w.advance(1 * MIN);
+  b.setAudible(where(env, 'a4').tab.id, false);
+  await w.advance(4 * MIN);
+  assert.deepEqual(discarded(env, ['a4']), [false]);
+  await w.advance(2 * MIN);
+  assert.deepEqual(discarded(env, ['a4']), [true]);
+  assert.deepEqual(b.session.data.silentSince, {}, 'alte Zeitpunkte bleiben liegen');
+  check(env, ALL);
+});
+
+test('Wird ein Tab still, während der Wecker die Ablagen schon prüft, bleibt er geladen (#154)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await ok(w.request({ type: 'unloadAfter', minutes: 5 }));
+  b.setAudible(where(env, 'a4').tab.id, true);
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await w.advance(4 * MIN);
+  b.during('windows.getAll', () => b.setAudible(where(env, 'a4').tab.id, false));
+  await w.advance(1 * MIN);
+  assert.deepEqual(discarded(env, ['a1', 'a4']), [true, false], 'gerade still gewordener Tab wurde entladen');
+  check(env, ALL);
+});
+
 test('Ausschalten stoppt das Entladen, nur angebotene Zeiten werden angenommen', async () => {
   const env = await setup(SPEC);
   const { b, w, win, ids } = env;
