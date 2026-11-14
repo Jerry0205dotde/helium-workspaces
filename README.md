@@ -92,7 +92,9 @@ Helium loads the extension from exactly this folder on every start. If it is mov
 
 ### Updating
 
-There are no automatic updates. Helium loads the extension straight from the repository folder, so a new version only arrives when you fetch it yourself:
+There are no automatic updates. Helium loads the extension straight from the repository folder, so a new version only arrives when you fetch it yourself.
+
+When updating from version 0.2.19 or older, you need an export first: see [switching to the fixed extension ID](#once-switching-to-the-fixed-extension-id-from-version-030).
 
 1. Fetch the new version and update the KWin script:
 

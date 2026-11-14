@@ -92,7 +92,9 @@ Helium lädt die Erweiterung bei jedem Start aus genau diesem Ordner. Wird er ve
 
 ### Aktualisieren
 
-Es gibt keine automatischen Updates. Helium lädt die Erweiterung direkt aus dem Repository-Ordner, eine neue Version kommt also erst an, wenn du sie selbst holst:
+Es gibt keine automatischen Updates. Helium lädt die Erweiterung direkt aus dem Repository-Ordner, eine neue Version kommt also erst an, wenn du sie selbst holst.
+
+Wer von Version 0.2.19 oder älter aktualisiert, braucht vorher einen Export: siehe [Umstieg auf die feste Erweiterungs-ID](#einmalig-umstieg-auf-die-feste-erweiterungs-id-ab-version-030).
 
 1. Neuen Stand holen und das KWin-Skript aktualisieren:
 

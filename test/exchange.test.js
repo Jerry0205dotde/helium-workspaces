@@ -538,6 +538,24 @@ test('Umstieg auf die feste ID: Ersetzen mit dem Export übernimmt Hauptfenster 
   await cycle(now, ['B', 'C', 'A'], ALL);
 });
 
+test('Umstieg: Eine alte Ablage mit neuer Tab-Seite wird übernommen, die Tab-Seite zählt nicht mit', async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  const { b } = env;
+  const stashB = b.windows.find((w) => b.stashOf(w) === env.ids.B);
+  await b.chrome.tabs.create({ windowId: stashB.id, url: NEWTAB, active: false });
+  await env.w.settle();
+  const file = await request(env, { type: 'export' });
+  assert.deepEqual(file.workspaces[1].tabs.map((t) => t.url), [url('b1'), NEWTAB]);
+  const b1 = b.tabsByUrl(url('b1'))[0].id;
+
+  b.reloadExtension({ newId: 'hwsfesteid' });
+  await b.worker.settle();
+  const res = await importFile(envOf(b), file, 'replace', true);
+  assert.equal(res.kept, 3);
+  assert.equal(b.stashOf(b.windows.find((w) => w.id === stashB.id)), env.ids.B, 'alte Ablage von B ist keine Ablage geworden');
+  assert.deepEqual(b.tabsByUrl(url('b1')).map((t) => t.id), [b1], 'b1 wurde neu angelegt');
+});
+
 // Fenster 1 hat p1 einmal angeheftet, ein zweites Hauptfenster mit C zweimal
 async function pinnedTwiceInSecondWindow() {
   const env = await setup(SPEC);

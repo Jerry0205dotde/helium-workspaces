@@ -108,7 +108,7 @@ function pinnedToAdd(list, all, mode) {
 // Tabs zu schließen und neu anzulegen, wenn alle Tabs darin zu ihm gehören und es mehr
 // als die Hälfte seiner Tabs enthält. Die Tabs behalten so ihren Verlauf, etwa beim
 // Umstieg auf die feste Erweiterungs-ID: Danach sind die alten Ablagen normale Fenster
-// (#156). Neue Tab-Seiten zählen nicht mit. Vergeben wird nach den meisten Treffern,
+// (#156). Neue Tab-Seiten zählen auf keiner Seite mit. Vergeben wird nach den meisten Treffern,
 // jedes Fenster und jeder Workspace höchstens einmal. Ergebnis: Index in der Datei → Fenster.
 function planAdopt(data, mains) {
   const pairs = [];
@@ -116,7 +116,8 @@ function planAdopt(data, mains) {
     const have = movableTabsOf(win).filter((t) => !isNewTab(t)).map((t) => ({ url: urlOf(t) }));
     if (!have.length) continue;
     data.workspaces.forEach((imp, i) => {
-      if (have.length * 2 > imp.tabs.length && !missingIn(have, imp.tabs).length) pairs.push({ win, i, hits: have.length });
+      const want = imp.tabs.filter((e) => !isNewTab(e));
+      if (have.length * 2 > want.length && !missingIn(have, want).length) pairs.push({ win, i, hits: have.length });
     });
   }
   pairs.sort((a, b) => b.hits - a.hits);
