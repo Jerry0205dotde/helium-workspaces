@@ -147,6 +147,7 @@ Good to know:
 - If the last window is closed with the X button, or its last tab is closed, the extension closes the stash windows as well, and the browser quits. On the next start it rebuilds all workspaces from its backup. The pages then reload and have no back history (see [What is preserved](#what-is-preserved)). If you quit Helium from the menu, the windows come back with their history.
 - The export is a JSON file with all workspaces including order, colors, emoji, tabs, tab groups and pinned tabs, for example for another device or a new profile. On import the file is first checked and summarized. **Merge** only adds what is missing: a workspace with the same ID or the same name gets the tabs it does not have yet. **Replace** deletes the existing workspaces including their tabs and therefore asks for confirmation.
 - Under **Export / Import → Automatic backup** the extension can save an export to `Downloads/helium-workspaces/` daily or weekly and keeps the last 10. The default is **never**. These files survive removing the extension and a broken profile; the workspaces then come back by importing with **Replace**. If “Ask where to save each file before downloading” is on in Helium, Helium asks for every automatic backup too. If one fails, the popup shows a notice.
+- The export and the automatic backup contain the full addresses and titles of all tabs in plain text, including any access tokens or sharing and password reset links in them. Syncing the Downloads folder or passing on a file passes those on too.
 
 ## What is preserved
 
