@@ -29,30 +29,18 @@ async function collectAll() {
       pinnedFailed: failed.filter((e) => e.p),
     };
   });
-  // Angeheftete Tabs aller Hauptfenster; was ein früheres Fenster schon hat, zählt einmal.
-  // So rechnet der Import: addPinned ergänzt nur im ersten Fenster.
-  let pinnedOpen = backupPinned;
-  if (mains.length) {
-    pinnedOpen = [];
-    const seen = new Set();
-    for (const w of mains) {
-      const own = w.tabs.filter((t) => t.pinned).map((t) => serTab(t, groups));
-      pinnedOpen.push(...own.filter((e) => !seen.has(e.url)));
-      for (const e of own) seen.add(e.url);
-    }
-  }
-  pinnedOpen = pinnedOpen.filter((e) => e.url);
+  // Angeheftete Tabs zählen wie in der Sicherung (pinnedOf), damit Export und Import
+  // denselben Bestand sehen. pinnedFirst: was addPinned beim Ergänzen schon im ersten Fenster vorfindet.
+  const pinnedOpen = (mains.length ? pinnedOf(mains, groups) : backupPinned).filter((e) => e.url);
+  const pinnedFirst = (mains.length ? pinnedOf(mains.slice(0, 1), groups) : backupPinned).filter((e) => e.url);
   const pinnedFailed = list.flatMap((x) => x.pinnedFailed).filter((e) => e.url);
-  const pinned = [...pinnedOpen, ...pinnedFailed];
-  // Der Export zählt wie die Sicherung, damit ein Rundlauf den Bestand bewahrt
-  const exported = [...(mains.length ? pinnedOf(mains, groups) : backupPinned).filter((e) => e.url), ...pinnedFailed];
-  return { cfg, mains, list, pinned, pinnedOpen, exported };
+  return { cfg, mains, list, pinned: [...pinnedOpen, ...pinnedFailed], pinnedOpen, pinnedFirst, pinnedFailed };
 }
 
 async function exportAll() {
   await resumeSwitch();
-  const { list, exported } = await collectAll();
-  return buildExchange(list, exported, chrome.runtime.getURL(''));
+  const { list, pinned } = await collectAll();
+  return buildExchange(list, pinned, chrome.runtime.getURL(''));
 }
 
 // Ordnet beim Zusammenführen jedem importierten Workspace einen vorhandenen zu: zuerst
@@ -84,8 +72,17 @@ function planImport(data, all, mode = 'merge') {
       by: match[i]?.by || null,
       add: match[i] ? missingIn(imp.tabs, match[i].target.entries) : imp.tabs,
     })),
-    pinnedAdd: missingIn(data.pinned, mode === 'replace' ? all.pinnedOpen : all.pinned),
+    pinnedAdd: pinnedToAdd(data.pinned, all, mode),
   };
+}
+
+// Angeheftete Tabs, die der Import ergänzt. Eine Adresse fehlt, wenn die Datei sie öfter
+// enthält, als der Export sie zählt. Dann ergänzt addPinned sie im ersten Fenster, bis sie
+// dort (mit den fehlgeschlagenen) so oft vorkommt wie in der Datei.
+function pinnedToAdd(list, all, mode) {
+  const failed = mode === 'replace' ? [] : all.pinnedFailed;
+  const missing = new Set(missingIn(list, [...all.pinnedOpen, ...failed]).map((e) => e.url));
+  return missingIn(list.filter((e) => missing.has(e.url)), [...all.pinnedFirst, ...failed]);
 }
 
 // Prüft die Datei und beschreibt, was Zusammenführen bzw. Ersetzen ändern würde.
