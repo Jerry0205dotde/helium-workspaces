@@ -22,9 +22,16 @@ const GIT_ENV = {
 
 // installed: ob kpackagetool6 -s das Paket findet, dbus: ob qdbus6 KWin erreicht,
 // token: was kreadconfig6 als eingetragenen Schlüssel liefert, setup(dir): vorbereiten,
-// gibt den Pfad des auszuführenden install.sh zurück
-function run(args, { installed = true, dbus = true, token = '', setup } = {}) {
+// gibt den Pfad des auszuführenden install.sh zurück, profiles: Pfad unter ~/.config → Inhalt
+// der Preferences-Datei dort
+function run(args, { installed = true, dbus = true, token = '', setup, profiles = {} } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-install-'));
+  const home = path.join(dir, 'home');
+  for (const [p, content] of Object.entries(profiles)) {
+    const file = path.join(home, '.config', p, 'Preferences');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  }
   const bin = path.join(dir, 'bin');
   fs.mkdirSync(bin);
   const log = path.join(dir, 'log');
@@ -36,13 +43,14 @@ function run(args, { installed = true, dbus = true, token = '', setup } = {}) {
   fake('kreadconfig6', `[ "$6" = token ] && echo "${token}"; exit 0`);
   try {
     const script = setup ? setup(dir) : INSTALL;
-    const r = spawnSync('bash', [script, ...args], {
-      encoding: 'utf8',
-      input: '',
-      env: { ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}` },
-    });
+    const env = { ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home };
+    delete env.XDG_CONFIG_HOME;
+    const r = spawnSync('bash', [script, ...args], { encoding: 'utf8', input: '', env });
     const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean) : [];
-    return { status: r.status, stdout: r.stdout, stderr: r.stderr, calls, dir };
+    const after = Object.fromEntries(
+      Object.keys(profiles).map((p) => [p, fs.readFileSync(path.join(home, '.config', p, 'Preferences'), 'utf8')]),
+    );
+    return { status: r.status, stdout: r.stdout, stderr: r.stderr, calls, dir, profiles: after };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -150,4 +158,48 @@ test('--update nimmt keinen Schlüssel und keine Browserliste dazu', () => {
     assert.match(r.stderr, /--update nimmt keine weiteren Angaben/);
     assert.deepEqual(r.calls, []);
   }
+});
+
+// So schreiben Helium und Chrome die Einstellung: der Wert unter session, die gleichnamige
+// Prüfsumme unter protection.macs. Ohne Wert gilt „Neuer Tab“.
+const prefs = (restore) =>
+  JSON.stringify({
+    protection: { macs: { session: { restore_on_startup: '81940185F7F78D0317AB3741FA4A2839' } } },
+    session: restore === undefined ? {} : { restore_on_startup: restore },
+  });
+
+test('Installation weist auf Profile hin, die nicht dort weitermachen, wo man aufgehört hat', () => {
+  const profiles = {
+    'net.imput.helium/Default': prefs(1),
+    'net.imput.helium/Profile 1': prefs(5),
+    'net.imput.helium/System Profile': prefs(5),
+    'net.imput.helium/Guest Profile': prefs(5),
+    'google-chrome/Default': prefs(),
+    'chromium/Profile 2': prefs(4),
+    'BraveSoftware/Brave-Browser/Default': prefs(5),
+  };
+  const r = run([TOKEN], { profiles });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Hinweis: Diese Profile starten nicht mit „Dort weitermachen, wo ich aufgehört habe“/);
+  const listed = r.stdout.split('\n').filter((l) => l.startsWith('  '));
+  assert.deepEqual(listed, [
+    '  Helium: ~/.config/net.imput.helium/Profile 1',
+    '  Google Chrome: ~/.config/google-chrome/Default',
+    '  Chromium: ~/.config/chromium/Profile 2',
+  ]);
+  assert.match(r.stdout, /Fertig\.\n$/);
+  // Nur ein Hinweis, die Einstellungen bleiben unverändert
+  assert.deepEqual(r.profiles, profiles);
+});
+
+test('Installation gibt keinen Hinweis, wenn alle Profile dort weitermachen', () => {
+  const r = run([TOKEN], { profiles: { 'net.imput.helium/Default': prefs(1), 'chromium/Profile 3': prefs(1) } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, /Hinweis/);
+});
+
+test('Installation gibt keinen Hinweis ohne Browserprofile', () => {
+  const r = run([TOKEN]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, 'Fertig.\n');
 });
