@@ -604,5 +604,44 @@
   },
   "workspaceN": {
     "message": "Workspace $1"
+  },
+  "autoHeading": {
+    "message": "Automatisch sichern"
+  },
+  "autoText": {
+    "message": "Legt regelmäßig einen Export in Downloads/$1/ ab und behält davon die letzten $2. So bleiben die Workspaces erhalten, auch wenn die Erweiterung entfernt wird oder das Profil kaputtgeht."
+  },
+  "autoLabel": {
+    "message": "Häufigkeit"
+  },
+  "autoNever": {
+    "message": "nie"
+  },
+  "autoDaily": {
+    "message": "täglich"
+  },
+  "autoWeekly": {
+    "message": "wöchentlich"
+  },
+  "autoLast": {
+    "message": "Zuletzt am $1: $2"
+  },
+  "autoLastAt": {
+    "message": "Zuletzt am $1."
+  },
+  "autoPending": {
+    "message": "Gestartet am $1, die Datei ist noch nicht gespeichert."
+  },
+  "autoFailed": {
+    "message": "Automatische Sicherung am $1 fehlgeschlagen"
+  },
+  "autoFailedHint": {
+    "message": "Details unter Exportieren / Importieren. Die nächste Sicherung versucht es erneut."
+  },
+  "autoBackupInvalid": {
+    "message": "Unbekannter Abstand für die automatische Sicherung."
+  },
+  "autoBackupInterrupted": {
+    "message": "Download abgebrochen ($1)"
   }
 }

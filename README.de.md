@@ -106,7 +106,7 @@ Es gibt keine automatischen Updates. Helium lädt die Erweiterung direkt aus dem
 
 Beim Neuladen schließt Chromium alle Seiten der Erweiterung, auch die Ablage-Markierungen. Die Ablage-Fenster tauchen dann kurz in der Taskleiste auf, bis die Erweiterung sie nach ein bis zwei Sekunden wieder markiert. Die Tabs bleiben dabei, wo sie sind.
 
-Die Erweiterung zum Aktualisieren nicht entfernen und neu hinzufügen. Beim Entfernen löscht Helium alle Workspaces und die Sicherung.
+Die Erweiterung zum Aktualisieren nicht entfernen und neu hinzufügen. Beim Entfernen löscht Helium alle Workspaces und die Sicherung. Nur ein Export bleibt dann übrig, von Hand oder automatisch (siehe [Benutzung](#benutzung)).
 
 Einmalig beim Update von einer Version, in der der Schlüssel noch in `extension/token.js` stand: Nach dem Neuladen legt die Erweiterung einen neuen Schlüssel an, und die Ablage-Fenster sind sichtbar. Nach Schritt 2 deshalb im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. `install.sh` löscht dabei die alte `extension/token.js`.
 
@@ -145,6 +145,7 @@ Gut zu wissen:
 - Einen gelöschten Workspace holt **Rückgängig** oben in der Liste bis zum nächsten Browserstart samt Tabs zurück. Seine Tabs öffnen sich dann beim Wechseln dorthin neu aus der Sicherung. Dasselbe gilt für die Workspaces, die **Ersetzen** beim Import entfernt.
 - Wird das Fenster per X geschlossen, baut die Erweiterung beim nächsten Start alle Workspaces aus ihrer Sicherung wieder auf.
 - Der Export ist eine JSON-Datei mit allen Workspaces samt Reihenfolge, Farben, Emoji, Tabs, Tab-Gruppen und angehefteten Tabs, etwa für ein anderes Gerät oder ein neues Profil. Beim Import wird die Datei erst geprüft und zusammengefasst. **Zusammenführen** ergänzt nur, was fehlt: Ein Workspace mit derselben ID oder demselben Namen bekommt die Tabs dazu, die er noch nicht hat. **Ersetzen** löscht die bisherigen Workspaces samt Tabs und fragt deshalb nach.
+- Unter **Exportieren / Importieren → Automatisch sichern** legt die Erweiterung auf Wunsch täglich oder wöchentlich einen Export in `Downloads/helium-workspaces/` ab und behält die letzten 10. Standard ist **nie**. Diese Dateien überstehen das Entfernen der Erweiterung und ein kaputtes Profil, zurück kommen die Workspaces dann per Import mit **Ersetzen**. Ist in Helium „Vor dem Download nach dem Speicherort fragen“ eingeschaltet, fragt Helium auch bei jeder automatischen Sicherung. Scheitert eine, zeigt das Popup einen Hinweis.
 
 ## Was erhalten bleibt
 
@@ -259,7 +260,7 @@ KWin prüfen die Tests nicht. Nach Änderungen daran kurz von Hand:
   - [`background.js`](./extension/background.js): der Service Worker, nimmt Ereignisse und Nachrichten entgegen und lädt die übrige Hintergrundlogik:
     [`core.js`](./extension/core.js) (Grundlagen), [`switch.js`](./extension/switch.js) (Wechseln), [`backup.js`](./extension/backup.js) (Sicherung),
     [`restore.js`](./extension/restore.js) (Wiederherstellen aus der Sicherung), [`reconcile.js`](./extension/reconcile.js) (Abgleich nach Neustart),
-    [`workspaces.js`](./extension/workspaces.js), [`export-import.js`](./extension/export-import.js), [`unload.js`](./extension/unload.js) (Entladen),
+    [`workspaces.js`](./extension/workspaces.js), [`export-import.js`](./extension/export-import.js), [`autobackup.js`](./extension/autobackup.js) (automatische Sicherung als Datei), [`unload.js`](./extension/unload.js) (Entladen),
     [`sound.js`](./extension/sound.js) (Ton), [`icons.js`](./extension/icons.js) (Symbole) und [`menus.js`](./extension/menus.js) (Kontextmenü)
   - [`popup.html`](./extension/popup.html) / [`popup.js`](./extension/popup.js): die Workspace-Liste
   - [`transfer.html`](./extension/transfer.html) / [`transfer.js`](./extension/transfer.js): Export und Import, [`exchange.js`](./extension/exchange.js): das Dateiformat und seine Prüfung

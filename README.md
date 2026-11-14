@@ -106,7 +106,7 @@ There are no automatic updates. Helium loads the extension straight from the rep
 
 When reloading, Chromium closes all pages of the extension, including the stash markers. The stash windows then show up in the taskbar briefly until the extension marks them again after one or two seconds. The tabs stay where they are.
 
-Do not remove and re-add the extension to update it. When it is removed, Helium deletes all workspaces and the backup.
+Do not remove and re-add the extension to update it. When it is removed, Helium deletes all workspaces and the backup. Only an export is left then, manual or automatic (see [Usage](#usage)).
 
 Once, when updating from a version that kept the key in `extension/token.js`: after the reload the extension creates a new key, and the stash windows are visible. So after step 2, click **Copy** under **Key for install.sh** in the popup and run the command in the repository folder. `install.sh` then deletes the old `extension/token.js`.
 
@@ -145,6 +145,7 @@ Good to know:
 - A deleted workspace can be brought back with **Undo** at the top of the list until the browser restarts, tabs included. Its tabs then open again from the backup when you switch to it. The same goes for the workspaces removed by **Replace** on import.
 - If the window is closed with the X button, the extension rebuilds all workspaces from its backup on the next start.
 - The export is a JSON file with all workspaces including order, colors, emoji, tabs, tab groups and pinned tabs, for example for another device or a new profile. On import the file is first checked and summarized. **Merge** only adds what is missing: a workspace with the same ID or the same name gets the tabs it does not have yet. **Replace** deletes the existing workspaces including their tabs and therefore asks for confirmation.
+- Under **Export / Import → Automatic backup** the extension can save an export to `Downloads/helium-workspaces/` daily or weekly and keeps the last 10. The default is **never**. These files survive removing the extension and a broken profile; the workspaces then come back by importing with **Replace**. If “Ask where to save each file before downloading” is on in Helium, Helium asks for every automatic backup too. If one fails, the popup shows a notice.
 
 ## What is preserved
 
@@ -259,7 +260,7 @@ The tests do not check KWin. After changing that, briefly check by hand:
   - [`background.js`](./extension/background.js): the service worker, receives events and messages and loads the rest of the background logic:
     [`core.js`](./extension/core.js) (basics), [`switch.js`](./extension/switch.js) (switching), [`backup.js`](./extension/backup.js) (backup),
     [`restore.js`](./extension/restore.js) (restoring from the backup), [`reconcile.js`](./extension/reconcile.js) (reconciliation after a restart),
-    [`workspaces.js`](./extension/workspaces.js), [`export-import.js`](./extension/export-import.js), [`unload.js`](./extension/unload.js) (unloading),
+    [`workspaces.js`](./extension/workspaces.js), [`export-import.js`](./extension/export-import.js), [`autobackup.js`](./extension/autobackup.js) (automatic backup to a file), [`unload.js`](./extension/unload.js) (unloading),
     [`sound.js`](./extension/sound.js) (sound), [`icons.js`](./extension/icons.js) (icons) and [`menus.js`](./extension/menus.js) (context menu)
   - [`popup.html`](./extension/popup.html) / [`popup.js`](./extension/popup.js): the workspace list
   - [`transfer.html`](./extension/transfer.html) / [`transfer.js`](./extension/transfer.js): export and import, [`exchange.js`](./extension/exchange.js): the file format and its validation

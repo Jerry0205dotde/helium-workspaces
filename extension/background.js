@@ -25,6 +25,7 @@ importScripts(
   'backup.js',
   'reconcile.js',
   'export-import.js',
+  'autobackup.js',
   'icons.js',
   'sound.js',
   'menus.js',
@@ -107,6 +108,7 @@ chrome.tabs.onReplaced.addListener((added, removed) => {
 });
 chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === 'unload') serial(unloadStashes);
+  if (a.name === 'autoBackup') userAction(() => autoBackupIfDue());
 });
 chrome.tabGroups.onUpdated.addListener(() => scheduleSnapshot());
 
@@ -151,6 +153,7 @@ async function stateFor(windowId) {
     muteStash: !!muteStash,
     unloadAfter: await getUnloadAfter(),
     unloadChoices: UNLOAD_CHOICES,
+    autoBackupError: (await autoBackupState()).error,
   };
 }
 
@@ -187,6 +190,14 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return userAction(() => chrome.storage.local.set({ muteStash: !!msg.on }));
       case 'unloadAfter':
         return serial(() => setUnloadAfter(msg.minutes));
+      case 'autoBackupState':
+        return autoBackupState();
+      case 'autoBackup': {
+        // Die Exportseite nennt gleich die erste Datei
+        const r = await userAction(() => setAutoBackup(msg.days));
+        await r?.done;
+        return autoBackupState();
+      }
       case 'export':
         return userAction(exportAll);
       case 'importPreview':
@@ -226,4 +237,5 @@ chrome.runtime.onStartup.addListener(() =>
 // Bei jedem Start, damit auch eine ältere Installation ohne Neuladen ihren Schlüssel bekommt
 serial(ensureToken);
 serial(scheduleUnload);
+serial(scheduleAutoBackup);
 scheduleReconcile();

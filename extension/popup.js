@@ -4,6 +4,7 @@ const controlsEl = document.getElementById('controls');
 const statusEl = document.getElementById('status');
 const errorEl = document.getElementById('error');
 const backupErrorEl = document.getElementById('backup-error');
+const autoErrorEl = document.getElementById('auto-error');
 const muteStashEl = document.getElementById('mute-stash');
 const undoEl = document.getElementById('undo');
 
@@ -102,6 +103,19 @@ function renderBackupError() {
   );
 }
 
+// Hinweis, wenn die letzte automatische Sicherung als Datei gescheitert ist
+function renderAutoError() {
+  const e = state.autoBackupError;
+  autoErrorEl.hidden = !e;
+  if (!e) return autoErrorEl.replaceChildren();
+  const at = new Date(e.at).toLocaleString(tr('lang'), { dateStyle: 'short', timeStyle: 'short' });
+  autoErrorEl.replaceChildren(
+    el('p', 'msg', tr('autoFailed', at)),
+    el('p', null, tr('autoFailedHint')),
+    el('p', 'detail', errorText(e.message)),
+  );
+}
+
 // Wie lange ein Workspace nicht gezeigt sein muss, bis seine Tabs entladen werden
 const unloadEl = document.getElementById('unload');
 const unloadLabel = (m) => (!m ? tr('unloadNever') : m < 60 ? tr('unloadMinutes', m) : m === 60 ? tr('unloadHour') : tr('unloadHours', m / 60));
@@ -146,6 +160,7 @@ function renderUndo() {
 
 function render(focus) {
   renderBackupError();
+  renderAutoError();
   renderUndo();
   muteStashEl.checked = state.muteStash;
   renderUnload();
