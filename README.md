@@ -40,7 +40,7 @@ Three parts work together:
 
 ### Google Chrome and Chromium
 
-The extension also runs in Google Chrome and Chromium. It is installed the same way under `chrome://extensions`, and the startup setting above applies there too. Two parts have to be told apart:
+The extension also runs in Google Chrome and Chromium. It is installed the same way under `chrome://extensions`, and the startup setting above applies there too. It needs version 102 or newer; older versions refuse to install it. Two parts have to be told apart:
 
 - **Extension:** creating, renaming, switching and deleting workspaces, moving tabs, pinned tabs and the keyboard shortcuts. This works the same as in Helium. Tested with Google Chrome 157.0.8103.78 and Chromium 160.0.8158.0.
 - **Desktop integration:** the KWin script only hides stash windows of browsers it knows by their window class (X11) or app ID (Wayland): `helium`, `google-chrome`, `chromium` and `chromium-browser`. Tested with Google Chrome 157.0.8103.78 and Chromium 157.0.8103.38 under KWin 6.8.2, as native Wayland windows and as X11 windows via XWayland. Other browsers such as Brave, Vivaldi or Edge are only recognized once they are added to the list, see below. Until then their stash windows stay visible as minimized windows.

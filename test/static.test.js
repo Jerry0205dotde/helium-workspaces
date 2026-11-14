@@ -60,6 +60,25 @@ test('manifest.json ist gültig und verweist nur auf vorhandene Dateien', () => 
   for (const [, cmd] of bg.matchAll(/cmd === '([^']+)'/g)) assert.ok(m.commands[cmd], `Befehl ${cmd} fehlt im Manifest`);
 });
 
+test('manifest.json nennt eine Mindestversion, die alle benutzten Schnittstellen hat', () => {
+  const m = readJson(path.join(EXT, 'manifest.json'));
+  assert.match(m.minimum_chrome_version || '', /^\d+(\.\d+){0,3}$/, 'minimum_chrome_version fehlt');
+  const min = Number(m.minimum_chrome_version.split('.')[0]);
+  // Schnittstelle → erste Chrome-Version, die sie hat. Kommt eine neuere dazu, gehört sie hierher.
+  const since = {
+    'chrome.storage.session': 102,
+    'Object.hasOwn': 93,
+    'chrome.tabGroups': 89,
+    'Intl.Segmenter': 87,
+  };
+  const code = files(EXT, '.js')
+    .map((f) => fs.readFileSync(f, 'utf8'))
+    .join('\n');
+  for (const [api, v] of Object.entries(since)) {
+    if (code.includes(api)) assert.ok(min >= v, `${api} gibt es erst ab Chrome ${v}, minimum_chrome_version ist ${min}`);
+  }
+});
+
 test('HTML-Seiten der Erweiterung laden nur vorhandene Skripte und Stile', () => {
   for (const f of files(EXT, '.html')) {
     const html = fs.readFileSync(f, 'utf8');
