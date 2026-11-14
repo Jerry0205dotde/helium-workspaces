@@ -1,7 +1,8 @@
 // Hintergrundlogik: Export und Import (Dateiformat in exchange.js)
 
-// Inhalt aller Workspaces im Sicherungsformat: die lebenden Tabs, für Workspaces ohne
-// Fenster die Sicherung, dahinter die nicht wiederhergestellten Einträge. Die
+// Inhalt aller Workspaces im Sicherungsformat: die lebenden Tabs samt den noch nicht
+// angelegten (keepLater), für Workspaces ohne Fenster die Sicherung, dahinter die nicht
+// wiederhergestellten Einträge. Die
 // Gruppenschlüssel werden je Herkunft getrennt, damit sich alte und neue Gruppen-IDs
 // nicht vermischen.
 async function collectAll() {
@@ -16,7 +17,7 @@ async function collectAll() {
     const b = backup[ws.id] || {};
     const live = !!sw || showing.length > 0;
     const open = live
-      ? [...showing.flatMap(movableTabsOf), ...(sw ? stashTabsOf(sw) : [])].map((t) => serTab(t, groups))
+      ? [...[...showing.flatMap(movableTabsOf), ...(sw ? stashTabsOf(sw) : [])].map((t) => serTab(t, groups)), ...(b.later || [])]
       : savedOf(b);
     const failed = b.failed || [];
     return {
@@ -315,7 +316,8 @@ async function importExchange(text, mode, confirmed) {
       const entries = importEntries(m.add, stamp, { from: m.imp.tabs, join: true });
       const r = await moving(() => recreate(entries, m.target.window, false, true));
       await keepFailed(m.target.ws.id, r.failed);
-      res.added += r.ids.length;
+      await keepLater(m.target.ws.id, r.later);
+      res.added += r.ids.length + r.later.length;
       res.failed += r.failed.length;
     }
   }

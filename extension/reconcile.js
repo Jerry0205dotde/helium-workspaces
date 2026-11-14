@@ -203,6 +203,7 @@ async function reconcile() {
       const p = await recreate(backupPinned, win.id, true);
       const r = await recreate(backup[target]?.shown || [], win.id);
       await keepFailed(target, [...asPinned(p.failed), ...r.failed]);
+      await keepLater(target, r.later, 'shown');
       let ids = r.ids;
       const st = stash.get(target);
       if (st) ids = ids.concat(await moveOrdered(stashTabsOf(st), win.id));
@@ -267,6 +268,7 @@ async function reconcile() {
   if (changed) await updateAllIcons();
   await checkSession();
   if (changed) await snapshot();
+  await feedLater();
   await syncMute();
 }
 
@@ -286,6 +288,7 @@ async function restoreStart(wins, wsId) {
     const p = await recreate(pinned, win.id, true);
     const r = await recreate(tabs, win.id);
     await keepFailed(wsId, [...asPinned(p.failed), ...r.failed]);
+    await keepLater(wsId, r.later, 'saved');
     const ids = r.ids;
     const own = movableTabsOf(win);
     const blank = own.length === 1 && isNewTab(own[0]) ? own[0] : null;
@@ -293,13 +296,15 @@ async function restoreStart(wins, wsId) {
       await chrome.tabs.update(ids[0], { active: true });
       await chrome.tabs.remove(blank.id);
     }
-    // Für dropStartCopies: die angelegten Kopien und alle Tabs, die es jetzt schon gibt
+    // Für dropStartCopies: die angelegten Kopien und alle Tabs, die es jetzt schon gibt.
+    // startWs: der Workspace, dessen zurückgestellte Tabs feedLater als Kopien nachträgt.
     const copies = [...p.ids, ...ids];
     const all = await chrome.tabs.query({});
     await chrome.storage.session.set({
       startCopies: all.filter((t) => copies.includes(t.id)).map((t) => ({ id: t.id, url: urlOf(t) })),
       startSeen: all.map((t) => t.id),
       startCopiesUntil: Date.now() + 60000,
+      ...(r.later.length ? { startWs: wsId } : {}),
     });
   });
   console.info('[workspaces] Workspace nach dem Start aus der Sicherung aufgebaut');
@@ -317,10 +322,12 @@ async function restoreStart(wins, wsId) {
 // Minute zählen nur Tabs, die wie Chromiums Wiederherstellung gemeinsam erscheinen: in
 // einem Schwung (START_BURST) mindestens so viele wie die Kopien, mindestens zwei. Öffnet
 // man eine der Seiten selbst neu, bleiben beide.
+// Die noch zurückgestellten Tabs (keepLater) des aufgebauten Workspace hat Chromium dann
+// ebenfalls wiederhergestellt; sie werden nicht mehr angelegt.
 const START_BURST = 5000;
 async function dropStartCopies(s, stash) {
-  const keys = ['startCopies', 'startSeen', 'startCopiesUntil', 'startNew'];
-  const { startCopies, startSeen, startCopiesUntil, startNew = {} } = await chrome.storage.session.get(keys);
+  const keys = ['startCopies', 'startSeen', 'startCopiesUntil', 'startNew', 'startWs'];
+  const { startCopies, startSeen, startCopiesUntil, startNew = {}, startWs } = await chrome.storage.session.get(keys);
   if (!startCopies || !(Date.now() <= startCopiesUntil)) {
     ownTabs.clear();
     if (startCopies) await chrome.storage.session.remove(keys);
@@ -348,6 +355,11 @@ async function dropStartCopies(s, stash) {
   await chrome.storage.session.remove(keys);
   if (!live.length) return false;
   await moving(() => chrome.tabs.remove(live.map((c) => c.id)));
+  const { backup } = await getBackup();
+  if (backup[startWs]?.later) {
+    delete backup[startWs].later;
+    await chrome.storage.local.set({ backup });
+  }
   console.info('[workspaces] Kopien aus der Sicherung geschlossen, Chromium hat die Sitzung wiederhergestellt');
   return true;
 }

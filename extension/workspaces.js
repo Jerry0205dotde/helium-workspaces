@@ -52,8 +52,9 @@ async function deleteWs(id, batch = []) {
   // Schließen sichern. Nicht wiederhergestellte Einträge bleiben dabei erhalten.
   if (w) {
     const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
-    const failed = backup[id]?.failed;
-    backup[id] = { stash: stashTabsOf(w).map((t) => serTab(t, groups)), shown: [], ...(failed?.length ? { failed } : {}) };
+    const { failed, later } = backup[id] || {};
+    const stash = stashTabsOf(w).map((t) => serTab(t, groups));
+    backup[id] = { stash, shown: [], ...(failed?.length ? { failed } : {}), ...(later?.length ? { later: relink(later, stash) } : {}) };
     await chrome.storage.local.set({ backup });
     // Nur ein schon geschlossenes Fenster gilt als Erfolg. Bliebe die Ablage offen, holte
     // der nächste Abgleich sie als Workspace „Wiederhergestellt“ zurück.
@@ -95,7 +96,8 @@ async function undoDelete() {
 
 async function clearBackup(wsId) {
   const { backup } = await getBackup();
-  // Fehlgeschlagene Einträge waren nie in einem Fenster und bleiben für einen erneuten Versuch
+  // Fehlgeschlagene Einträge waren nie in einem Fenster und bleiben für einen erneuten
+  // Versuch. Zurückgestellte gehen mit den Tabs, hinter denen sie angelegt worden wären.
   const failed = backup[wsId]?.failed;
   backup[wsId] = { stash: [], shown: [], ...(failed?.length ? { failed } : {}) };
   await chrome.storage.local.set({ backup });

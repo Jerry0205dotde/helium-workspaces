@@ -17,8 +17,9 @@
 //   extensionId). Tabs kommen nach einem Browserstart ohne Stummschaltung wieder.
 // - storage.session ist nach einem Browserstart und nach dem Neuladen der Erweiterung
 //   leer, beim Neustart nur des Service Workers bleibt es erhalten.
-// - Ein neu angelegter Tab meldet kurz darauf status 'complete' (geladen). Mit
-//   holdLoads = true erst bei releaseLoads(), etwa um den Worker dazwischen neu zu starten.
+// - Ein neu angelegter Tab meldet kurz darauf status 'complete' (geladen), bis dahin hat er
+//   status 'loading'. Mit holdLoads = true erst bei releaseLoads(), etwa um den Worker
+//   dazwischen neu zu starten; mit loadOnly(n) laden nur die ersten n zurückgehaltenen fertig.
 // - tabs.discard gibt dem Tab eine neue ID (tabs.onReplaced) und hebt seine
 //   Stummschaltung auf, wie Helium 0.21.3 mit Chromium 157. Ein entladener Tab lädt neu,
 //   sobald er aktiv wird.
@@ -230,7 +231,7 @@ class Browser {
       active: t.active,
       highlighted: t.active || !!t.highlighted,
       groupId: t.groupId,
-      status: t.discarded ? 'unloaded' : 'complete',
+      status: t.discarded ? 'unloaded' : t.loading ? 'loading' : 'complete',
       discarded: !!t.discarded,
       audible: !!t.audible,
       mutedInfo: clone(t.mutedInfo || { muted: false }),
@@ -342,8 +343,10 @@ class Browser {
 
   // Meldet kurz darauf, dass der Tab fertig geladen hat (nach der Antwort des Aufrufs)
   loaded(t) {
+    t.loading = true;
     if (this.holdLoads) return void this.heldLoads.push(t);
     setImmediate(() => {
+      t.loading = false;
       for (const w of this.windows) {
         if (w.tabs.includes(t) && !t.discarded) this.fire('tabs.onUpdated', t.id, { status: 'complete' }, this.tabInfo(t, w));
       }
@@ -354,6 +357,14 @@ class Browser {
   releaseLoads() {
     this.holdLoads = false;
     for (const t of this.heldLoads.splice(0)) this.loaded(t);
+  }
+
+  // Lässt nur die ersten n zurückgehaltenen Tabs fertig laden; weitere bleiben zurückgehalten
+  loadOnly(n) {
+    for (const t of this.heldLoads.splice(0, n)) {
+      t.loading = false;
+      for (const w of this.windows) if (w.tabs.includes(t) && !t.discarded) this.fire('tabs.onUpdated', t.id, { status: 'complete' }, this.tabInfo(t, w));
+    }
   }
 
   // Der Tab beginnt oder hört auf, Ton abzuspielen

@@ -117,7 +117,10 @@ chrome.tabs.onRemoved.addListener((tabId, info) => {
 chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (info.url || info.pinned !== undefined || info.groupId !== undefined) scheduleSnapshot();
   if (info.audible === false) noteSilent(tabId);
-  if (info.status === 'complete' && (await unloadLaterTake(tabId))) serial(() => unloadRestored(tabId));
+  if (info.status === 'complete' && (await unloadLaterTake(tabId))) {
+    serial(() => unloadRestored(tabId));
+    serial(feedLater); // ein Platz zum Laden ist frei geworden
+  }
   // Chromium setzt Symbol, Titel und Plakette eines Tabs beim Laden einer Seite zurück
   if (info.status === 'complete') {
     const ws = (await sess()).windowWs[tab.windowId];
@@ -157,7 +160,8 @@ async function stateFor(windowId) {
     const { sw, showing } = windowsOf(ws.id, s, stash, mains);
     let count;
     if (sw || showing.length) {
-      count = (sw ? stashTabsOf(sw).length : 0) + showing.reduce((n, w) => n + movableTabsOf(w).length, 0);
+      const later = backup[ws.id]?.later?.length || 0; // noch nicht angelegt (keepLater)
+      count = (sw ? stashTabsOf(sw).length : 0) + showing.reduce((n, w) => n + movableTabsOf(w).length, 0) + later;
     } else {
       count = savedOf(backup[ws.id]).length;
     }

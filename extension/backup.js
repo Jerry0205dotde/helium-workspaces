@@ -77,6 +77,16 @@ function serTab(t, groups) {
   return e;
 }
 
+// Zurückgestellte Einträge (keepLater) übernehmen den Gruppenschlüssel ihrer schon
+// angelegten Geschwister (gs, gleicher Titel und gleiche Farbe) aus saved. Sonst bildeten
+// sie beim nächsten Aufbau aus der Sicherung eine zweite Gruppe neben ihnen.
+function relink(later, saved) {
+  return later.map((e) => {
+    const sib = e.gs && saved.find((x) => x.g && x.gt === e.gt && x.gc === e.gc && e.gs.includes(x.url));
+    return sib ? { ...e, g: sib.g } : e;
+  });
+}
+
 // Angeheftete Tabs aller Hauptfenster, jede Adresse so oft, wie sie in einem einzelnen
 // Fenster höchstens vorkommt: dieselbe Adresse in zwei Fenstern zählt einmal.
 function pinnedOf(mains, groups) {
@@ -125,12 +135,14 @@ async function snapshot(gone) {
   for (const ws of cfg.workspaces) {
     const { sw, showing } = windowsOf(ws.id, s, stash, mains);
     if (!sw && !showing.length) continue; // nichts Lebendes → alten Stand behalten
-    const failed = backup[ws.id]?.failed;
-    backup[ws.id] = {
+    const { failed, later } = backup[ws.id] || {};
+    const b = {
       stash: sw ? stashTabsOf(sw).map((t) => serTab(t, groups)) : [],
       shown: showing.flatMap((w) => movableTabsOf(w).map((t) => serTab(t, groups))),
-      ...(failed?.length ? { failed } : {}),
     };
+    if (failed?.length) b.failed = failed;
+    if (later?.length) b.later = relink(later, savedOf(b));
+    backup[ws.id] = b;
   }
   for (const k of Object.keys(backup)) {
     if (!cfg.workspaces.some((w) => w.id === k)) delete backup[k];

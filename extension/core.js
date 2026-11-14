@@ -91,8 +91,9 @@ async function sessionUsage() {
 // Nach jeder Sicherung; ein Fehler beim Messen soll nichts anderes aufhalten
 const checkSession = () => sessionUsage().catch((e) => console.warn('[workspaces] Speicher messen', e));
 
-// Gesicherte Tabs eines Workspace: erst die gezeigten, dann die der Ablage
-const savedOf = (b) => [...(b?.shown || []), ...(b?.stash || [])];
+// Gesicherte Tabs eines Workspace: erst die gezeigten, dann die der Ablage, dann die
+// beim Aufbau zurückgestellten (keepLater)
+const savedOf = (b) => [...(b?.shown || []), ...(b?.stash || []), ...(b?.later || [])];
 
 async function getBackup() {
   const { backup, backupPinned } = await chrome.storage.local.get(['backup', 'backupPinned']);

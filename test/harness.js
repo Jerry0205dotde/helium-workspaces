@@ -138,7 +138,7 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
     const id = env.ids[name];
     assert.ok(id, `Testfehler: unbekannter Workspace ${name}`);
     const exp = items.map(norm);
-    const saved = [...(backup[id]?.shown || []), ...(backup[id]?.stash || [])].filter((e) => !(allowNewTab && e.url === NEWTAB));
+    const saved = [...(backup[id]?.shown || []), ...(backup[id]?.stash || []), ...(backup[id]?.later || [])].filter((e) => !(allowNewTab && e.url === NEWTAB));
     // Sicherung stimmt mit dem Bestand überein
     assert.deepEqual(sortUrls(saved.map((e) => e.url)), sortUrls(exp.map((e) => e.url)), `Sicherung von ${name}`);
     if (live.has(name)) {

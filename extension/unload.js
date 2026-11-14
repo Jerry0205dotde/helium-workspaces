@@ -33,6 +33,7 @@ function saveUnloadLater(ids) {
 async function unloadLaterAdd(tabId) {
   const ids = await unloadLaterIds();
   ids.add(tabId);
+  loadingSince.set(tabId, Date.now());
   await saveUnloadLater(ids);
 }
 
@@ -42,6 +43,34 @@ async function unloadLaterTake(tabId) {
   if (!ids.delete(tabId)) return false;
   await saveUnloadLater(ids);
   return true;
+}
+
+// Aus der Sicherung laden höchstens LOAD_AT_ONCE Tabs gleichzeitig, sonst rufen 80 Tabs
+// eines Workspace 80 Seiten auf einmal auf (#158). Ein Tab zählt, bis er fertig geladen
+// hat, höchstens LOAD_TIMEOUT lang. Seit wann er lädt, steht nur im Speicher; nach einem
+// Neustart des Service Workers zählt er ab dem ersten Blick.
+const LOAD_AT_ONCE = 6;
+const LOAD_TIMEOUT = 15000;
+const loadingSince = new Map();
+
+// Wie viele aus der Sicherung angelegte Tabs noch laden (n) und in wie vielen ms der
+// älteste davon nicht mehr zählt (wait)
+async function restoredLoading() {
+  const ids = await unloadLaterIds();
+  const now = Date.now();
+  for (const id of loadingSince.keys()) if (!ids.has(id)) loadingSince.delete(id);
+  let n = 0;
+  let wait = Infinity;
+  for (const id of ids) {
+    if (!loadingSince.has(id)) loadingSince.set(id, now);
+    const left = loadingSince.get(id) + LOAD_TIMEOUT - now;
+    if (left <= 0) continue;
+    const t = await chrome.tabs.get(id).catch(() => null);
+    if (t?.status !== 'loading') continue;
+    n++;
+    wait = Math.min(wait, left);
+  }
+  return { n, wait };
 }
 
 // Chromium vergisst dabei die Stummschaltung, deshalb wird sie danach wieder gesetzt. Die

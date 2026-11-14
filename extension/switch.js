@@ -17,7 +17,9 @@ async function ensureStash(wsId, restoreBackup) {
     await chrome.tabs.update(tabId, { pinned: true });
     if (restoreBackup) {
       if (b) {
-        await keepFailed(wsId, (await recreate(savedOf(b), win.id, false, false, [], [], noteStashFailed)).failed);
+        const r = await recreate(savedOf(b), win.id, false, false, [], [], noteStashFailed);
+        await keepFailed(wsId, r.failed);
+        await keepLater(wsId, r.later, 'saved');
         await chrome.storage.session.remove('pendingStash');
       }
       await chrome.tabs.update(tabId, { active: true });
@@ -52,6 +54,7 @@ async function resumeStash() {
     await moving(async () => {
       const r = await recreate(list, w.id, false, false, stashTabsOf(w), gone, noteStashFailed);
       await keepFailed(p.ws, r.failed);
+      await keepLater(p.ws, r.later, 'saved');
       await chrome.tabs.update(w.tabs.find(isStashTab).id, { active: true });
     });
   }
@@ -131,6 +134,7 @@ async function switchTo(windowId, targetWs) {
           const r = await recreate(savedOf(b), windowId, false, false, [], [], noteFailed);
           brought = r.ids;
           await keepFailed(targetWs, r.failed);
+          await keepLater(targetWs, r.later, 'saved');
           await setPending(p);
         }
       }
@@ -191,6 +195,7 @@ async function finishSwitch() {
       const gone = (p.failed || []).filter((f) => list[f.i]?.url === f.url).map((f) => f.i);
       const r = await recreate(list, p.windowId, false, false, arrived, gone, noteFailed);
       await keepFailed(p.to, r.failed);
+      await keepLater(p.to, r.later, 'saved');
     }
 
     const oldLeft = tabs.filter((t) => old.has(t.id));
