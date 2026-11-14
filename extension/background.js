@@ -86,7 +86,12 @@ chrome.tabs.onAttached.addListener(async (tabId, { newWindowId }) => {
 });
 
 chrome.tabs.onCreated.addListener(async (tab) => {
-  if (switching) return;
+  if (switching) {
+    ownTabs.add(tab.id);
+    // dropStartCopies speichert sie, bevor ein Neustart des Service Workers sie vergisst
+    if ((await chrome.storage.session.get('startCopies')).startCopies) scheduleReconcile();
+    return;
+  }
   scheduleSnapshot();
   const s = await sess();
   if (s.windowWs[tab.windowId]) await setTabIcon(tab.id, s.windowWs[tab.windowId]);

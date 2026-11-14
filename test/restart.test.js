@@ -241,6 +241,48 @@ test('Nach einem Start ohne Wiederherstellung: Wer eine Seite später selbst noc
   assert.equal(b.tabsByUrl(url('a1')).length, 2);
 });
 
+test('Nach einem Start ohne Wiederherstellung: Wer in der ersten Minute eine Seite selbst noch einmal öffnet, behält die Kopie aus der Sicherung (#151)', async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  const { b } = env;
+  b.restart({ restore: 'crash' });
+  const w = b.startWorker('startup');
+  await w.settle();
+  const main = b.mains()[0].id;
+  const [copy] = b.tabsByUrl(url('a1'));
+  await w.advance(10000);
+  await b.chrome.tabs.create({ windowId: main, url: url('a1'), active: false });
+  await w.settle();
+  assert.ok(b.tabsByUrl(url('a1')).some((t) => t.id === copy.id), 'die Kopie aus der Sicherung wurde geschlossen');
+  assert.equal(b.tabsByUrl(url('a1')).length, 2);
+  // Klickt man danach noch auf „Wiederherstellen“, schließen sich die Kopien trotzdem
+  await w.advance(10000);
+  b.restoreAfterCrash();
+  await w.settle();
+  assert.ok(!b.tabsByUrl(url('a1')).some((t) => t.id === copy.id), 'die Kopie aus der Sicherung blieb offen');
+  assert.equal(b.tabsByUrl(url('a1')).length, 2);
+});
+
+test('Nach einem Start ohne Wiederherstellung: Beim Wechseln selbst angelegte Tabs zählen nicht als Wiederherstellung (#151)', async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  const { b } = env;
+  b.restart({ restore: 'crash' });
+  const w = b.startWorker('startup');
+  await w.settle();
+  const main = b.mains()[0].id;
+  const [copy] = b.tabsByUrl(url('a1'));
+  await w.advance(10000);
+  await ok(w.request({ type: 'switch', windowId: main, wsId: env.ids.B }));
+  await ok(w.request({ type: 'switch', windowId: main, wsId: env.ids.A }));
+  // Auch wenn der Service Worker inzwischen neu gestartet ist
+  await w.advance(30000);
+  const w2 = b.startWorker(null);
+  await w2.settle();
+  await b.chrome.tabs.create({ windowId: main, url: url('a1'), active: false });
+  await w2.settle();
+  assert.ok(b.tabsByUrl(url('a1')).some((t) => t.id === copy.id), 'die Kopie aus der Sicherung wurde geschlossen');
+  assert.equal(b.tabsByUrl(url('a1')).length, 2);
+});
+
 test('Start ohne Sitzungswiederherstellung: zusammen wiederhergestellte Ablage-Seiten und angeheftete Tabs verdrängen keine gesicherten Tabs', async () => {
   const spec = {
     pinned: ['pin'],
