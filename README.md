@@ -112,7 +112,9 @@ Once, when updating from a version that kept the key in `extension/token.js`: af
 
 ### The key
 
-On its first start the extension generates a random key and keeps it in its storage in the Helium profile. Websites cannot read it there. It does appear in the title of the stash tabs, though, and any other installed extension with the `tabs` permission can read that title. So the key protects against websites, not against other extensions. The popup shows it under **Key for install.sh**, and `install.sh` writes it to `kwinrc`. That way every device has its own key. If the key in `kwinrc` does not match the one in the popup, the stash windows stay visible.
+On its first start the extension generates a random key and keeps it in its storage in the Helium profile. Websites cannot read it there. It does appear in the title of the stash tabs, though, and any other installed extension with the `tabs` permission can read that title. So the key protects against websites, not against other extensions. The popup shows it under **Key for install.sh**, and `install.sh` writes it to `kwinrc`. That way every device and every browser profile has its own key. If the key from the popup is not in `kwinrc`, the stash windows stay visible.
+
+Several browsers or profiles with the extension, such as Helium and Chromium or two Helium profiles, each have their own key. Run `install.sh` with the key from each popup. A new key is added to the ones already set up, and `install.sh` then lists all of them. `./install.sh --remove <key>` removes a key that is no longer needed, for example after removing the extension from a profile. The stashes with that key then come back to the taskbar.
 
 To bring workspaces to another device, use the export (see below). It does not contain the key.
 
@@ -187,7 +189,7 @@ A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its fir
    kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token
    ```
 
-   The output must be the key the popup shows under **Key for install.sh**, and the window title must show it after `HWS-Ablage`. If the title contains no key (`HWS-Ablage · Uni`), reload the extension in `chrome://extensions`.
+   The output must contain the key the popup shows under **Key for install.sh** (comma-separated with several browsers or profiles), and the window title must show it after `HWS-Ablage`. If the title contains no key (`HWS-Ablage · Uni`), reload the extension in `chrome://extensions`.
 3. To repair, click **Copy** under **Key for install.sh** in the popup and run the command in the repository folder. The script reloads the KWin script, and after one or two seconds the stashes disappear from the taskbar.
 
 ### `install.sh` aborts
@@ -233,7 +235,7 @@ This is a private hobby project. Expect bugs.
 node --test test/*.test.js
 ```
 
-This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. `install.sh` runs against stand-ins for the KDE commands: installing including the hint about the startup setting, the check for missing programs, `--help`, `--uninstall`, and `--update`, which pulls with real `git` from a test repository. The messages of `install.sh` are checked in German and English. The same checks run in CI on every pull request.
+This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. `install.sh` runs against stand-ins for the KDE commands: installing including the hint about the startup setting, the check for missing programs, several keys, `--help`, `--remove`, `--uninstall`, and `--update`, which pulls with real `git` from a test repository. The messages of `install.sh` are checked in German and English. The same checks run in CI on every pull request.
 
 If anything in `extension/` changes, the version in [`manifest.json`](./extension/manifest.json) must be higher than on `main`, otherwise `static.test.js` fails. The version is shown in the bottom right of the popup, so after an update you can see whether the new code is running. The KWin script carries the same version in [`metadata.json`](./kwin/metadata.json), `static.test.js` checks that too, and `install.sh` names it at the end. The comparison is against `origin/main`; `VERSION_BASE` selects a different ref. If the ref is missing, the check is skipped.
 
@@ -269,7 +271,7 @@ The tests do not check KWin. After changing that, briefly check by hand:
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): the page that marks a window as a stash
   - [`label.js`](./extension/label.js): the character shown in a workspace's icon
 - [`kwin/`](./kwin): KWin script that hides the stash windows
-- [`install.sh`](./install.sh): set up the KWin script and write the key, update with `--update`, remove it again with `--uninstall`
+- [`install.sh`](./install.sh): set up the KWin script and write the key, remove a key with `--remove`, update with `--update`, remove it again with `--uninstall`
 - [`test/`](./test): automated tests, [`fake-browser.js`](./test/fake-browser.js) replicates the Chrome APIs, [`page.js`](./test/page.js) drives the popup and the import page in Chromium, [`chromium.js`](./test/chromium.js) drives a real Chromium
 
 ## License

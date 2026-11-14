@@ -1,8 +1,10 @@
 #!/bin/bash
 # Installiert bzw. aktualisiert das KWin-Skript auf diesem Gerät und trägt den
-# geräteeigenen Schlüssel der Erweiterung in kwinrc ein. Die Erweiterung erzeugt ihn
-# beim ersten Start, ihr Popup zeigt ihn unter "Schlüssel für install.sh".
+# Schlüssel der Erweiterung in kwinrc ein. Die Erweiterung erzeugt ihn beim ersten Start,
+# ihr Popup zeigt ihn unter "Schlüssel für install.sh".
 # Aufruf: ./install.sh [--browsers Liste] [Schlüssel]. Ohne Schlüssel fragt das Skript danach.
+# Jeder Browser bzw. jedes Profil mit der Erweiterung hat einen eigenen Schlüssel. Ein neuer
+# Schlüssel kommt zu den eingetragenen dazu, ./install.sh --remove <Schlüssel> trägt einen aus.
 # --browsers legt kommagetrennt die Fensterklassen (X11) bzw. App-IDs (Wayland) der Browser
 # fest, deren Ablagen versteckt werden, z. B. --browsers helium,brave-browser. Eine leere
 # Liste stellt die Standardliste wieder her, ohne --browsers bleibt die bisherige Einstellung.
@@ -39,6 +41,7 @@ BROWSERS=""
 SET_BROWSERS=""
 UNINSTALL=""
 UPDATE=""
+REMOVE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --browsers)
@@ -48,6 +51,7 @@ while [ $# -gt 0 ]; do
     --browsers=*) BROWSERS="${1#*=}"; SET_BROWSERS=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     --update) UPDATE=1; shift ;;
+    --remove) REMOVE=1; shift ;;
     # Der Kommentar am Anfang dieser Datei, ohne die Zeile mit #!
     -h|--help) sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0"; exit 0 ;;
     -*) t "Unbekannte Option: $1" "Unknown option: $1" >&2; exit 1 ;;
@@ -72,8 +76,25 @@ if [ ${#MISSING[@]} -gt 0 ]; then
   exit 1
 fi
 
+# Die eingetragenen Schlüssel stehen kommagetrennt in kwinrc. Ältere Fassungen trugen genau einen ein.
+read_keys() {
+  local k
+  KEYS=()
+  IFS=, read -ra k <<< "$(kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token | tr -d '[:space:]')"
+  for k in "${k[@]}"; do [ -z "$k" ] || has_key "$k" || KEYS+=("$k"); done
+}
+has_key() { local k; for k in "${KEYS[@]}"; do [ "$k" = "$1" ] && return 0; done; return 1; }
+join_keys() { local IFS=,; printf '%s' "${KEYS[*]}"; }
+# Wer den kopierten Befehl aus dem Popup einfügt, bekommt trotzdem nur den Schlüssel
+clean_key() { local k="${1##*install.sh}"; printf '%s' "$k" | tr -d '[:space:]'; }
+invalid_key() {
+  t "Ungültiger Schlüssel. Im Popup der Erweiterung unter \"Schlüssel für install.sh\" kopieren." \
+    "Invalid key. Copy it in the extension's popup under \"Key for install.sh\"." >&2
+  exit 1
+}
+
 if [ -n "$UPDATE" ]; then
-  [ -z "$TOKEN$SET_BROWSERS$UNINSTALL" ] \
+  [ -z "$TOKEN$SET_BROWSERS$UNINSTALL$REMOVE" ] \
     || { t "--update nimmt keine weiteren Angaben, Schlüssel und Browserliste bleiben wie eingetragen." \
            "--update takes no further arguments, the key and the browser list stay as they are." >&2; exit 1; }
   OLD="$(kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token)"
@@ -87,6 +108,36 @@ if [ -n "$UPDATE" ]; then
   # shellcheck disable=SC1111
   t "Jetzt in chrome://extensions bei „Workspaces“ auf Neu laden klicken. Danach zeigt das Popup unten rechts die Version $VERSION." \
     "Now click Reload on \"Workspaces\" in chrome://extensions. The popup then shows version $VERSION in the bottom right."
+  exit 0
+fi
+
+if [ -n "$REMOVE" ]; then
+  [ -z "$SET_BROWSERS$UNINSTALL" ] \
+    || { t "--remove nimmt nur den Schlüssel, der ausgetragen werden soll." \
+           "--remove only takes the key to remove." >&2; exit 1; }
+  TOKEN="$(clean_key "$TOKEN")"
+  [[ "$TOKEN" =~ ^[0-9a-f]{24}$ ]] || invalid_key
+  # Erreicht qdbus KWin nicht, bricht das Skript hier ab, bevor etwas geändert ist.
+  "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces >/dev/null
+  read_keys
+  has_key "$TOKEN" || { t "Der Schlüssel $TOKEN ist nicht eingetragen." "The key $TOKEN is not set up." >&2; exit 1; }
+  REST=()
+  for k in "${KEYS[@]}"; do [ "$k" = "$TOKEN" ] || REST+=("$k"); done
+  KEYS=("${REST[@]}")
+  if [ ${#KEYS[@]} -gt 0 ]; then
+    kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token "$(join_keys)"
+  else
+    kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
+  fi
+  # Neu geladen holt das KWin-Skript die Ablagen mit diesem Schlüssel zurück in die Taskleiste
+  "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
+  "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null
+  if [ ${#KEYS[@]} -gt 0 ]; then
+    t "Schlüssel ausgetragen. Noch eingetragen: $(join_keys)" "Key removed. Still set up: $(join_keys)"
+  else
+    t "Schlüssel ausgetragen. Es ist keiner mehr eingetragen, alle Ablagen sind wieder sichtbar." \
+      "Key removed. No key is set up anymore, all stashes are visible again."
+  fi
   exit 0
 fi
 
@@ -121,18 +172,18 @@ BROWSERS="$(printf '%s' "$BROWSERS" | tr -d '[:space:]' | tr '[:upper:]' '[:lowe
   || { t "Ungültige Browserliste: $BROWSERS. Erwartet werden Fensterklassen mit Kommas dazwischen, z. B. helium,brave-browser." \
          "Invalid browser list: $BROWSERS. Expected window classes separated by commas, e.g. helium,brave-browser." >&2; exit 1; }
 
-OLD="$(kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token)"
+read_keys
+OLD="$(join_keys)"
 if [ -z "$TOKEN" ]; then
   read -rp "$(t "Schlüssel aus dem Popup der Erweiterung${OLD:+ (Enter behält $OLD)}: " \
               "Key from the extension's popup${OLD:+ (Enter keeps $OLD)}: ")" TOKEN || true
   TOKEN="${TOKEN:-$OLD}"
 fi
-# Wer den kopierten Befehl aus dem Popup an der Frage einfügt, bekommt trotzdem nur den Schlüssel
-TOKEN="${TOKEN##*install.sh}"
-TOKEN="$(printf '%s' "$TOKEN" | tr -d '[:space:]')"
-[[ "$TOKEN" =~ ^[0-9a-f]{24}$ ]] \
-  || { t "Ungültiger Schlüssel. Im Popup der Erweiterung unter \"Schlüssel für install.sh\" kopieren." \
-         "Invalid key. Copy it in the extension's popup under \"Key for install.sh\"." >&2; exit 1; }
+# Mehrere Schlüssel kommagetrennt, so gibt --update die eingetragenen weiter
+TOKEN="$(clean_key "$TOKEN")"
+[[ "$TOKEN" =~ ^[0-9a-f]{24}(,[0-9a-f]{24})*$ ]] || invalid_key
+IFS=, read -ra NEW <<< "$TOKEN"
+for k in "${NEW[@]}"; do has_key "$k" || KEYS+=("$k"); done
 # Überbleibsel älterer Versionen, die den Schlüssel als Datei abgelegt haben
 rm -f "$DIR/extension/token.js"
 
@@ -143,7 +194,7 @@ if kpackagetool6 --type=KWin/Script -s helium-workspaces >/dev/null 2>&1; then
 else
   kpackagetool6 --type=KWin/Script -i "$DIR/kwin" >/dev/null
 fi
-kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token "$TOKEN"
+kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token "$(join_keys)"
 if [ -n "$SET_BROWSERS" ]; then
   if [ -n "$BROWSERS" ]; then
     kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers "$BROWSERS"
@@ -186,5 +237,6 @@ if [ ${#NOT_RESTORING[@]} -gt 0 ]; then
   t "Einstellungen → Beim Start die Option wählen." "option there under Settings → On startup."
 fi
 # Die Version des KWin-Skripts ist dieselbe wie die der Erweiterung (test/static.test.js)
+[ ${#KEYS[@]} -lt 2 ] || t "Eingetragene Schlüssel: $(join_keys)" "Keys set up: $(join_keys)"
 KWIN_VERSION="$(sed -n 's/^ *"Version": *"\([^"]*\)".*/\1/p' "$DIR/kwin/metadata.json")"
 t "Fertig, KWin-Skript $KWIN_VERSION installiert." "Done, KWin script $KWIN_VERSION installed."
