@@ -82,6 +82,71 @@ test('Workspace ohne Ablage-Fenster, der schon anderswo offen ist, kommt nicht a
   check(env, { ...ALL, E: ['e1', 'e2'] });
 });
 
+// Rechtsklick auf einen Link in einem Tab, dann „Link in Workspace öffnen“
+async function openLink(env, name, wsId, from = 'a1') {
+  env.b.fire('contextMenus.onClicked', { menuItemId: `link:${wsId}`, linkUrl: url(name), pageUrl: url(from) }, where(env, from).tab);
+  await env.w.settle();
+}
+
+test('Link in Workspace öffnen: im Fenster, das den Workspace zeigt, sonst in seiner Ablage (#157)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const win2 = await newWindow(env);
+  await ok(w.request({ type: 'switch', windowId: win2, wsId: ids.B }));
+  await b.chrome.windows.update(win, { focused: true });
+  await w.settle();
+  const before = tabIds(env);
+
+  // B ist in Fenster 2 offen: Der Link kommt dort im Hintergrund dazu
+  await openLink(env, 'l1', ids.B);
+  assert.equal(where(env, 'l1').win.id, win2);
+  assert.equal(where(env, 'l1').tab.active, false);
+
+  // C liegt in seiner Ablage: Der Link kommt dorthin, die Ablage-Seite bleibt vorne und
+  // Fenster 1 im Vordergrund
+  await openLink(env, 'l2', ids.C);
+  const at = where(env, 'l2');
+  assert.equal(at.ws, ids.C);
+  assert.equal(at.stash, true);
+  assert.ok(at.win.tabs.find((t) => t.active).url.startsWith(b.origin), 'Ablage-Seite ist nicht mehr aktiv');
+  assert.equal(b.windows.find((x) => x.id === win).focused, true);
+
+  // Der eigene Workspace: im Fenster, in dem geklickt wurde
+  await openLink(env, 'l3', ids.A);
+  assert.equal(where(env, 'l3').win.id, win);
+  assert.equal(where(env, 'a1').tab.active, true);
+
+  assert.equal(shows(env, win), 'A');
+  assert.equal(shows(env, win2), 'B');
+  const expected = { ...ALL, A: [...SPEC.workspaces.A, 'l3'], B: [...SPEC.workspaces.B, 'l1'], C: [...SPEC.workspaces.C, 'l2'] };
+  check(env, expected);
+  for (const [u, id] of Object.entries(before)) assert.equal(tabIds(env)[u], id, `${u} wurde neu angelegt`);
+
+  // Zeigen zwei Fenster B, kommt der Link in das, in dem geklickt wurde
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await openTabs(b, win, ['b3']);
+  await w.settle();
+  await openLink(env, 'l4', ids.B, 'b3');
+  assert.equal(where(env, 'l4').win.id, win);
+
+  // Beim Wechsel zu C kommt der Link aus der Ablage mit
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.C }));
+  assert.equal(where(env, 'l2').win.id, win);
+  check(env, { ...expected, B: [...expected.B, 'b3', 'l4'] });
+});
+
+test('Link in Workspace öffnen übernimmt nichts aus privaten Fenstern und keine Seiten der Erweiterung (#157)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, ids } = env;
+  const before = tabIds(env);
+  const tab = where(env, 'a1').tab;
+  b.fire('contextMenus.onClicked', { menuItemId: `link:${ids.C}`, linkUrl: url('privat') }, { ...tab, incognito: true });
+  b.fire('contextMenus.onClicked', { menuItemId: `link:${ids.C}`, linkUrl: `${b.origin}stash.html#${ids.B}` }, tab);
+  await w.settle();
+  assert.deepEqual(tabIds(env), before);
+  check(env, ALL);
+});
+
 test('Schließen eines von zwei Fenstern verwirft nur dessen Tabs', async () => {
   const env = await setup(SPEC);
   const { b, w, win, ids } = env;

@@ -602,3 +602,14 @@ test('Scheitert der Aufbau der Ablage für einen verschobenen Tab, wird danach w
   await env.w.settle();
   check(env, { ...ALL, A: [...SPEC.workspaces.A, 'a5', 'a6'] });
 });
+
+test('Link in einen Workspace öffnen, der nur in der Sicherung liegt: seine Ablage entsteht samt Link (#157)', async () => {
+  const { env } = await onlyBackedUp();
+  const { b, ids } = env;
+  b.fire('contextMenus.onClicked', { menuItemId: `link:${ids.B}`, linkUrl: url('l1') }, where(env, 'a1').tab);
+  await env.w.settle();
+  const expected = { ...ALL, B: [...SPEC.workspaces.B, 'l1'] };
+  check(env, expected);
+  assert.equal(where(env, 'l1').stash, true);
+  await cycle(env, expected);
+});

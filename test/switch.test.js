@@ -97,8 +97,11 @@ test('Tastenkürzel wechseln direkt zu Workspace 1–9 und zum zuletzt benutzten
 test('Das Kontextmenü erscheint auch auf Links, Bildern, Videos und markiertem Text', async () => {
   const { b, ids } = await setup(SPEC);
   const sub = (kind) => Object.values(ids).map((id) => `${kind}:${id}`);
-  assert.deepEqual(b.menus.map((m) => m.id), ['move', ...sub('move'), 'group', ...sub('group')]);
-  for (const m of b.menus) {
+  assert.deepEqual(b.menus.map((m) => m.id), ['link', ...sub('link'), 'move', ...sub('move'), 'group', ...sub('group')]);
+  // „Link in Workspace öffnen“ nur auf Links
+  for (const m of b.menus.filter((x) => x.id.startsWith('link'))) assert.deepEqual(m.contexts, ['link']);
+  assert.equal(b.menus[0].title, 'Link in Workspace öffnen');
+  for (const m of b.menus.filter((x) => !x.id.startsWith('link'))) {
     for (const c of ['page', 'link', 'image', 'video', 'audio', 'selection', 'frame', 'editable', 'action']) {
       assert.ok(m.contexts.includes(c), `${m.id} fehlt im Kontext ${c}`);
     }

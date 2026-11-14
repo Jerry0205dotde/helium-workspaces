@@ -291,6 +291,27 @@ async function moveTabToWs(tabId, wsId, group = false) {
   await snapshot();
 }
 
+// Öffnet einen Link (Kontextmenü) als neuen Tab im Hintergrund des Workspace: in einem
+// Fenster, das ihn zeigt, bevorzugt in dem, in dem geklickt wurde, sonst in seiner Ablage
+async function openLinkInWs(url, wsId, fromWindowId) {
+  await resumeSwitch();
+  const cfg = await getConfig();
+  if (!cfg.workspaces.some((w) => w.id === wsId)) return; // siehe moveTabToWs
+  const s = await sess();
+  const { mains } = await scan();
+  const shows = mains.filter((w) => s.windowWs[w.id] === wsId);
+  const shownIn = shows.find((w) => w.id === fromWindowId) || shows[0];
+  const tab = await moving(async () => {
+    if (shownIn) return chrome.tabs.create({ windowId: shownIn.id, url, active: false });
+    const st = await ensureStash(wsId, true);
+    const t = await chrome.tabs.create({ windowId: st.windowId, url, active: false });
+    if (fromWindowId !== undefined) await chrome.windows.update(fromWindowId, { focused: true }).catch(() => {});
+    return t;
+  });
+  await setTabIcon(tab.id, wsId);
+  await snapshot();
+}
+
 // Ein Tab in einer Ablage wurde aktiv, ohne dass die Erweiterung es war (z. B. über die
 // Tab-Suche des Browsers). Die Ablage verliert dadurch ihren Titel und wird sichtbar.
 // Deshalb zeigt das zuletzt benutzte Hauptfenster diesen Workspace mit dem gewählten Tab.

@@ -557,6 +557,9 @@
   "iconTitleStorageFull": {
     "message": "Extension storage almost full, tabs will soon no longer be saved"
   },
+  "menuLink": {
+    "message": "Open link in workspace"
+  },
   "menuMove": {
     "message": "Move tab to workspace"
   },

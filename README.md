@@ -127,6 +127,7 @@ To bring workspaces to another device, use the export (see below). It does not c
 | Create a workspace, rename it, change its color or emoji, delete it | in the list |
 | Change the order | drag in the list |
 | Move a tab to another workspace | Right-click anywhere on the page, including a link, an image or selected text → **Move tab to workspace**, or click ↪ next to the target in the list |
+| Open a link in another workspace | Right-click the link → **Open link in workspace**. The tab opens in the background in a window showing that workspace, otherwise in its stash |
 | Move several tabs at once | Select the tabs with <kbd>Ctrl</kbd> / <kbd>Shift</kbd>, then as above. Fully selected groups keep their title and color. |
 | Move a whole tab group | In a tab of the group, right-click the page → **Move group to workspace** |
 | Export or import workspaces | in the list → **Export / import** |
