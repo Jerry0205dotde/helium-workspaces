@@ -36,7 +36,7 @@ test('Alte Tabs lassen sich nicht in die Ablage schieben: Sicherung bleibt, Wech
   // Ereignisse aus dem Zwischenstand dürfen die Sicherung nicht überschreiben
   await b.chrome.tabs.create({ windowId: win, url: url('x1'), active: false });
   await b.chrome.tabs.remove(where(env, 'x1').tab.id);
-  await w.advance(700);
+  await w.advance(500); // Snapshot nach 300 ms, erneuter Abgleich 800 ms nach dem Fehler
   assert.equal(backupJson(env), saved, 'Sicherung wurde mit einem Zwischenstand überschrieben');
 
   // Der Abgleich schließt den Wechsel ab

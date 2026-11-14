@@ -105,9 +105,14 @@ chrome.tabs.onRemoved.addListener((tabId, info) => {
     if (!isClosing(info.windowId)) closing.set(info.windowId, Date.now());
     return;
   }
-  scheduleReconcile(); // falls eine Ablage-Seite geschlossen wurde
   scheduleSnapshot();
   if (!switching) noteClosed(tabId, info.windowId);
+  // Nur ein Tab aus einer Ablage kann ihre Ablage-Seite gewesen sein; der Abgleich macht
+  // das Fenster dann wieder zur Ablage. Ein Tab im Hauptfenster braucht keinen Abgleich.
+  chrome.storage.local
+    .get('stashWins')
+    .then(({ stashWins }) => stashWins?.[info.windowId] && scheduleReconcile())
+    .catch(() => scheduleReconcile());
 });
 chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (info.url || info.pinned !== undefined || info.groupId !== undefined) scheduleSnapshot();
