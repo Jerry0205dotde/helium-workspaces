@@ -263,7 +263,8 @@ async function reconcile() {
   s.tabOrigin = {};
   await saveSess(s);
 
-  await updateAllIcons();
+  // Symbole der Tabs setzen onCreated und onAttached; neu sind sie nur bei Änderungen
+  if (changed) await updateAllIcons();
   await checkSession();
   if (changed) await snapshot();
   await syncMute();

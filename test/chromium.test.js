@@ -313,6 +313,21 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     await env.settled({ live: true });
   });
 
+  await step('Ablage-Seite geschlossen: das Fenster wird wieder zur Ablage (#159)', async () => {
+    await env.settled({ live: true });
+    const win = await b.sw(
+      `const t = (await chrome.tabs.query({})).find((x) => (x.url || x.pendingUrl) === args[0]);
+       await chrome.tabs.remove(t.id);
+       return t.windowId;`,
+      STASH + env.ids.B,
+    );
+    await waitFor(async () => {
+      const tabs = await b.sw('return chrome.tabs.query({ windowId: args[0] });', win);
+      assert.equal(tabs[0]?.url, STASH + env.ids.B, 'Ablage-Seite von B fehlt');
+    });
+    await env.settled({ live: true });
+  });
+
   await step('Automatische Sicherung: Datei im Download-Ordner, die letzten zehn bleiben', async () => {
     const dir = path.join(env.profile, 'Downloads', 'helium-workspaces');
     const st = await b.sw('const r = await userAction(() => setAutoBackup(1)); await r?.done; return autoBackupState();');

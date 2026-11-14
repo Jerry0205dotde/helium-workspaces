@@ -36,7 +36,7 @@ test('Alte Tabs lassen sich nicht in die Ablage schieben: Sicherung bleibt, Wech
   // Ereignisse aus dem Zwischenstand dürfen die Sicherung nicht überschreiben
   await b.chrome.tabs.create({ windowId: win, url: url('x1'), active: false });
   await b.chrome.tabs.remove(where(env, 'x1').tab.id);
-  await w.advance(700);
+  await w.advance(500); // Snapshot nach 300 ms, erneuter Abgleich 800 ms nach dem Fehler
   assert.equal(backupJson(env), saved, 'Sicherung wurde mit einem Zwischenstand überschrieben');
 
   // Der Abgleich schließt den Wechsel ab
@@ -61,6 +61,22 @@ test('Ein neuer Wechsel vor dem Abgleich setzt den unterbrochenen erst fort', as
   assert.equal(second.ok, true);
   assert.equal(shows(env, win), 'C');
   check(env, ALL);
+});
+
+test('Derselbe Wechsel erneut vor dem Abgleich: die Tabs zeigen das Symbol des Ziels', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const stashA = stashOf(env, 'A').id;
+  b.fail('tabGroups.move', { when: (_, o) => o.windowId === stashA });
+  const first = w.send({ type: 'switch', windowId: win, wsId: ids.B });
+  await w.advance(10);
+  assert.equal((await first).ok, false);
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await w.settle();
+  assert.equal(shows(env, win), 'B');
+  check(env, ALL);
+  const title = (id) => b.calls.filter((c) => c.name === 'action.setTitle' && c.args[0].tabId === id).at(-1)?.args[0].title;
+  for (const t of await b.chrome.tabs.query({ windowId: win })) assert.equal(title(t.id), 'Workspace: B');
 });
 
 test('Fehler beim Holen der Ziel-Tabs nach der ersten Gruppe: Wechsel wird zu Ende geführt', async () => {

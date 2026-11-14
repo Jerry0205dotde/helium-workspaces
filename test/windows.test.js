@@ -327,3 +327,36 @@ test('Tab in einer Ablage aktivieren: das zuletzt benutzte Fenster wechselt dort
   check(env, ALL);
   for (const [u, id] of Object.entries(before)) assert.equal(tabIds(env)[u], id, `${u} wurde neu angelegt`);
 });
+
+test('Tab im Hauptfenster schließen: kein Abgleich, Symbole bleiben unberührt (#159)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  await openTabs(b, win, Array.from({ length: 60 }, (_, i) => `x${i}`));
+  await w.settle();
+  const from = b.calls.length;
+  await b.chrome.tabs.remove(where(env, 'x0').tab.id);
+  await w.settle();
+  const calls = b.calls.slice(from);
+  assert.deepEqual(calls.filter((c) => c.name.startsWith('action.')).map((c) => c.name), []);
+  // Jeder Abgleich vermerkt seinen Stand in storage.session
+  assert.equal(calls.filter((c) => c.name === 'storage.session.set').length, 0, 'Abgleich ist gelaufen');
+  // Die Sicherung kennt den geschlossenen Tab nicht mehr
+  const { backup } = b.local.data;
+  assert.ok(!JSON.stringify(backup).includes(url('x0')));
+  assert.ok(JSON.stringify(backup).includes(url('x1')));
+});
+
+test('Ablage-Seite einer Ablage geschlossen: der Abgleich macht das Fenster wieder zur Ablage (#159)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const stashB = b.windows.find((x) => b.stashOf(x) === ids.B);
+  await b.chrome.tabs.remove(stashB.tabs[0].id);
+  assert.equal(b.stashOf(stashB), null);
+  await w.settle();
+  assert.equal(b.stashOf(stashB), ids.B);
+  assert.equal(b.mains().length, 1);
+  assert.equal(shows(env, win), 'A');
+  check(env, ALL);
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  check(env, ALL);
+});
