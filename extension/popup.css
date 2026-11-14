@@ -235,5 +235,19 @@ footer {
   border-radius: 8px;
   font-size: 12px;
 }
+.tip:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.tip-text { flex: 1 0 100%; }
+.tip .btn, #auto-error .btn { padding: 2px 8px; font-size: 12px; }
 .undo-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .undo .btn { padding: 2px 8px; font-size: 12px; }

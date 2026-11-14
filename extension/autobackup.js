@@ -40,11 +40,12 @@ async function setAutoBackup(days) {
 // Frage sonst jede Stunde.
 // Gibt { done } zurück, ein Promise auf das Ende des Downloads. In einem Objekt, damit
 // serial() nicht darauf wartet: Der Dialog zum Speicherort kann offen bleiben.
-async function autoBackupIfDue(wait = 10 * 60000) {
+// force sichert auch, wenn noch nichts fällig ist (siehe autoBackupNow).
+async function autoBackupIfDue(wait = 10 * 60000, force = false) {
   const days = await getAutoBackup();
   if (!days || (await getPending())) return null;
   const { autoBackupAt = 0 } = await chrome.storage.local.get('autoBackupAt');
-  if (Date.now() - autoBackupAt < days * 24 * HOUR - HOUR / 2) return null;
+  if (!force && Date.now() - autoBackupAt < days * 24 * HOUR - HOUR / 2) return null;
   try {
     await pruneAutoBackups();
     const id = await startAutoBackup();
@@ -58,6 +59,11 @@ async function autoBackupIfDue(wait = 10 * 60000) {
     return null;
   }
 }
+
+// „Jetzt sichern“ neben der Fehlermeldung im Popup. Sonst käme nach einem abgebrochenen
+// Download die nächste Sicherung erst nach dem eingestellten Abstand, bei wöchentlicher
+// also nach einer Woche.
+const autoBackupNow = () => autoBackupIfDue(15000, true);
 
 const pad = (n) => String(n).padStart(2, '0');
 

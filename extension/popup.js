@@ -5,6 +5,7 @@ const statusEl = document.getElementById('status');
 const errorEl = document.getElementById('error');
 const backupErrorEl = document.getElementById('backup-error');
 const autoErrorEl = document.getElementById('auto-error');
+const autoHintEl = document.getElementById('auto-hint');
 const storageEl = document.getElementById('storage-warning');
 const muteStashEl = document.getElementById('mute-stash');
 const undoEl = document.getElementById('undo');
@@ -110,11 +111,31 @@ function renderAutoError() {
   autoErrorEl.hidden = !e;
   if (!e) return autoErrorEl.replaceChildren();
   const at = new Date(e.at).toLocaleString(tr('lang'), { dateStyle: 'short', timeStyle: 'short' });
+  // Von selbst käme die nächste Sicherung erst nach dem eingestellten Abstand
+  const now = btn('btn', tr('backupNow'), 'backup-now');
+  now.addEventListener('click', () =>
+    run(tr('backingUp'), tr('backupNowFailed'), () => send({ type: 'autoBackupNow' }), { focus: ['backup-now', 'transfer'] }));
   autoErrorEl.replaceChildren(
     el('p', 'msg', tr('autoFailed', at)),
     el('p', null, tr('autoFailedHint')),
     el('p', 'detail', errorText(e.message)),
+    now,
   );
+}
+
+// Einmaliger Hinweis, solange die automatische Sicherung aus ist. Die Standardeinstellung
+// bleibt „nie“, damit Helium nicht ungefragt Dateien in Downloads ablegt.
+function renderAutoHint() {
+  autoHintEl.hidden = !state.autoHint;
+  if (!state.autoHint) return autoHintEl.replaceChildren();
+  const setup = btn('btn', tr('autoHintSetup'), 'auto-setup');
+  setup.title = tr('autoHintSetupTitle');
+  setup.addEventListener('click', openTransfer);
+  const hide = btn('btn', '✕', 'auto-hide');
+  hide.title = hide.ariaLabel = tr('autoHintHide');
+  hide.addEventListener('click', () =>
+    run(tr('saving'), tr('settingFailed'), () => send({ type: 'hideAutoHint' }), { focus: ['transfer'] }));
+  autoHintEl.replaceChildren(el('span', 'tip-text', tr('autoHint')), setup, hide);
 }
 
 // Speicher für den Laufzeitzustand: Warnung ab 98 %, sonst ein Hinweis, wenn der Browser
@@ -179,6 +200,7 @@ function renderUndo() {
 function render(focus) {
   renderBackupError();
   renderAutoError();
+  renderAutoHint();
   renderStorage();
   renderUndo();
   muteStashEl.checked = state.muteStash;
@@ -479,13 +501,15 @@ addBtn.addEventListener('click', (e) => {
 });
 
 // Export und Import laufen in einem eigenen Popup-Fenster, das zu keinem Workspace gehört
-document.getElementById('transfer').addEventListener('click', () =>
-  run(tr('opening'), tr('openTransferFailed'), async () => {
+function openTransfer() {
+  return run(tr('opening'), tr('openTransferFailed'), async () => {
     const url = chrome.runtime.getURL('transfer.html');
     const [tab] = await chrome.tabs.query({ url });
     if (tab) await chrome.windows.update(tab.windowId, { focused: true });
     else await chrome.windows.create({ url, type: 'popup', width: 600, height: 720 });
-  }, { close: true }));
+  }, { close: true });
+}
+document.getElementById('transfer').addEventListener('click', openTransfer);
 
 // Den Wert vorher festhalten: Speichert run() zuerst ein verlassenes Feld, setzt dessen
 // Neuzeichnen die Checkbox auf den alten Stand zurück
