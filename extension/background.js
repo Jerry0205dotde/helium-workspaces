@@ -102,6 +102,7 @@ chrome.tabs.onRemoved.addListener((tabId, info) => {
   }
   scheduleReconcile(); // falls eine Ablage-Seite geschlossen wurde
   scheduleSnapshot();
+  if (!switching) noteClosed(tabId, info.windowId);
 });
 chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (info.url || info.pinned !== undefined || info.groupId !== undefined) scheduleSnapshot();
