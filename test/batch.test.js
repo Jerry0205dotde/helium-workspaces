@@ -42,8 +42,8 @@ async function request(env, msg) {
 
 // Start ohne Sitzungswiederherstellung mit zurückgehaltenen Ladevorgängen: A kommt beim
 // Start aus der Sicherung, B beim Wechseln
-async function startHeld() {
-  const env = await setup(BIG);
+async function startHeld(spec = BIG) {
+  const env = await setup(spec);
   const { b } = env;
   b.restart({ restore: 'none' });
   b.holdLoads = true;
@@ -249,4 +249,73 @@ test('Mit „Ablagen stummschalten“ sind auch in die Ablage nachgelegte Tabs g
   await loadOneByOne(env, () => assert.deepEqual(loud(), []));
   assert.deepEqual(loud(), []);
   check(env, ALL);
+});
+
+test('Service Worker endet mitten im Nachlegen, nachdem ein Tab gescheitert ist: die übrigen kommen nicht doppelt', async () => {
+  const { env } = await startHeld();
+  const { b } = env;
+  b.fail('tabs.create', { when: (p) => p.url === url('b5') });
+  b.during('tabs.create', () => b.worker.kill(), { when: (p) => p.url === url('b7') });
+  b.loadOnly(4);
+  await tick(env);
+  b.startWorker(null);
+  await tick(env);
+  b.releaseLoads();
+  await b.worker.settle();
+  const rest = B.filter((n) => n !== 'b5');
+  assert.deepEqual(order(env), rest.map(url));
+  assert.deepEqual(b.local.data.backup[env.ids.B].failed.map((e) => e.url), [url('b5')]);
+});
+
+test('Wechsel gleich nach dem Ende des Service Workers mitten im Nachlegen: nichts doppelt, nichts im falschen Workspace', async () => {
+  const { env, main } = await startHeld();
+  const { b } = env;
+  b.during('tabs.create', () => b.worker.kill(), { when: (p) => p.url === url('b6') });
+  b.loadOnly(3);
+  await tick(env);
+  b.startWorker(null);
+  let reply = null;
+  b.worker.send({ type: 'switch', windowId: main, wsId: env.ids.A }).then((r) => (reply = r));
+  await tick(env);
+  assert.equal(reply?.ok, true);
+  assert.equal(shows(env, main), 'A');
+  await loadOneByOne(env);
+  assert.deepEqual(order(env), B.map(url));
+  check(env, ALL);
+});
+
+test('Absturz während des Nachlegens und „Wiederherstellen“: getrennte Gruppen mit gleichem Titel bleiben getrennt', async () => {
+  const spec = {
+    pinned: ['p1'],
+    workspaces: {
+      A: ['a1', 'a2'],
+      B: B.map((n, i) => (i >= 3 && i < 9 ? { url: n, group: 'G1' } : i >= 9 && i < 15 ? { url: n, group: 'G2' } : n)),
+    },
+  };
+  const env = await setup(spec);
+  const { b } = env;
+  // Beide Gruppen ohne Titel und grau
+  for (const g of b.groups.values()) await b.chrome.tabGroups.update(g.id, { title: '', color: 'grey' });
+  await b.worker.settle();
+  b.restart({ restore: 'none' });
+  b.holdLoads = true;
+  b.startWorker('startup');
+  await tick(env);
+  await request(env, { type: 'switch', windowId: b.mains()[0].id, wsId: env.ids.B });
+  b.loadOnly(3);
+  await tick(env);
+  assert.deepEqual(open(b), B.slice(0, 6));
+  b.restart({ restore: 'crash' });
+  b.holdLoads = false;
+  b.startWorker('startup');
+  await tick(env);
+  b.restoreAfterCrash();
+  await b.worker.settle();
+  assert.deepEqual(order(env), B.map(url));
+  const gid = (n) => b.tabsByUrl(url(n))[0].groupId;
+  const groupOf = (names) => [...new Set(names.map(gid))];
+  assert.equal(groupOf(B.slice(3, 9)).length, 1, 'erste Gruppe zerteilt');
+  assert.equal(groupOf(B.slice(9, 15)).length, 1, 'zweite Gruppe zerteilt');
+  assert.notEqual(gid('b4'), gid('b10'), 'getrennte Gruppen zusammengelegt');
+  assert.ok(gid('b4') >= 0 && gid('b10') >= 0);
 });

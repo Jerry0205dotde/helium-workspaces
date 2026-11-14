@@ -83,12 +83,12 @@ async function noteFailed(i, e) {
   if (p) await setPending({ ...p, failed: [...(p.failed || []), { i, url: e.url }] });
 }
 
-// Setzt einen unterbrochenen Wechsel oder Aufbau einer Ablage fort, bevor etwas anderes die
-// Zuordnung liest.
+// Setzt einen unterbrochenen Wechsel, Aufbau einer Ablage oder ein unterbrochenes Nachlegen
+// (resumeFeed) fort, bevor etwas anderes die Zuordnung liest.
 async function resumeSwitch() {
   const resumed = await resumeStash();
   const p = await getPending();
-  if (!p) return resumed;
+  if (!p) return (await resumeFeed()) || resumed;
   console.info('[workspaces] setze unterbrochenen Wechsel fort:', p.from, '→', p.to);
   const r = await finishSwitch();
   console.info('[workspaces] Ergebnis:', r);

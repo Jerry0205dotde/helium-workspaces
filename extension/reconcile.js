@@ -372,18 +372,16 @@ async function dropStartCopies(s, stash) {
     return t && take(key(t));
   });
   await moving(() => chrome.tabs.remove([...live, ...fed].map((c) => c.id)));
-  // Die übrigen nachgelegten Tabs kannte Chromium nicht: Sie gehören hinter seine Tabs und in
-  // seine Gruppe mit gleichem Titel und gleicher Farbe
+  // Die übrigen nachgelegten Tabs kannte Chromium nicht: Sie gehören hinter seine Tabs, und
+  // lagen sie mit Kopien in einer Gruppe, in die Gruppe, in der Chromium diese wiederhergestellt hat
   const kept = (await chrome.tabs.query({})).filter((t) => startFed.some((c) => c.id === t.id && !fed.includes(c)));
   if (kept.length) {
     await moving(async () => {
       await moveOrdered(kept, kept[0].windowId);
       for (const gid of new Set(kept.map((t) => t.groupId).filter((g) => g >= 0))) {
-        const g = await chrome.tabGroups.get(gid);
-        const theirs = (await chrome.tabGroups.query({ windowId: g.windowId })).find(
-          (x) => x.id !== gid && x.title === g.title && x.color === g.color && burst.some((t) => t.groupId === x.id),
-        );
-        if (theirs) await groupEntry(kept.filter((t) => t.groupId === gid).map((t) => t.id), g.windowId, null, theirs.id);
+        const copies = live.map((c) => tabs.find((t) => t.id === c.id)).filter((t) => t.groupId === gid);
+        const theirs = burst.find((t) => t.groupId >= 0 && copies.some((c) => key(c) === key(t)));
+        if (theirs) await groupEntry(kept.filter((t) => t.groupId === gid).map((t) => t.id), theirs.windowId, null, theirs.groupId);
       }
     });
   }

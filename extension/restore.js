@@ -212,13 +212,18 @@ async function feedLater() {
 // storage.session, welche Tabs schon vorher darin lagen ('pendingFeed'), damit resumeFeed
 // nach einem Ende des Service Workers die schon angelegten erkennt; bis dahin sichert
 // snapshot() nichts. have: die schon angelegten. true, wenn noch Einträge übrig sind.
-async function feedInto(ws, windowId, have = []) {
-  if (!have.length) {
+async function feedInto(ws, windowId, have = [], gone = []) {
+  if (!have.length && !gone.length) {
     const known = (await chrome.tabs.query({ windowId })).map((t) => t.id);
     await chrome.storage.session.set({ pendingFeed: { ws, windowId, known } });
   }
+  // Gescheiterte Einträge merken, damit resumeFeed die Tabs danach richtig zuordnet (#148)
+  const noteFed = async (i, e) => {
+    const { pendingFeed: f } = await chrome.storage.session.get('pendingFeed');
+    if (f) await chrome.storage.session.set({ pendingFeed: { ...f, failed: [...(f.failed || []), { i, url: e.url }] } });
+  };
   const list = (await getBackup()).backup[ws]?.later || [];
-  const r = await moving(() => recreate(list, windowId, false, true, have));
+  const r = await moving(() => recreate(list, windowId, false, true, have, gone, noteFed));
   const { backup } = await getBackup();
   const b = backup[ws];
   if (b) {
@@ -232,25 +237,33 @@ async function feedInto(ws, windowId, have = []) {
   return r.later.length > 0;
 }
 
-// Setzt ein unterbrochenes Nachlegen fort: Tabs, die seither im Fenster dazugekommen sind
-// und der Reihe nach zu den zurückgestellten Einträgen passen, sind schon angelegt.
+// Setzt ein unterbrochenes Nachlegen fort, bevor etwas anderes die Fenster ändert (über
+// resumeSwitch vor jeder Aktion und jedem Abgleich): Tabs, die seither im Fenster
+// dazugekommen sind und der Reihe nach zu den zurückgestellten Einträgen passen, sind schon
+// angelegt. Gescheiterte Einträge (failed) bekommen keinen davon.
 async function resumeFeed() {
   const { pendingFeed: f } = await chrome.storage.session.get('pendingFeed');
   if (!f) return false;
   const list = (await getBackup()).backup[f.ws]?.later || [];
-  const tabs = await chrome.tabs.query({ windowId: f.windowId }).catch(() => []);
-  if (!list.length || !tabs.length) {
+  const { stash, mains } = await scan();
+  const { sw, showing } = windowsOf(f.ws, await sess(), stash, mains);
+  const win = [...showing, sw].find((w) => w?.id === f.windowId);
+  if (!list.length || !win) {
     await chrome.storage.session.remove('pendingFeed');
     return false;
   }
+  const gone = (f.failed || []).filter((x) => list[x.i]?.url === x.url).map((x) => x.i);
   const have = [];
-  for (const t of tabs) {
+  let i = 0;
+  for (const t of win.tabs) {
     if (f.known.includes(t.id) || t.pinned || isStashTab(t)) continue;
-    if (urlOf(t) !== list[have.length]?.url) break;
+    while (gone.includes(i)) i++;
+    if (urlOf(t) !== list[i]?.url) break;
     have.push(t);
+    i++;
   }
   console.info('[workspaces] setze unterbrochenes Nachlegen fort:', f.ws, have.length);
-  await feedInto(f.ws, f.windowId, have);
+  await feedInto(f.ws, f.windowId, have, gone);
   return true;
 }
 
