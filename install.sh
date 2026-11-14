@@ -83,6 +83,8 @@ if [ -n "$UPDATE" ]; then
   # Die eben geholte Fassung von install.sh richtet das KWin-Skript ein, sie kann neuer sein als diese
   bash "$DIR/install.sh" "$OLD"
   VERSION="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$DIR/extension/manifest.json")"
+  # Die deutschen Anführungszeichen sind gewollter Text, keine verirrten Shell-Quotes
+  # shellcheck disable=SC1111
   t "Jetzt in chrome://extensions bei „Workspaces“ auf Neu laden klicken. Danach zeigt das Popup unten rechts die Version $VERSION." \
     "Now click Reload on \"Workspaces\" in chrome://extensions. The popup then shows version $VERSION in the bottom right."
   exit 0
@@ -166,6 +168,8 @@ for entry in "net.imput.helium:Helium" "google-chrome:Google Chrome" "chromium:C
   done
 done
 if [ ${#NOT_RESTORING[@]} -gt 0 ]; then
+  # Die deutschen Anführungszeichen sind gewollter Text, keine verirrten Shell-Quotes
+  # shellcheck disable=SC1111
   t "Hinweis: Diese Profile starten nicht mit „Dort weitermachen, wo ich aufgehört habe“:" \
     "Note: these profiles do not start with \"Continue where you left off\":"
   printf '  %s\n' "${NOT_RESTORING[@]}"
