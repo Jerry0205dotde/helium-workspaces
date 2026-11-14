@@ -136,7 +136,13 @@ TOKEN="$(printf '%s' "$TOKEN" | tr -d '[:space:]')"
 # Überbleibsel älterer Versionen, die den Schlüssel als Datei abgelegt haben
 rm -f "$DIR/extension/token.js"
 
-kpackagetool6 --type=KWin/Script -u "$DIR/kwin" >/dev/null 2>&1 || kpackagetool6 --type=KWin/Script -i "$DIR/kwin" >/dev/null
+# Erst nachsehen, ob das Paket da ist, damit ein Fehler beim Aktualisieren sichtbar bleibt,
+# statt in einem Installationsversuch mit irreführender Meldung zu enden
+if kpackagetool6 --type=KWin/Script -s helium-workspaces >/dev/null 2>&1; then
+  kpackagetool6 --type=KWin/Script -u "$DIR/kwin" >/dev/null
+else
+  kpackagetool6 --type=KWin/Script -i "$DIR/kwin" >/dev/null
+fi
 kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token "$TOKEN"
 if [ -n "$SET_BROWSERS" ]; then
   if [ -n "$BROWSERS" ]; then
