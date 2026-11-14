@@ -375,7 +375,7 @@
     "message": "Exportieren"
   },
   "exportText": {
-    "message": "Speichert alle Workspaces mit Name, Farbe, Emoji, Reihenfolge, Tabs und Tab-Gruppen sowie die angehefteten Tabs als JSON-Datei. Fenster-IDs und der Geräteschlüssel kommen nicht hinein."
+    "message": "Speichert alle Workspaces mit Name, Farbe, Emoji, Reihenfolge, Tabs und Tab-Gruppen, die angehefteten Tabs und die Einstellungen als JSON-Datei. Fenster-IDs und der Geräteschlüssel kommen nicht hinein."
   },
   "exportButton": {
     "message": "Als Datei speichern"
@@ -499,6 +499,30 @@
   },
   "resPinned": {
     "message": "$1 ergänzt"
+  },
+  "settingsPlan": {
+    "message": "Übernimmt die Einstellungen: $1."
+  },
+  "settingsSame": {
+    "message": "Die Einstellungen aus der Datei gelten hier schon."
+  },
+  "settingValue": {
+    "message": "$1: $2"
+  },
+  "settingOn": {
+    "message": "an"
+  },
+  "settingOff": {
+    "message": "aus"
+  },
+  "resSettings": {
+    "message": "$1 übernommen"
+  },
+  "settings_one": {
+    "message": "$1 Einstellung"
+  },
+  "settings_other": {
+    "message": "$1 Einstellungen"
   },
   "resRemoved": {
     "message": "$1 mit $2 entfernt"

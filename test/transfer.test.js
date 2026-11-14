@@ -128,6 +128,36 @@ pageTest('Eine ungültige Datei zeigt einen Fehler und ändert nichts', async ({
   assert.deepEqual(names(), ['A', 'B']);
 });
 
+pageTest('Ohne Einstellungen in der Datei nennt die Vorschau keine', async ({ p }) => {
+  assert.equal(await p.eval('document.getElementById("settings").hidden'), true);
+});
+
+test('Die Vorschau nennt die Einstellungen, die sich ändern, der Import übernimmt sie (#161)', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'] } });
+  await env.w.request({ type: 'unloadAfter', minutes: 60 });
+  const p = await browser.open('transfer.html', env);
+  try {
+    const file = path.join(dir, `settings-${Date.now()}.json`);
+    const settings = { muteStash: true, unloadAfter: 60, autoBackup: 1 };
+    fs.writeFileSync(file, JSON.stringify({ ...fileOf([ws('X', 'x1')]), settings }));
+    await p.chooseFile('#file', file);
+    assert.equal(await p.eval('document.getElementById("settings").hidden'), false);
+    assert.equal(await p.text('#settings'), 'Übernimmt die Einstellungen: Ablagen stummschalten: an, Automatisch sichern: täglich.');
+    await p.click('#import');
+    assert.match(await p.text('#import-result'), /^Import abgeschlossen: 1 Workspace angelegt, 1 Tab übernommen, 2 Einstellungen übernommen\.$/);
+    const { muteStash, unloadAfter, autoBackup } = env.b.local.data;
+    assert.deepEqual({ muteStash, unloadAfter, autoBackup }, settings);
+
+    // Dieselbe Datei noch einmal: alles gilt schon
+    const again = path.join(dir, `settings-again-${Date.now()}.json`);
+    fs.copyFileSync(file, again);
+    await p.chooseFile('#file', again);
+    assert.equal(await p.text('#settings'), 'Die Einstellungen aus der Datei gelten hier schon.');
+  } finally {
+    await p.close();
+  }
+});
+
 test('Export meldet, was gespeichert wurde', { skip }, async () => {
   const env = await setup({ pinned: ['p1'], workspaces: { A: ['a1'], B: ['b1', 'b2'] } });
   const p = await browser.open('transfer.html', env);

@@ -157,7 +157,6 @@ function renderStorage() {
 
 // Wie lange ein Workspace nicht gezeigt sein muss, bis seine Tabs entladen werden
 const unloadEl = document.getElementById('unload');
-const unloadLabel = (m) => (!m ? tr('unloadNever') : m < 60 ? tr('unloadMinutes', m) : m === 60 ? tr('unloadHour') : tr('unloadHours', m / 60));
 
 function renderUnload() {
   unloadEl.replaceChildren(...state.unloadChoices.map((m) => {

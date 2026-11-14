@@ -117,6 +117,12 @@ function resetConfirm() {
 const mode = () => document.querySelector('input[name=mode]:checked').value;
 const closing = () => preview.current.reduce((n, w) => n + w.open, 0);
 
+function settingText({ key, value }) {
+  if (key === 'muteStash') return tr('settingValue', tr('muteStash'), value ? tr('settingOn') : tr('settingOff'));
+  if (key === 'unloadAfter') return tr('settingValue', tr('unloadAfter'), unloadLabel(value));
+  return tr('settingValue', tr('autoHeading'), autoLabel(value));
+}
+
 function render() {
   const p = preview;
   const total = p.workspaces.reduce((n, w) => n + w.tabs, 0);
@@ -144,6 +150,11 @@ function render() {
     const skip = p.pinned - p.pinnedAdd;
     return [el('li', '', skip ? tr('pinnedPlanSkip', p.pinnedAdd, skip) : tr('pinnedPlan', p.pinnedAdd))];
   };
+
+  // Die Einstellungen gelten bei beiden Arten. Genannt werden die, die sich ändern.
+  const changed = p.settings.filter((s) => s.changed).map(settingText);
+  $('settings').hidden = !p.settings.length;
+  $('settings').textContent = changed.length ? tr('settingsPlan', changed.join(', ')) : tr('settingsSame');
 
   $('merge-list').replaceChildren(
     ...p.workspaces.map((w) => {
@@ -223,6 +234,7 @@ $('import').addEventListener('click', (e) => {
       parts.push(tr('resAdded', tabs(r.added)));
       if (r.skipped) parts.push(tr('resSkipped', r.skipped));
       if (r.pinned) parts.push(tr('resPinned', plural(r.pinned, 'pinnedTabs')));
+      if (r.settings) parts.push(tr('resSettings', plural(r.settings, 'settings')));
       if (r.removed) parts.push(tr('resRemoved', plural(r.removed, 'oldWorkspaces'), tabs(r.closed)));
       const msg = r.failed ? tr('importDoneFailed', parts.join(', '), tabs(r.failed)) : tr('importDone', parts.join(', '));
       resetImport();
