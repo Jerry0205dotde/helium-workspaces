@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { setup, url } = require('./harness');
+const { setup, url, openTabs } = require('./harness');
 const { Chromium, skipReason } = require('./page');
 
 const skip = skipReason();
@@ -78,6 +78,21 @@ pageTest('Ersetzen fragt beim ersten Klick nach, ein Doppelklick bestätigt nich
   assert.deepEqual(imports().map((m) => [m.mode, m.confirmed]), [['replace', true]]);
   assert.deepEqual(names(), ['X']);
   assert.match(await p.text('#import-result'), /2 alte Workspaces mit 3 Tabs entfernt\.$/);
+});
+
+pageTest('Die Nachfrage nennt die Tabs, die beim Klick offen sind, nicht die aus der Vorschau', async ({ env, p, names, imports }) => {
+  // Nach der Vorschau kommt ein Tab dazu
+  await openTabs(env.b, env.win, ['a2']);
+  await env.w.settle();
+  await p.click('input[value=replace]');
+  await p.click('#import');
+  assert.deepEqual(imports(), []);
+  assert.equal(await p.text('#import'), '4 Tabs schließen und ersetzen?');
+  assert.match(await p.text('#replace-list'), /Löscht 2 Workspaces \(„A“, „B“\) und schließt 4 Tabs\./);
+  await p.click('#import');
+  assert.deepEqual(imports().map((m) => [m.mode, m.confirmed]), [['replace', true]]);
+  assert.deepEqual(names(), ['X']);
+  assert.match(await p.text('#import-result'), /2 alte Workspaces mit 4 Tabs entfernt\.$/);
 });
 
 pageTest('Wechsel der Art setzt die Nachfrage zurück', async ({ p, imports }) => {

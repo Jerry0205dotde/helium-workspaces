@@ -443,6 +443,9 @@
   "fileRejected": {
     "message": "This file cannot be imported. Nothing was changed."
   },
+  "checkingCurrent": {
+    "message": "Checking current state …"
+  },
   "confirmReplaceTabs": {
     "message": "Close $1 and replace?"
   },

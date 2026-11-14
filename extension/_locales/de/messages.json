@@ -443,6 +443,9 @@
   "fileRejected": {
     "message": "Diese Datei kann nicht importiert werden. Es wurde nichts geändert."
   },
+  "checkingCurrent": {
+    "message": "Aktueller Stand wird geprüft …"
+  },
   "confirmReplaceTabs": {
     "message": "$1 schließen und ersetzen?"
   },
