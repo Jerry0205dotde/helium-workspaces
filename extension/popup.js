@@ -485,7 +485,7 @@ async function switchTo(id) {
     return;
   }
   run(tr('switching'), tr('switchFailed'), () =>
-    send({ type: 'switch', windowId, wsId: id }), { close: true });
+    send({ type: 'show', windowId, wsId: id }), { close: true });
 }
 
 addBtn.addEventListener('click', (e) => {

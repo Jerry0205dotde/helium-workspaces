@@ -223,6 +223,19 @@ async function finishSwitch() {
   });
 }
 
+// Klick im Popup (oder 1–9 dort): Zeigt ein anderes Fenster den Workspace, kommt dieses
+// Fenster nach vorn, statt dass das aktuelle Fenster wechselt und nur eine leere Seite
+// zeigt, weil die Tabs drüben bleiben (#190). Denselben Workspace in zwei Fenstern gibt es
+// weiter über Strg+N und die Tastenkürzel.
+async function showWs(windowId, wsId) {
+  await resumeSwitch();
+  const s = await sess();
+  const { mains } = await scan();
+  const other = s.windowWs[windowId] !== wsId && mains.find((w) => w.id !== windowId && s.windowWs[w.id] === wsId);
+  if (other) await chrome.windows.update(other.id, { focused: true });
+  else await switchTo(windowId, wsId);
+}
+
 async function switchRelative(windowId, step) {
   const cfg = await getConfig();
   const s = await sess();
