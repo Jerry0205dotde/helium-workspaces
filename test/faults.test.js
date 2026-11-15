@@ -322,6 +322,52 @@ async function checkResumed148(env, main, w) {
   check(env, ALL);
 }
 
+// Der Service Worker endet während „Erneut versuchen“, nachdem schon Tabs angelegt sind: Der
+// nächste Worker ordnet sie den Einträgen zu, statt sie noch einmal anzulegen (#186)
+async function killedWhileRetrying(env, ws, hang) {
+  const { b } = env;
+  const main = b.mains()[0].id;
+  hang();
+  env.w.send({ type: 'retry', windowId: main, wsId: env.ids[ws] });
+  await env.w.settle();
+  const w = b.startWorker(null);
+  await w.settle();
+  return { main, w };
+}
+
+test('Service Worker endet beim erneuten Versuch: kein Tab doppelt, die Gruppe bleibt ganz (#186)', async () => {
+  // Mit tabs.create endet er, nachdem b1 angelegt ist, mit tabGroups.update, wenn beide da sind
+  for (const api of ['tabs.create', 'tabGroups.update']) {
+    const env = await fromBackup();
+    const { b } = env;
+    b.fail('tabs.group');
+    await ok(env.w.request({ type: 'switch', windowId: b.mains()[0].id, wsId: env.ids.B }));
+    check(env, { ...ALL, B: ['b3'] });
+    const { main, w } = await killedWhileRetrying(env, 'B', () => b.fail(api, { hang: true, ...(api === 'tabs.create' && { after: 1 }) }));
+    assert.equal(b.local.data.backup[env.ids.B].failed?.length ?? 0, 0, api);
+    check(env, ALL);
+    await ok(w.request({ type: 'retry', windowId: main, wsId: env.ids.B }));
+    check(env, ALL);
+  }
+});
+
+test('Service Worker endet beim erneuten Versuch nach einem wieder gescheiterten Tab: Zuordnung bleibt richtig (#186)', async () => {
+  const env = await fromBackup();
+  const { b } = env;
+  // b3 scheitert, die Gruppe von b1 und b2 auch: failed ist [b3, b1, b2]
+  b.fail('tabs.create', { when: (o) => o.url === url('b3'), times: 2 });
+  b.fail('tabs.group');
+  await ok(env.w.request({ type: 'switch', windowId: b.mains()[0].id, wsId: env.ids.B }));
+  assert.deepEqual(b.local.data.backup[env.ids.B].failed.map((e) => e.url), [url('b3'), url('b1'), url('b2')]);
+  // b3 scheitert erneut, b1 entsteht, der Worker endet vor b2
+  const { main, w } = await killedWhileRetrying(env, 'B', () => b.fail('tabs.create', { hang: true, when: (o) => o.url === url('b2') }));
+  assert.deepEqual(b.local.data.backup[env.ids.B].failed?.map((e) => e.url), [url('b3')]);
+  check(env, { ...ALL, B: SPEC.workspaces.B.slice(0, 2) });
+  await ok(w.request({ type: 'retry', windowId: main, wsId: env.ids.B }));
+  assert.equal(b.local.data.backup[env.ids.B].failed?.length ?? 0, 0);
+  check(env, ALL);
+});
+
 test('Scheiternder Speicherzugriff beim Sichern hinterlässt keine halbe Sicherung', async () => {
   const env = await setup(SPEC);
   const { b, w, win } = env;
