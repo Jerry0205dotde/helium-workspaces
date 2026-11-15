@@ -174,6 +174,19 @@ test('Export meldet, was gespeichert wurde', { skip }, async () => {
   }
 });
 
+test('Export und automatische Sicherung warnen vor den Adressen im Klartext (#193)', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'] } });
+  const p = await browser.open('transfer.html', env);
+  try {
+    const hint = (section) =>
+      p.eval(`[...document.querySelectorAll('section')].find((s) => s.querySelector('h2').textContent === '${section}').textContent`);
+    assert.match(await hint('Exportieren'), /im Klartext, also auch Zugangstoken/);
+    assert.match(await hint('Automatisch sichern'), /Sicherungen enthalten alle Adressen und Titel im Klartext/);
+  } finally {
+    await p.close();
+  }
+});
+
 test('Automatische Sicherung: Auswahl sichert gleich und nennt die Datei, Fehler werden angezeigt', { skip }, async () => {
   const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
   const p = await browser.open('transfer.html', env);
