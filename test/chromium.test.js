@@ -485,14 +485,19 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
 
   for (const restore of ['last', 'newtab']) {
     await step(`Schließen per X und Neustart (${restore === 'last' ? '„Dort weitermachen“' : '„Neuer Tab“'})`, async () => {
-      // C ist der vor A zuletzt gezeigte Workspace, sein c1 bekommt einen zweiten Eintrag im
-      // Verlauf. B hat mehr Tabs.
+      // C ist der vor A zuletzt gezeigte Workspace, B hat mehr Tabs. c1 bekommt einen
+      // zweiten Eintrag im Verlauf.
       await env.switchTo('C');
-      await b.inPage(`${base}c1`, 'history.pushState(null, "", location.href)');
-      assert.equal(await b.historyOf(`${base}c1`), 2);
+      if (restore === 'last') {
+        await b.inPage(`${base}c1`, 'history.pushState(null, "", location.href)');
+        assert.equal(await b.historyOf(`${base}c1`), 2);
+      }
       const { main } = await env.switchTo('A');
       // Das letzte Hauptfenster schließen (wie per X): Die Erweiterung schließt die
       // Ablagen mit, damit sich der Browser beendet
+      // Ein noch ausstehender Abgleich nach den Wechseln sähe nach dem Schließen nur Ablagen
+      // und baute ein neues Hauptfenster auf
+      await waitFor(() => b.sw("await serial(() => {}); if (firstCall.reconcile) throw new Error('Abgleich steht aus');"));
       b.sw('await chrome.windows.remove(args[0]);', main.id).catch(() => {});
       await b.waitExit();
       await env.launch(restore);
