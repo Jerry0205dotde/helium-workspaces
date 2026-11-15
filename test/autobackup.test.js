@@ -41,7 +41,7 @@ test('Täglich: Einschalten sichert sofort, danach einmal am Tag, die Datei ist 
   const s = await enable(w, 1);
   assert.equal(files(b).length, 1);
   const [first] = files(b);
-  assert.match(first, new RegExp(`^${DOWNLOADS}helium-workspaces/helium-workspaces-auto-\\d{4}-\\d\\d-\\d\\d_\\d\\d-\\d\\d\\.json$`));
+  assert.equal(first, `${DOWNLOADS}helium-workspaces/helium-workspaces-auto-1.json`);
   assert.deepEqual(s.last, { at: b.now, file: first, state: 'complete' });
   assert.equal(s.error, null);
 
@@ -94,21 +94,26 @@ test('Ausschalten stoppt den Wecker, ungültige Abstände werden abgelehnt', asy
   assert.equal(files(b).length, 1);
 });
 
-test('Die letzten zehn bleiben, eigene Dateien im Ordner rührt sie nicht an', async () => {
+test('Die letzten zehn bleiben, reihum in festen Dateien, eigene Dateien im Ordner rührt sie nicht an', async () => {
   const env = await setup(SPEC);
   const { b, w } = env;
   // Ein Export von Hand im selben Ordner mit ähnlichem Namen
   await b.chrome.downloads.download({ url: `data:application/json;base64,${btoa('{}')}`, filename: 'helium-workspaces/helium-workspaces-auto-meins.json' });
   const mine = `${DOWNLOADS}helium-workspaces/helium-workspaces-auto-meins.json`;
+  const slot = (n) => `${DOWNLOADS}helium-workspaces/helium-workspaces-auto-${n}.json`;
   await enable(w, 1);
-  const first = files(b).filter((f) => f !== mine);
+  const first = b.files.get(slot(1));
   for (let i = 0; i < 12; i++) await w.advance(DAY);
+  // 12 Sicherungen: 1 bis 10, dann wieder 1 und 2
+  assert.equal(b.downloads.filter((d) => d.byExtensionId).at(-1).id - b.downloads[0].id, 12);
   const auto = files(b).filter((f) => f !== mine);
-  assert.equal(auto.length, 10);
-  assert.ok(!auto.includes(first[0]), 'die älteste ist noch da');
+  assert.deepEqual(auto.sort(), Array.from({ length: 10 }, (_, i) => slot(i + 1)).sort());
+  assert.notEqual(b.files.get(slot(1)), first, 'die älteste ist noch da');
+  assert.equal((await autoState(w)).last.file, slot(2));
   assert.ok(files(b).includes(mine), 'die eigene Datei wurde gelöscht');
-  // Gelöschte verschwinden auch aus dem Download-Verlauf
+  // Überschriebene verschwinden aus dem Download-Verlauf, die eigene Datei bleibt darin
   assert.equal(b.downloads.filter((d) => d.byExtensionId).length, 10);
+  assert.equal(b.downloads.length, 11);
 });
 
 test('Gescheiterte Sicherung: Hinweis im Popup, der nächste Erfolg nimmt ihn weg', async () => {
@@ -223,4 +228,18 @@ test('Hinweis auf die automatische Sicherung: ab zwei Workspaces, solange sie au
   env.b.restart();
   await env.b.startWorker('startup').settle();
   assert.equal(await hint(env), false);
+});
+
+test('Geleerter Download-Verlauf: Es bleiben trotzdem höchstens zehn Dateien (#192)', async () => {
+  const env = await setup(SPEC);
+  const { b, w } = env;
+  await enable(w, 1);
+  for (let i = 0; i < 4; i++) await w.advance(DAY);
+  // Verlauf leeren, die Dateien bleiben
+  b.downloads = [];
+  for (let i = 0; i < 12; i++) await w.advance(DAY);
+  assert.equal(files(b).length, 10);
+  // Die neueste Sicherung ist die zuletzt geschriebene Datei
+  const last = (await autoState(w)).last;
+  assert.equal(JSON.parse(b.files.get(last.file)).exported, new Date(last.at).toISOString());
 });

@@ -519,10 +519,10 @@ class Browser {
     this.fire('downloads.onChanged', { id, state: { previous: 'in_progress', current: item.state } });
   }
 
-  searchDownloads({ id, filenameRegex, state, orderBy = [] } = {}) {
+  searchDownloads({ id, filename, filenameRegex, state, orderBy = [] } = {}) {
     const re = filenameRegex && new RegExp(filenameRegex);
     const list = this.downloads
-      .filter((d) => (id === undefined || d.id === id) && (!re || re.test(d.filename)) && (!state || d.state === state))
+      .filter((d) => (id === undefined || d.id === id) && (filename === undefined || d.filename === filename) && (!re || re.test(d.filename)) && (!state || d.state === state))
       .map(({ content, ...d }) => ({ ...d, exists: d.state === 'complete' ? this.files.has(d.filename) : d.exists }));
     if (orderBy[0] === '-startTime') list.sort((a, b) => b.startTime.localeCompare(a.startTime) || b.id - a.id);
     return list;
