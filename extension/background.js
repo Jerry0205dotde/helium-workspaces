@@ -46,6 +46,7 @@ chrome.windows.onFocusChanged.addListener(async (winId) => {
     if (!ws) return;
     await chrome.storage.local.set({ lastWs: ws });
     await chrome.storage.session.set({ lastMain: winId });
+    await setGlobalIcon();
   } catch (e) {
     console.warn('[workspaces] Fokuswechsel nicht gespeichert', e);
   }

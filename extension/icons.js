@@ -28,11 +28,12 @@ function iconFor(ws) {
 // Workspaces und Sicherung, aus denen die Symbole entstehen. Bei Aktualisierungen
 // mehrerer Tabs einmal geladen und an setTabIcon übergeben.
 async function iconSource() {
-  const { workspaces } = await getConfig();
+  const { workspaces, lastWs } = await getConfig();
   const { backup } = await getBackup();
-  return { workspaces, backup };
+  return { workspaces, lastWs, backup };
 }
 
+// Ohne tabId gilt die Einstellung für alle Tabs ohne eigene (siehe setGlobalIcon)
 async function setTabIcon(tabId, wsId, src) {
   src ??= await iconSource();
   const ws = src.workspaces.find((w) => w.id === wsId);
@@ -43,23 +44,36 @@ async function setTabIcon(tabId, wsId, src) {
   // Speicher fast voll (sessionUsage): „!“, wenn keine Zahl fehlender Tabs dasteht
   if (sessionFull) title += '\n' + tr('iconTitleStorageFull');
   const badge = missing ? String(missing) : sessionFull ? '!' : '';
-  await chrome.action.setIcon({ tabId, imageData: iconFor(ws) }).catch(() => {});
-  await chrome.action.setTitle({ tabId, title }).catch(() => {});
-  await chrome.action.setBadgeText({ tabId, text: badge }).catch(() => {});
-  if (badge) await chrome.action.setBadgeBackgroundColor({ tabId, color: '#dc2626' }).catch(() => {});
+  const tab = tabId === undefined ? {} : { tabId };
+  await chrome.action.setIcon({ ...tab, imageData: iconFor(ws) }).catch(() => {});
+  await chrome.action.setTitle({ ...tab, title }).catch(() => {});
+  await chrome.action.setBadgeText({ ...tab, text: badge }).catch(() => {});
+  if (badge) await chrome.action.setBadgeBackgroundColor({ ...tab, color: '#dc2626' }).catch(() => {});
+}
+
+// Chromium setzt Symbol, Titel und Plakette eines Tabs zurück, sobald er eine Seite
+// übernimmt; die Erweiterung setzt sie erst nach dem Laden neu. Bis dahin gilt die
+// Einstellung ohne tabId: der Workspace des zuletzt fokussierten Fensters (lastWs).
+async function setGlobalIcon(src) {
+  src ??= await iconSource();
+  await setTabIcon(undefined, src.lastWs, src);
 }
 
 async function updateIcons(windowId, src) {
+  src ??= await iconSource();
+  await Promise.all([updateWindowIcons(windowId, src), setGlobalIcon(src)]);
+}
+
+async function updateWindowIcons(windowId, src) {
   const s = await sess();
   const wsId = s.windowWs[windowId];
   if (!wsId) return;
   const tabs = await chrome.tabs.query({ windowId });
-  src ??= await iconSource();
   await Promise.all(tabs.map((t) => setTabIcon(t.id, wsId, src)));
 }
 
 async function updateAllIcons() {
   const s = await sess();
   const src = await iconSource();
-  await Promise.all(Object.keys(s.windowWs).map((id) => updateIcons(Number(id), src)));
+  await Promise.all([...Object.keys(s.windowWs).map((id) => updateWindowIcons(Number(id), src)), setGlobalIcon(src)]);
 }

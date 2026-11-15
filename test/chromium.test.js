@@ -39,14 +39,25 @@ const PAGES = new Set([...SPEC.pinned, ...Object.values(SPEC.workspaces).flat()]
 
 function startServer() {
   const hits = new Map();
+  // /slow schickt den Anfang der Seite und hält den Rest zurück, bis held() ihn freigibt:
+  // Die Seite ist übernommen, lädt aber weiter
+  const slow = [];
   const server = http.createServer((req, res) => {
     const name = req.url.slice(1);
+    if (name === 'slow') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      res.write('<!doctype html><title>slow</title><p>slow');
+      slow.push(res);
+      return;
+    }
     if (PAGES.has(name)) hits.set(name, (hits.get(name) || 0) + 1);
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
     res.end(`<!doctype html><title>${name}</title><p>${name}</p>`);
   });
   return new Promise((resolve) =>
-    server.listen(0, '127.0.0.1', () => resolve({ server, hits, base: `http://127.0.0.1:${server.address().port}/` })),
+    server.listen(0, '127.0.0.1', () =>
+      resolve({ server, hits, base: `http://127.0.0.1:${server.address().port}/`, release: () => slow.splice(0).forEach((r) => r.end()) }),
+    ),
   );
 }
 
@@ -260,7 +271,7 @@ async function build(env, st) {
 const bin = process.env.CHROME;
 
 test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 600000 }, async (t) => {
-  const { server, hits, base } = await startServer();
+  const { server, hits, base, release } = await startServer();
   const env = new Env(bin, base);
   const b = env.browser;
   t.after(async () => {
@@ -292,7 +303,9 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     assert.equal(st.workspaces[0].name, msgs.defaultWorkspace.message, `erster Workspace (${lang})`);
     const where = await b.sw("return tr('exWhereWsNamed', 2, 'X');");
     assert.equal(where, msgs.exWhereWsNamed.message.replace('$1', '2').replace('$2', 'X'));
-    assert.equal(await b.sw('return chrome.action.getTitle({});'), 'Workspaces', 'Titel aus dem Manifest');
+    // Ohne tabId zeigt das Symbol den Workspace des zuletzt fokussierten Fensters (#187)
+    const title = msgs.iconTitle.message.replace('$1', st.workspaces[0].name);
+    await waitFor(async () => assert.equal(await b.sw('return chrome.action.getTitle({});'), title, 'Titel ohne Tab'));
     await build(env, st);
   });
 
@@ -303,6 +316,26 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     const after = await env.cycle();
     assert.deepEqual(new Map(hits), loads, 'eine Seite wurde neu geladen');
     assert.deepEqual(after.st.windows.flatMap((w) => w.tabs.map((x) => `${x.id} ${x.url}`)).sort(), tabIds, 'Tabs wurden ersetzt');
+  });
+
+  await step('Seite lädt noch: Das Symbol zeigt schon den Workspace (#187)', async () => {
+    const { main, shows } = await env.settled({ live: true });
+    const want = await b.sw('return tr("iconTitle", args[0]);', shows);
+    const id = await b.sw('return (await chrome.tabs.create({ windowId: args[0], url: args[1], active: true })).id;', main.id, base + 'slow');
+    // Chromium setzt Symbol, Titel und Plakette des Tabs zurück, sobald es die Seite übernimmt
+    await waitFor(async () => {
+      const t = await b.sw('return chrome.tabs.get(args[0]);', id);
+      assert.equal(t.url, base + 'slow');
+      assert.equal(t.status, 'loading');
+    });
+    await new Promise((r) => setTimeout(r, 500));
+    assert.equal(await b.sw('return (await chrome.tabs.get(args[0])).status;', id), 'loading', 'die Seite ist schon fertig');
+    assert.equal(await b.sw('return chrome.action.getTitle({ tabId: args[0] });', id), want, 'Titel während des Ladens');
+    release();
+    await waitFor(async () => assert.equal(await b.sw('return (await chrome.tabs.get(args[0])).status;', id), 'complete'));
+    assert.equal(await b.sw('return chrome.action.getTitle({ tabId: args[0] });', id), want, 'Titel nach dem Laden');
+    await b.sw('await chrome.tabs.remove(args[0]);', id);
+    await env.settled({ live: true });
   });
 
   await step('Ablagen stummschalten: Ein neuer Tab in einer Ablage ist gleich stumm', async () => {
