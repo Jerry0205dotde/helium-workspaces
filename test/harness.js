@@ -92,6 +92,7 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
   assert.equal(b.session.data.pendingSwitch, undefined, 'ein Wechsel ist noch nicht abgeschlossen');
   assert.equal(b.session.data.pendingStash, undefined, 'eine Ablage ist noch nicht vollständig aufgebaut');
   assert.equal(b.session.data.pendingFeed, undefined, 'zurückgestellte Tabs werden noch nachgelegt');
+  assert.equal(b.session.data.pendingStart, undefined, 'der Aufbau nach dem Start ist noch nicht abgeschlossen');
   assert.equal(w.eval('switching'), 0, 'switching wurde nicht zurückgesetzt');
   // Die Erweiterung lädt nie eine Seite neu (Navigation per tabs.update mit url)
   assert.deepEqual(b.calls.filter((c) => c.name === 'tabs.update' && c.args[1] && 'url' in c.args[1]), [], 'Tab wurde neu geladen');

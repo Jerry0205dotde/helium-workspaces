@@ -189,6 +189,73 @@ test('Start ohne Sitzungswiederherstellung baut den letzten Workspace aus der Si
   }
 });
 
+// Endet der Service Worker beim Aufbau nach dem Start nach dem n-ten angelegten Tab (erst
+// die angehefteten, dann A samt Gruppe), setzt der nächste ihn fort. Kein Snapshot ersetzt
+// die Sicherung vorher durch den Teilstand, auch nicht nach einer weiteren Änderung (#185).
+test('Service Worker endet beim Aufbau nach dem Start: der nächste setzt ihn fort, die Sicherung bleibt ganz (#185)', async () => {
+  for (let n = 1; n <= 5; n++) {
+    const env = await setup(SPEC);
+    const { b } = env;
+    b.restart({ restore: 'none' });
+    b.fail('tabs.create', { hang: true, after: n });
+    b.startWorker('startup');
+    await env.w.settle();
+    assert.ok(b.session.data.pendingStart, `n = ${n}: Aufbau nicht vermerkt`);
+    const w = b.startWorker(null);
+    await w.settle();
+    const main = b.mains()[0];
+    assert.equal(shows(env, main.id), 'A', `n = ${n}`);
+    assert.equal(main.tabs.filter((t) => t.url === NEWTAB).length, 0, `n = ${n}: neue Tab-Seite blieb`);
+    await b.chrome.tabs.create({ windowId: main.id, url: url('x'), active: false });
+    await w.settle();
+    const expected = { ...ALL, A: [...SPEC.workspaces.A, 'x'] };
+    check(env, expected);
+    await cycle(env, expected);
+  }
+});
+
+test('Service Worker endet beim Aufbau nach dem Start nach einem gescheiterten Tab: Zuordnung bleibt richtig (#185)', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  b.restart({ restore: 'none' });
+  // a2 scheitert, a3 entsteht, der Worker endet vor a4
+  b.fail('tabs.create', { when: (o) => o.url === url('a2') });
+  b.fail('tabs.create', { hang: true, when: (o) => o.url === url('a4') });
+  b.startWorker('startup');
+  await env.w.settle();
+  const w = b.startWorker(null);
+  await w.settle();
+  const failed = b.local.data.backup[env.ids.A].failed;
+  assert.deepEqual(failed?.map((e) => e.url), [url('a2')], 'gescheiterter Tab fehlt in der Sicherung');
+  assert.deepEqual(failed[0].gs, [url('a3')]);
+  check(env, { ...ALL, A: SPEC.workspaces.A.filter((e) => e.url !== 'a2') });
+  await ok(w.request({ type: 'retry', windowId: b.mains()[0].id, wsId: env.ids.A }));
+  check(env, ALL);
+});
+
+// Beim Fortsetzen kann zusätzlich die Gruppe von a3 scheitern: a3 kommt dann dazu.
+test('Service Worker endet beim Aufbau nach dem Start gleich nach dem Aufbewahren gescheiterter Tabs: nichts doppelt, nichts verloren (#185)', async () => {
+  for (const groupFails of [false, true]) {
+    const env = await setup(SPEC);
+    const { b } = env;
+    b.restart({ restore: 'none' });
+    b.fail('tabs.create', { when: (o) => o.url === url('a2') });
+    // keepFailed schreibt backup und backupPinned, keepLater nur backup: Der Worker endet dazwischen
+    b.during('storage.local.set', () => b.worker.kill(), { when: (o) => 'backupPinned' in o && b.session.data.pendingStart });
+    b.startWorker('startup');
+    await env.w.settle();
+    assert.ok(b.session.data.pendingStart, 'Aufbau nicht vermerkt');
+    if (groupFails) b.fail('tabs.group');
+    const w = b.startWorker(null);
+    await w.settle();
+    const failed = groupFails ? ['a2', 'a3'] : ['a2'];
+    assert.deepEqual(b.local.data.backup[env.ids.A].failed?.map((e) => e.url), failed.map(url), `groupFails = ${groupFails}`);
+    check(env, { ...ALL, A: SPEC.workspaces.A.filter((e) => !failed.includes(e.url)) });
+    await ok(w.request({ type: 'retry', windowId: b.mains()[0].id, wsId: env.ids.A }));
+    check(env, ALL);
+  }
+});
+
 test('Nach einem Absturz und „Wiederherstellen“ stehen die aus der Sicherung aufgebauten Tabs nicht doppelt da', async () => {
   const env = await setup(SPEC);
   const { b } = env;

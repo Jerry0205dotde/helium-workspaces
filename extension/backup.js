@@ -110,10 +110,11 @@ function pinnedOf(mains, groups) {
 // (z. B. wenn das Hauptfenster per X geschlossen wird). gone: das gerade geschlossene
 // letzte Hauptfenster aus dem Abbild ({ win, groups, ws }), das noch mitgesichert wird.
 async function snapshot(gone) {
-  // Wechsel oder Aufbau einer Ablage noch nicht abgeschlossen
+  // Wechsel, Aufbau einer Ablage oder nach dem Start noch nicht abgeschlossen
   if (await getPending()) return;
   if (await getPendingStash()) return;
-  if ((await chrome.storage.session.get('pendingFeed')).pendingFeed) return; // feedInto
+  const { pendingFeed, pendingStart } = await chrome.storage.session.get(['pendingFeed', 'pendingStart']);
+  if (pendingFeed || pendingStart) return; // feedInto, restoreStart
   const at = changes;
   const cfg = await getConfig();
   const s = await sess();

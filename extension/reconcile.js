@@ -245,16 +245,14 @@ async function reconcile() {
   // öffnet nur ein neues Fenster, höchstens mit den angehefteten Tabs. Den zuletzt aktiven
   // Workspace darin aus der Sicherung aufbauen, bevor ein Snapshot die Sicherung durch die
   // neue Tab-Seite ersetzt. Die anderen Workspaces kommen beim Wechseln aus der Sicherung.
-  // Nur beim ersten Abgleich mit Fenstern, nachdem storage.session leer war.
+  // Nur beim ersten Abgleich mit Fenstern, nachdem storage.session leer war. Den Haken
+  // setzt restoreStart erst, wenn der Aufbau abgeschlossen ist (#185).
   const { startChecked } = await chrome.storage.session.get('startChecked');
   if (!startChecked && mains.length) {
-    await chrome.storage.session.set({ startChecked: true });
-    if (!stash.size && mains.every((w) => guessed.has(w.id))) {
-      if (await restoreStart(mains, s.windowWs[mains[0].id])) {
-        ({ stash, mains } = await scan());
-        changed = true;
-      }
-    }
+    if (!stash.size && mains.every((w) => guessed.has(w.id)) && (await restoreStart(mains, s.windowWs[mains[0].id]))) {
+      ({ stash, mains } = await scan());
+      changed = true;
+    } else await chrome.storage.session.set({ startChecked: true });
   }
   // Hat Chromium die Sitzung nachträglich wiederhergestellt, enthält die Sicherung womöglich
   // schon die doppelten Tabs. repairFromBackup würde die geschlossenen Kopien dann als
@@ -275,7 +273,9 @@ async function reconcile() {
 // Legt die gesicherten Tabs von wsId und die angehefteten Tabs im ersten Fenster an,
 // soweit sie nicht schon offen sind (z. B. von Chromium wiederhergestellte angeheftete
 // Tabs). Ein beim Start übergebener Link bleibt aktiv; eine einzelne neue Tab-Seite wird
-// ersetzt.
+// ersetzt. Der Plan steht bis zum Abschluss in storage.session ('pendingStart'): Bis dahin
+// sichert snapshot() nichts, und endet der Service Worker mittendrin, setzt resumeStart den
+// Aufbau fort, statt dass der nächste Snapshot die Sicherung durch den Teilstand ersetzt (#185).
 async function restoreStart(wins, wsId) {
   const win = wins[0];
   const { backup, backupPinned } = await getBackup();
@@ -284,17 +284,56 @@ async function restoreStart(wins, wsId) {
   const pinned = missingIn(backupPinned.filter((e) => e.url), open(true));
   const tabs = missingIn(saved.filter((e) => e.url), open(false));
   if (!pinned.length && !tabs.length) return false;
+  const own = movableTabsOf(win);
+  const blank = own.length === 1 && isNewTab(own[0]) && !saved.some((e) => e.url === urlOf(own[0])) ? own[0].id : null;
+  const plan = {
+    ws: wsId,
+    windowId: win.id,
+    known: win.tabs.map((t) => t.id),
+    blank,
+    pinned,
+    tabs,
+    // Für dropStartCopies: was vor dem Ende offen war (gezeigt oder in der Ablage)
+    wasOpen: [...(backup[wsId]?.shown || []), ...(backup[wsId]?.stash || [])].map((e) => e.url),
+    // Was danach in failed steht, hat ein abgebrochener Aufbau schon aufbewahrt
+    failedBefore: backup[wsId]?.failed?.length || 0,
+  };
+  await chrome.storage.session.set({ pendingStart: plan });
+  try {
+    await buildStart(plan);
+  } catch (err) {
+    scheduleReconcile(); // setzt den Aufbau fort, bis dahin keine Snapshots
+    throw err;
+  }
+  console.info('[workspaces] Workspace nach dem Start aus der Sicherung aufgebaut');
+  return true;
+}
+
+// Merkt im Plan von restoreStart, dass Eintrag i (e) nicht angelegt werden konnte (wie noteFailed)
+const noteStartFailed = (key) => async (i, e) => {
+  const { pendingStart: p } = await chrome.storage.session.get('pendingStart');
+  if (p) await chrome.storage.session.set({ pendingStart: { ...p, [key]: [...(p[key] || []), { i, url: e.url }] } });
+};
+
+// Führt den Plan von restoreStart aus. havePinned/haveTabs: die von einem abgebrochenen
+// Aufbau schon angelegten Tabs, gonePinned/goneTabs: die Indizes der dabei gescheiterten.
+async function buildStart(plan, havePinned = [], haveTabs = [], gonePinned = [], goneTabs = []) {
+  const { ws: wsId, windowId } = plan;
   await moving(async () => {
-    const p = await recreate(pinned, win.id, true);
-    const r = await recreate(tabs, win.id);
-    await keepFailed(wsId, [...asPinned(p.failed), ...r.failed]);
+    const p = await recreate(plan.pinned, windowId, true, false, havePinned, gonePinned, noteStartFailed('failedPinned'));
+    const r = await recreate(plan.tabs, windowId, false, false, haveTabs, goneTabs, noteStartFailed('failed'));
+    // Hat ein abgebrochener Aufbau keepFailed schon ausgeführt, nur neu gescheiterte
+    // aufbewahren. keepLater mit 'saved' darf sich wiederholen: Es findet die Einträge zuerst in later.
+    const kept = (await getBackup()).backup[wsId]?.failed?.slice(plan.failedBefore) || [];
+    await keepFailed(wsId, missingIn([...asPinned(p.failed), ...r.failed], kept));
     await keepLater(wsId, r.later, 'saved');
+    // Der Rest ist ohne Folgen für die Sicherung
+    await chrome.storage.session.remove('pendingStart');
+    await chrome.storage.session.set({ startChecked: true });
     const ids = r.ids;
-    const own = movableTabsOf(win);
-    const blank = own.length === 1 && isNewTab(own[0]) ? own[0] : null;
-    if (blank && ids.length && !saved.some((e) => e.url === urlOf(blank))) {
+    if (plan.blank && ids.length) {
       await chrome.tabs.update(ids[0], { active: true });
-      await chrome.tabs.remove(blank.id);
+      await chrome.tabs.remove(plan.blank).catch(() => {});
     }
     // Für dropStartCopies: die angelegten Kopien und alle Tabs, die es jetzt schon gibt.
     // Kopien sind nur Tabs aus Einträgen, die vor dem Ende offen waren; die aus vorher schon
@@ -303,7 +342,7 @@ async function restoreStart(wins, wsId) {
     const all = await chrome.tabs.query({});
     const entry = (t) => ({ id: t.id, url: urlOf(t) });
     const known = new Map();
-    for (const e of [...(backup[wsId]?.shown || []), ...(backup[wsId]?.stash || [])]) known.set(e.url, (known.get(e.url) || 0) + 1);
+    for (const u of plan.wasOpen) known.set(u, (known.get(u) || 0) + 1);
     const wasOpen = (t) => known.get(urlOf(t)) > 0 && known.set(urlOf(t), known.get(urlOf(t)) - 1);
     const made = all.filter((t) => ids.includes(t.id));
     const copies = [...all.filter((t) => p.ids.includes(t.id)), ...made.filter(wasOpen)];
@@ -315,7 +354,43 @@ async function restoreStart(wins, wsId) {
       startWs: wsId,
     });
   });
-  console.info('[workspaces] Workspace nach dem Start aus der Sicherung aufgebaut');
+}
+
+// Setzt einen unterbrochenen restoreStart fort (über resumeSwitch vor jeder Aktion und
+// jedem Abgleich): Tabs, die seither im Fenster dazugekommen sind und der Reihe nach zu den
+// geplanten Einträgen passen, sind schon angelegt. Gescheiterte Einträge bekommen keinen.
+async function resumeStart() {
+  const { pendingStart: plan } = await chrome.storage.session.get('pendingStart');
+  if (!plan) return false;
+  const win = (await scan()).mains.find((w) => w.id === plan.windowId);
+  if (!win) {
+    await chrome.storage.session.remove('pendingStart');
+    return false;
+  }
+  // Der abgebrochene Abgleich hat die Zuordnung des Fensters womöglich nicht mehr gespeichert
+  const s = await sess();
+  if (!s.windowWs[win.id]) {
+    s.windowWs[win.id] = plan.ws;
+    await saveSess(s);
+  }
+  const added = win.tabs.filter((t) => !plan.known.includes(t.id) && !isStashTab(t));
+  const match = (list, tabs, gone) => {
+    const have = [];
+    let i = 0;
+    for (const t of tabs) {
+      while (gone.includes(i)) i++;
+      if (urlOf(t) !== list[i]?.url) break;
+      have.push(t);
+      i++;
+    }
+    return have;
+  };
+  const gonePinned = (plan.failedPinned || []).map((x) => x.i);
+  const goneTabs = (plan.failed || []).map((x) => x.i);
+  const havePinned = match(plan.pinned, added.filter((t) => t.pinned), gonePinned);
+  const haveTabs = match(plan.tabs, added.filter((t) => !t.pinned), goneTabs);
+  console.info('[workspaces] setze unterbrochenen Aufbau nach dem Start fort:', plan.ws, havePinned.length, haveTabs.length);
+  await buildStart(plan, havePinned, haveTabs, gonePinned, goneTabs);
   return true;
 }
 

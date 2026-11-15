@@ -185,6 +185,7 @@ let feedTimer = null;
 async function feedLater() {
   clearTimeout(feedTimer);
   if ((await getPending()) || (await getPendingStash())) return;
+  if ((await chrome.storage.session.get('pendingStart')).pendingStart) return; // restoreStart setzt fort
   let changed = await resumeFeed();
   const { backup } = await getBackup();
   const todo = Object.keys(backup).filter((ws) => backup[ws].later?.length);
