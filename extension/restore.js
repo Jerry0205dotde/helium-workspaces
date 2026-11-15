@@ -44,12 +44,13 @@ async function groupEntry(tabIds, windowId, e, groupId = null) {
 // have sind Tabs, die ein abgebrochener Aufruf für die ersten Einträge schon angelegt
 // hat: Sie werden nicht noch einmal angelegt, aber mit dem Rest gruppiert. gone sind die
 // Indizes der Einträge in list, die dabei gescheitert sind: Sie bekommen keinen Tab aus
-// have und kommen nach failed. Scheitert ein Eintrag, erfährt onFail Index und Eintrag (#148).
+// have und kommen nach failed. Scheitert ein Eintrag, erfährt onFail Index und Eintrag (#148),
+// legt recreate einen Tab an, erfährt onOpen Index und Tab (#186).
 // Nicht angeheftete Tabs werden nach dem ersten Laden entladen, solange sie nicht aktiv sind.
 // Laden schon LOAD_AT_ONCE von ihnen, legt recreate keine weiteren an (mindestens aber
 // einen): Die übrigen Einträge kommen nach later, samt den URLs ihrer Geschwister wie bei
 // failed. Der Aufrufer bewahrt sie mit keepLater auf, feedLater legt sie nach und nach an.
-async function recreate(list, windowId, pinned = false, join = false, have = [], gone = [], onFail = null) {
+async function recreate(list, windowId, pinned = false, join = false, have = [], gone = [], onFail = null, onOpen = null) {
   const ids = [];
   const failed = [];
   const later = [];
@@ -68,10 +69,13 @@ async function recreate(list, windowId, pinned = false, join = false, have = [],
       continue;
     }
     n++;
-    t ||= await openEntry(e, { windowId, pinned }, list, failed);
     if (!t) {
-      await onFail?.(i, e);
-      continue;
+      t = await openEntry(e, { windowId, pinned }, list, failed);
+      if (!t) {
+        await onFail?.(i, e);
+        continue;
+      }
+      await onOpen?.(i, t);
     }
     ids.push(t.id);
     if (!pinned) await unloadLaterAdd(t.id);
@@ -282,19 +286,73 @@ async function retryFailed(windowId, wsId) {
   await resumeSwitch();
   if ((await sess()).windowWs[windowId] !== wsId) await switchTo(windowId, wsId);
   if ((await sess()).windowWs[windowId] !== wsId) return;
-  const list = (await getBackup()).backup[wsId]?.failed || [];
-  if (!list.length) return;
+  if (!(await getBackup()).backup[wsId]?.failed?.length) return;
+  await chrome.storage.session.set({ pendingRetry: { ws: wsId, windowId, open: [], failed: [] } });
+  await retryInto(wsId, windowId);
+  await updateAllIcons();
+  await snapshot();
+}
+
+// Legt die Einträge in failed von ws im Fenster windowId an. Währenddessen steht in
+// storage.session je Eintrag, welcher Tab für ihn angelegt wurde oder dass er gescheitert ist
+// ('pendingRetry'), damit resumeRetry nach einem Ende des Service Workers die schon
+// angelegten zuordnet, statt sie noch einmal anzulegen (#186). Nach URL ginge das nicht,
+// gleiche Adressen sind erlaubt. have: Index in failed → schon angelegter Tab, gone: Indizes
+// der schon gescheiterten.
+async function retryInto(ws, windowId, have = new Map(), gone = new Set()) {
+  const list = (await getBackup()).backup[ws]?.failed || [];
+  const note = async (key, x) => {
+    const { pendingRetry: r } = await chrome.storage.session.get('pendingRetry');
+    if (r) await chrome.storage.session.set({ pendingRetry: { ...r, [key]: [...r[key], x] } });
+  };
+  // Angeheftete und übrige Einträge getrennt; idx führt ihre Indizes auf die in list zurück
+  const part = (pinned) => {
+    const idx = [...list.keys()].filter((i) => !list[i].p === !pinned);
+    const h = [];
+    for (const i of idx) {
+      if (!list[i].url || gone.has(i)) continue;
+      if (!have.has(i)) break;
+      h.push(have.get(i));
+    }
+    const g = [...idx.keys()].filter((k) => gone.has(idx[k]));
+    const onFail = (k, e) => note('failed', { i: idx[k], url: e.url });
+    const onOpen = (k, t) => note('open', { i: idx[k], url: list[idx[k]].url, id: t.id });
+    return recreate(idx.map((i) => list[i]), windowId, pinned, !pinned, h, g, onFail, onOpen);
+  };
   const { still, later } = await moving(async () => {
-    const p = await recreate(list.filter((e) => e.p), windowId, true);
-    const r = await recreate(list.filter((e) => !e.p), windowId, false, true);
+    const p = await part(true);
+    const r = await part(false);
     return { still: [...p.failed, ...r.failed], later: r.later };
   });
   const { backup } = await getBackup();
-  backup[wsId].failed = still;
+  if (backup[ws]) backup[ws].failed = still;
   await chrome.storage.local.set({ backup });
-  await keepLater(wsId, later);
-  await updateAllIcons();
-  await snapshot();
+  await chrome.storage.session.remove('pendingRetry');
+  await keepLater(ws, later);
+}
+
+// Setzt einen unterbrochenen erneuten Versuch fort (über resumeSwitch vor jeder Aktion und
+// jedem Abgleich). Schon angelegte Tabs, die noch im Fenster liegen, gelten als angelegt;
+// fehlt einer (geschlossen), bleibt sein Eintrag in failed.
+async function resumeRetry() {
+  const { pendingRetry: r } = await chrome.storage.session.get('pendingRetry');
+  if (!r) return false;
+  const list = (await getBackup()).backup[r.ws]?.failed || [];
+  if (!list.length || (await sess()).windowWs[r.windowId] !== r.ws) {
+    await chrome.storage.session.remove('pendingRetry');
+    return false;
+  }
+  const fits = (x) => list[x.i]?.url === x.url;
+  const gone = new Set(r.failed.filter(fits).map((x) => x.i));
+  const have = new Map();
+  for (const x of r.open.filter(fits)) {
+    const t = await chrome.tabs.get(x.id).catch(() => null);
+    if (t?.windowId === r.windowId) have.set(x.i, t);
+    else gone.add(x.i);
+  }
+  console.info('[workspaces] setze unterbrochenen erneuten Versuch fort:', r.ws, have.size);
+  await retryInto(r.ws, r.windowId, have, gone);
+  return true;
 }
 
 async function dismissFailed(wsId) {
