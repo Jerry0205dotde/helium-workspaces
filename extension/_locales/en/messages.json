@@ -377,6 +377,9 @@
   "exportText": {
     "message": "Saves all workspaces with name, color, emoji, order, tabs and tab groups, the pinned tabs and the settings as a JSON file. Window IDs and the device key are left out."
   },
+  "exportPlainText": {
+    "message": "The file contains the full addresses and titles of all tabs in plain text, including any access tokens or sharing and password reset links in them. Passing it on or syncing the Downloads folder passes those on too."
+  },
   "exportButton": {
     "message": "Save as file"
   },
@@ -676,6 +679,9 @@
   },
   "autoText": {
     "message": "Regularly saves an export to Downloads/$1/ and keeps the last $2. This way the workspaces survive even if the extension is removed or the profile breaks."
+  },
+  "autoPlainText": {
+    "message": "The backups also contain all addresses and titles in plain text, including access tokens and password reset links. Syncing the Downloads folder passes those on too."
   },
   "autoLabel": {
     "message": "Frequency"

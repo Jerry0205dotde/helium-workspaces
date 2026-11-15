@@ -377,6 +377,9 @@
   "exportText": {
     "message": "Speichert alle Workspaces mit Name, Farbe, Emoji, Reihenfolge, Tabs und Tab-Gruppen, die angehefteten Tabs und die Einstellungen als JSON-Datei. Fenster-IDs und der Geräteschlüssel kommen nicht hinein."
   },
+  "exportPlainText": {
+    "message": "Die Datei enthält die vollständigen Adressen und Titel aller Tabs im Klartext, also auch Zugangstoken sowie Freigabe- oder Passwort-Reset-Links darin. Wer sie weitergibt oder den Downloads-Ordner synchronisiert, gibt sie mit."
+  },
   "exportButton": {
     "message": "Als Datei speichern"
   },
@@ -676,6 +679,9 @@
   },
   "autoText": {
     "message": "Legt regelmäßig einen Export in Downloads/$1/ ab und behält davon die letzten $2. So bleiben die Workspaces erhalten, auch wenn die Erweiterung entfernt wird oder das Profil kaputtgeht."
+  },
+  "autoPlainText": {
+    "message": "Auch die Sicherungen enthalten alle Adressen und Titel im Klartext, samt Zugangstoken und Passwort-Reset-Links. Wer den Downloads-Ordner synchronisiert, gibt sie mit."
   },
   "autoLabel": {
     "message": "Häufigkeit"
