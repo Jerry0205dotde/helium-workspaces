@@ -3,7 +3,8 @@
 const $ = (id) => document.getElementById(id);
 const MAX_SIZE = 50 * 1024 * 1024;
 
-let text = null; // Inhalt der gewählten Datei
+let text = null; // Inhalt der gewählten Datei oder des früheren Stands
+let earlierAt = null; // Zeitpunkt des gewählten früheren Stands, sonst eine Datei
 let preview = null;
 let busy = false;
 
@@ -100,7 +101,9 @@ send({ type: 'autoBackupState' }).then(renderAuto, (e) => ($('auto-info').textCo
 
 function resetImport() {
   text = null;
+  earlierAt = null;
   preview = null;
+  for (const li of document.querySelectorAll('#earlier-list li')) li.classList.remove('chosen');
   $('preview').hidden = true;
   $('error').hidden = true;
   $('error').replaceChildren();
@@ -132,7 +135,9 @@ function render() {
   if (groups) parts.push(plural(groups, 'tabGroups'));
   if (p.pinned) parts.push(plural(p.pinned, 'pinnedTabs'));
   const date = p.exported && new Date(p.exported);
-  $('summary').textContent = date && !isNaN(date)
+  $('summary').textContent = earlierAt
+    ? tr('earlierSummary', when(earlierAt), parts.join(', '))
+    : date && !isNaN(date)
     ? tr('fileValidDate', parts.join(', '), date.toLocaleString(tr('lang')))
     : tr('fileValid', parts.join(', '));
 
@@ -201,6 +206,45 @@ $('file').addEventListener('change', () =>
     }
   }),
 );
+
+// Frühere Stände (#189): Einer wird wie eine Datei geprüft und eingespielt, vorgewählt
+// ist Ersetzen.
+function renderEarlier(list) {
+  $('earlier').hidden = !list.length;
+  $('earlier-list').replaceChildren(
+    ...list.map((e) => {
+      const li = el('li');
+      li.dataset.at = String(e.at);
+      const parts = [plural(e.workspaces, 'workspaces'), tabs(e.tabs)];
+      if (e.pinned) parts.push(plural(e.pinned, 'pinnedTabs'));
+      const b = el('button', 'btn', tr('earlierButton'));
+      b.addEventListener('click', () => chooseEarlier(e.at));
+      li.append(el('span', 'name', when(e.at)), el('span', 'meta', parts.join(', ')), b);
+      return li;
+    }),
+  );
+}
+
+function chooseEarlier(at) {
+  run(tr('checkingEarlier'), async () => {
+    resetImport();
+    $('file').value = '';
+    $('import-result').textContent = '';
+    try {
+      text = await send({ type: 'earlierText', at });
+      preview = await send({ type: 'importPreview', text });
+      earlierAt = at;
+      $('earlier-list').querySelector(`li[data-at="${at}"]`)?.classList.add('chosen');
+      document.querySelector('input[name=mode][value=replace]').checked = true;
+      render();
+    } catch (e) {
+      text = null;
+      showError(tr('earlierRejected'), e);
+    }
+  });
+}
+
+send({ type: 'earlier' }).then(renderEarlier, () => {});
 
 for (const r of document.querySelectorAll('input[name=mode]')) r.addEventListener('change', resetConfirm);
 

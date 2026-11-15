@@ -434,10 +434,16 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
 
   await step('Beenden und Neustart mit „Dort weitermachen, wo ich aufgehört habe“', async () => {
     await env.switchTo('B');
+    // Der Start hebt den Stand von vorher als früheren Stand auf (#189)
+    const urlsOf = "return Object.values(s.backup).flatMap((x) => [...x.shown, ...x.stash].map((e) => e.url)).sort();";
+    const before = await b.sw(`const s = await chrome.storage.local.get('backup'); ${urlsOf}`);
+    const kept = (await b.sw("return (await chrome.storage.local.get('earlier')).earlier?.length || 0;"));
     await b.quit();
     await env.launch('last');
     const r = await env.settled();
     assert.equal(r.shows, 'B');
+    assert.deepEqual(await b.sw(`const s = (await chrome.storage.local.get('earlier')).earlier[0]; ${urlsOf}`), before);
+    assert.equal(await b.sw("return (await chrome.storage.local.get('earlier')).earlier.length;"), Math.min(kept + 1, 3));
     await env.cycle(['C', 'A', 'B']);
   });
 

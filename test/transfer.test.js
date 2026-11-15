@@ -56,7 +56,7 @@ pageTest('Datei wählen zeigt die Vorschau, ohne etwas zu ändern', async ({ p, 
   assert.match(await p.text('#summary'), /^Die Datei ist gültig: 1 Workspace, 2 Tabs/);
   assert.match(await p.text('#replace-list'), /Löscht 2 Workspaces \(„A“, „B“\) und schließt 3 Tabs\./);
   assert.match(await p.text('#replace-list'), /Bis zum nächsten Browserstart lässt sich das im Popup rückgängig machen\./);
-  assert.deepEqual(p.sent.filter((m) => !['token', 'autoBackupState'].includes(m.type)).map((m) => m.type), ['importPreview']);
+  assert.deepEqual(p.sent.filter((m) => !['token', 'autoBackupState', 'earlier'].includes(m.type)).map((m) => m.type), ['importPreview']);
   assert.deepEqual(imports(), []);
   assert.deepEqual(names(), ['A', 'B']);
 });
@@ -155,6 +155,41 @@ test('Die Vorschau nennt die Einstellungen, die sich ändern, der Import überni
     fs.copyFileSync(file, again);
     await p.chooseFile('#file', again);
     assert.equal(await p.text('#settings'), 'Die Einstellungen aus der Datei gelten hier schon.');
+  } finally {
+    await p.close();
+  }
+});
+
+test('Ein früherer Stand erscheint unter Importieren und wird nach Nachfrage wiederhergestellt (#189)', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1', 'b2'] } });
+  env.b.restart();
+  await env.b.startWorker('startup').settle();
+  // Der Start ordnet falsch zu: A verliert seinen Tab, der Snapshot überschreibt die Sicherung
+  const main = env.b.mains()[0].id;
+  const a1 = (await env.b.chrome.tabs.query({ windowId: main })).find((t) => t.url === url('a1'));
+  await env.b.chrome.tabs.create({ windowId: main, url: url('x1') });
+  await env.b.chrome.tabs.remove(a1.id);
+  await env.w.settle();
+  const urls = () => Object.values(env.b.local.data.backup).flatMap((b) => [...b.shown, ...b.stash].map((t) => t.url)).sort();
+  assert.deepEqual(urls(), [url('b1'), url('b2'), url('x1')]);
+
+  const p = await browser.open('transfer.html', env);
+  try {
+    assert.equal(await p.eval('document.getElementById("earlier").hidden'), false);
+    assert.match(await p.text('#earlier-list'), /^\d.+2 Workspaces, 3 TabsAuswählen$/);
+    await p.click('#earlier-list button');
+    assert.match(await p.text('#summary'), /^Stand vom .+: 2 Workspaces, 3 Tabs\.$/);
+    assert.equal(await p.eval('document.querySelector("input[value=replace]").checked'), true, 'Ersetzen ist vorgewählt');
+    await p.click('#import');
+    assert.equal(await p.text('#import'), '3 Tabs schließen und ersetzen?');
+    assert.deepEqual(p.sent.filter((m) => m.type === 'import'), []);
+    await p.click('#import');
+    assert.deepEqual(p.sent.filter((m) => m.type === 'import').map((m) => [m.mode, m.confirmed]), [['replace', true]]);
+    assert.match(await p.text('#import-result'), /^Import abgeschlossen: 2 Workspaces angelegt, 3 Tabs übernommen/);
+    assert.deepEqual(env.b.local.data.workspaces.map((w) => w.name), ['A', 'B']);
+    assert.deepEqual(urls(), [url('a1'), url('b1'), url('b2')]);
+    // Die ersetzten Workspaces lassen sich im Popup zurückholen
+    assert.deepEqual(env.b.local.data.deleted.map((d) => d.ws.name), ['A', 'B']);
   } finally {
     await p.close();
   }

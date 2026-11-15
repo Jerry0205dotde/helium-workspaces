@@ -175,3 +175,22 @@ async function snapshot(gone) {
   for (const c of closedTabs) if (savedUrls.has(c.tabId)) c.url = savedUrls.get(c.tabId);
   await chrome.storage.session.remove('backupError');
 }
+
+// ---------------------------------------------------------------- Frühere Stände (#189)
+
+// Beim Browserstart, vor dem ersten Snapshot, kommt der gesicherte Stand (Workspaces,
+// Sicherung, angeheftete Tabs) mit Zeitpunkt nach vorn in 'earlier' (storage.local), die
+// letzten EARLIER_KEEP bleiben. Ordnet ein Start falsch zu und überschreibt der nächste
+// Snapshot die Sicherung, holt die Exportseite den Stand davor zurück. Ein Stand, dessen
+// Wiederherstellen dasselbe ergäbe wie der neueste, verdrängt keinen älteren. Verglichen
+// wird deshalb die Export-Form, in der Gruppen-IDs nach einem Neustart nicht abweichen.
+const EARLIER_KEEP = 3;
+
+async function keepEarlier() {
+  const { workspaces, backup, backupPinned, earlier = [] } = await chrome.storage.local.get(['workspaces', 'backup', 'backupPinned', 'earlier']);
+  if (!Array.isArray(workspaces) || !workspaces.length) return;
+  const state = { at: Date.now(), workspaces, backup: backup || {}, backupPinned: backupPinned || [] };
+  const content = (e) => JSON.stringify({ ...earlierExchange(e), exported: null });
+  if (earlier[0] && content(earlier[0]) === content(state)) return;
+  await chrome.storage.local.set({ earlier: [state, ...earlier].slice(0, EARLIER_KEEP) });
+}

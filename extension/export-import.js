@@ -1,5 +1,8 @@
 // Hintergrundlogik: Export und Import (Dateiformat in exchange.js)
 
+// Trennt die Gruppenschlüssel einer Herkunft (Präfix p) von denen anderer Herkünfte
+const tagGroups = (list, p) => list.filter((e) => e.url).map((e) => (e.g ? { ...e, g: p + e.g } : e));
+
 // Inhalt aller Workspaces im Sicherungsformat: die lebenden Tabs samt den noch nicht
 // angelegten (keepLater), für Workspaces ohne Fenster die Sicherung, dahinter die nicht
 // wiederhergestellten Einträge. Die
@@ -11,7 +14,6 @@ async function collectAll() {
   const { stash, mains } = await scan();
   const { backup, backupPinned } = await getBackup();
   const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
-  const tag = (list, p) => list.filter((e) => e.url).map((e) => (e.g ? { ...e, g: p + e.g } : e));
   const list = cfg.workspaces.map((ws) => {
     const { sw, showing } = windowsOf(ws.id, s, stash, mains);
     const b = backup[ws.id] || {};
@@ -24,9 +26,9 @@ async function collectAll() {
       ws,
       live,
       window: showing[0]?.id ?? sw?.id,
-      open: tag(open, 'a').length,
+      open: tagGroups(open, 'a').length,
       failed: failed.length,
-      entries: [...tag(open, 'a'), ...tag(failed.filter((e) => !e.p), 'f')],
+      entries: [...tagGroups(open, 'a'), ...tagGroups(failed.filter((e) => !e.p), 'f')],
       pinnedFailed: failed.filter((e) => e.p),
     };
   });
@@ -42,6 +44,35 @@ async function exportAll() {
   await resumeSwitch();
   const { list, pinned } = await collectAll();
   return buildExchange(list, pinned, chrome.runtime.getURL(''), await getSettings());
+}
+
+// Ein früherer Stand (keepEarlier) als Export-Datei ohne Einstellungen, wie collectAll
+// für Workspaces ohne Fenster. Die Exportseite spielt ihn wie eine Datei ein.
+function earlierExchange(e) {
+  const list = e.workspaces.map((ws) => {
+    const b = e.backup[ws.id] || {};
+    return { ws, entries: [...tagGroups(savedOf(b), 'a'), ...tagGroups((b.failed || []).filter((x) => !x.p), 'f')] };
+  });
+  const pinnedFailed = e.workspaces.flatMap((ws) => (e.backup[ws.id]?.failed || []).filter((x) => x.p));
+  const data = buildExchange(list, [...e.backupPinned, ...pinnedFailed].filter((x) => x.url), chrome.runtime.getURL(''));
+  data.exported = new Date(e.at).toISOString();
+  return data;
+}
+
+// Die früheren Stände für die Exportseite, die neuesten zuerst
+async function earlierStates() {
+  const { earlier = [] } = await chrome.storage.local.get('earlier');
+  return earlier.map((e) => {
+    const data = earlierExchange(e);
+    return { at: e.at, workspaces: data.workspaces.length, tabs: data.workspaces.reduce((n, w) => n + w.tabs.length, 0), pinned: data.pinned.length };
+  });
+}
+
+async function earlierText(at) {
+  const { earlier = [] } = await chrome.storage.local.get('earlier');
+  const e = earlier.find((x) => x.at === at);
+  if (!e) throw new Error(tr('earlierGone'));
+  return JSON.stringify(earlierExchange(e));
 }
 
 // Die Einstellungen, die der Export mitnimmt (#161)

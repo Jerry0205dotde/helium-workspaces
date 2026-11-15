@@ -171,7 +171,8 @@ Gut zu wissen:
 Die Erweiterung speichert dauerhaft im Profil:
 
 - die Workspaces mit Name, Farbe, Emoji und Reihenfolge sowie den zuletzt benutzten Workspace,
-- eine Sicherung aller Tabs mit Adresse, Titel und Tab-Gruppe sowie der angehefteten Tabs.
+- eine Sicherung aller Tabs mit Adresse, Titel und Tab-Gruppe sowie der angehefteten Tabs,
+- die drei letzten Stände davon (Workspaces und Sicherung) von vor einem Browserstart. Ordnet ein Start Tabs falsch zu und überschreibt so die Sicherung, holt **Exportieren / Importieren → Importieren** einen davon wie eine Datei zurück, vorgewählt mit **Ersetzen**.
 
 Nur innerhalb der laufenden Browsersitzung gibt es:
 

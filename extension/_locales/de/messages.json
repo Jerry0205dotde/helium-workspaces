@@ -736,5 +736,23 @@
   },
   "backupNowFailed": {
     "message": "Sicherung konnte nicht gestartet werden."
+  },
+  "earlierText": {
+    "message": "Oder einen früheren Stand wählen. Bei jedem Browserstart hebt die Erweiterung den Stand davor auf, die letzten drei bleiben."
+  },
+  "earlierButton": {
+    "message": "Auswählen"
+  },
+  "earlierSummary": {
+    "message": "Stand vom $1: $2."
+  },
+  "checkingEarlier": {
+    "message": "Früherer Stand wird geprüft …"
+  },
+  "earlierRejected": {
+    "message": "Dieser Stand kann nicht wiederhergestellt werden. Es wurde nichts geändert."
+  },
+  "earlierGone": {
+    "message": "Diesen Stand gibt es nicht mehr."
   }
 }

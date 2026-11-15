@@ -736,5 +736,23 @@
   },
   "backupNowFailed": {
     "message": "Could not start the backup."
+  },
+  "earlierText": {
+    "message": "Or choose an earlier state. On every browser start the extension keeps the state from before, the last three remain."
+  },
+  "earlierButton": {
+    "message": "Choose"
+  },
+  "earlierSummary": {
+    "message": "State from $1: $2."
+  },
+  "checkingEarlier": {
+    "message": "Checking earlier state …"
+  },
+  "earlierRejected": {
+    "message": "This state cannot be restored. Nothing was changed."
+  },
+  "earlierGone": {
+    "message": "This state no longer exists."
   }
 }
