@@ -493,11 +493,11 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
         assert.equal(await b.historyOf(`${base}c1`), 2);
       }
       const { main } = await env.switchTo('A');
-      // Das letzte Hauptfenster schließen (wie per X): Die Erweiterung schließt die
-      // Ablagen mit, damit sich der Browser beendet
       // Ein noch ausstehender Abgleich nach den Wechseln sähe nach dem Schließen nur Ablagen
       // und baute ein neues Hauptfenster auf
       await waitFor(() => b.sw("await serial(() => {}); if (firstCall.reconcile) throw new Error('Abgleich steht aus');"));
+      // Das letzte Hauptfenster schließen (wie per X): Die Erweiterung schließt die
+      // Ablagen mit, damit sich der Browser beendet
       b.sw('await chrome.windows.remove(args[0]);', main.id).catch(() => {});
       await b.waitExit();
       await env.launch(restore);
