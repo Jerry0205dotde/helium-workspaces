@@ -46,9 +46,13 @@ async function groupEntry(tabIds, windowId, e, groupId = null) {
 // Indizes der Einträge in list, die dabei gescheitert sind: Sie bekommen keinen Tab aus
 // have und kommen nach failed. Scheitert ein Eintrag, erfährt onFail Index und Eintrag (#148).
 // Nicht angeheftete Tabs werden nach dem ersten Laden entladen, solange sie nicht aktiv sind.
+// Laden schon LOAD_AT_ONCE von ihnen, legt recreate keine weiteren an (mindestens aber
+// einen): Die übrigen Einträge kommen nach later, samt den URLs ihrer Geschwister wie bei
+// failed. Der Aufrufer bewahrt sie mit keepLater auf, feedLater legt sie nach und nach an.
 async function recreate(list, windowId, pinned = false, join = false, have = [], gone = [], onFail = null) {
   const ids = [];
   const failed = [];
+  const later = [];
   const groups = new Map();
   const used = new Set(); // in diesem Aufruf belegte Gruppen gehören zu einer anderen Sicherung
   let n = 0;
@@ -58,7 +62,13 @@ async function recreate(list, windowId, pinned = false, join = false, have = [],
       failed.push(pinned ? e : failedEntry(e, list));
       continue;
     }
-    const t = have[n++] || (await openEntry(e, { windowId, pinned }, list, failed));
+    let t = have[n];
+    if (!t && !pinned && (later.length || (ids.length && (await restoredLoading()).n >= LOAD_AT_ONCE))) {
+      later.push(failedEntry(e, list));
+      continue;
+    }
+    n++;
+    t ||= await openEntry(e, { windowId, pinned }, list, failed);
     if (!t) {
       await onFail?.(i, e);
       continue;
@@ -102,7 +112,7 @@ async function recreate(list, windowId, pinned = false, join = false, have = [],
       }
     }
   }
-  return { ids, failed };
+  return { ids, failed, later };
 }
 
 // Fehlgeschlagene angeheftete Tabs kennzeichnet p
@@ -128,6 +138,144 @@ async function keepFailed(wsId, failed) {
   await chrome.storage.local.set({ backup, backupPinned });
 }
 
+// Bewahrt die von recreate zurückgestellten Einträge (later) in der Sicherung von wsId auf.
+// Dort stehen sie hinter den anderen (savedOf) und überstehen wie failed jeden Snapshot,
+// bis feedLater ihre Tabs anlegt. from sagt, woher die Liste für recreate kam:
+// 'saved' – aus savedOf (die bisher zurückgestellten waren darin und werden ersetzt),
+// 'shown' – aus den gezeigten (die neuen kommen vor die bisherigen), sonst von außerhalb
+// der Sicherung (die neuen kommen dahinter). Aus der Sicherung stammende Einträge werden
+// dort von hinten gestrichen, damit jeder Eintrag nur an einer Stelle steht.
+async function keepLater(wsId, later, from = null) {
+  if (!later.length && from !== 'saved') return;
+  const { backup } = await getBackup();
+  const b = (backup[wsId] ??= { stash: [], shown: [] });
+  const old = b.later || [];
+  // Von hinten durchsuchen: zurückgestellt wird immer das Ende der Liste
+  const pool = from === 'saved' ? [old, (b.stash ??= []), (b.shown ??= [])] : from === 'shown' ? [(b.shown ??= [])] : [];
+  for (const e of [...later].reverse()) {
+    for (const arr of pool) {
+      const i = arr.findLastIndex((a) => a.url === e.url);
+      if (i >= 0) {
+        arr.splice(i, 1);
+        break;
+      }
+    }
+  }
+  b.later = from === 'saved' ? later : from === 'shown' ? [...later, ...old] : [...old, ...later];
+  if (!b.later.length) delete b.later;
+  await chrome.storage.local.set({ backup });
+  // Falls kein Tab fertig lädt und feedLater deshalb nicht anstößt
+  if (b.later) {
+    clearTimeout(feedTimer);
+    feedTimer = setTimeout(() => serial(feedLater), LOAD_TIMEOUT);
+  }
+}
+
+// Legt zurückgestellte Tabs (keepLater) an, solange weniger als LOAD_AT_ONCE aus der
+// Sicherung angelegte Tabs laden: hinten im Fenster, das ihren Workspace zeigt, sonst in
+// seiner Ablage. Läuft, wenn ein solcher Tab fertig geladen hat, nach jedem Abgleich (also
+// auch nach einem Neustart des Service Workers) und spätestens, wenn ein Tab zu lange lädt.
+// Hat der Workspace kein Fenster mehr, bleiben die Einträge in der Sicherung und kommen
+// beim nächsten Aufbau aus ihr mit.
+let feedTimer = null;
+async function feedLater() {
+  clearTimeout(feedTimer);
+  if ((await getPending()) || (await getPendingStash())) return;
+  let changed = await resumeFeed();
+  const { backup } = await getBackup();
+  const todo = Object.keys(backup).filter((ws) => backup[ws].later?.length);
+  const s = await sess();
+  const { stash, mains } = await scan();
+  let more = false;
+  for (const ws of todo) {
+    const { sw, showing } = windowsOf(ws, s, stash, mains);
+    const win = showing[0] || sw;
+    if (!win) continue;
+    if ((await restoredLoading()).n >= LOAD_AT_ONCE) {
+      more = true;
+      break;
+    }
+    if (await feedInto(ws, win.id)) more = true;
+    changed = true;
+  }
+  if (more) {
+    const { wait } = await restoredLoading();
+    feedTimer = setTimeout(() => serial(feedLater), wait === Infinity ? 0 : wait);
+  }
+  if (!changed) return;
+  await updateAllIcons();
+  await snapshot();
+  await syncMute(); // moving() übergeht die Stummschaltung neuer Tabs in einer Ablage
+}
+
+// Legt zurückgestellte Tabs von ws im Fenster windowId an. Währenddessen steht in
+// storage.session, welche Tabs schon vorher darin lagen ('pendingFeed'), damit resumeFeed
+// nach einem Ende des Service Workers die schon angelegten erkennt; bis dahin sichert
+// snapshot() nichts. have: die schon angelegten. true, wenn noch Einträge übrig sind.
+async function feedInto(ws, windowId, have = [], gone = []) {
+  if (!have.length && !gone.length) {
+    const known = (await chrome.tabs.query({ windowId })).map((t) => t.id);
+    await chrome.storage.session.set({ pendingFeed: { ws, windowId, known } });
+  }
+  // Gescheiterte Einträge merken, damit resumeFeed die Tabs danach richtig zuordnet (#148)
+  const noteFed = async (i, e) => {
+    const { pendingFeed: f } = await chrome.storage.session.get('pendingFeed');
+    if (f) await chrome.storage.session.set({ pendingFeed: { ...f, failed: [...(f.failed || []), { i, url: e.url }] } });
+  };
+  const list = (await getBackup()).backup[ws]?.later || [];
+  const r = await moving(() => recreate(list, windowId, false, true, have, gone, noteFed));
+  const { backup } = await getBackup();
+  const b = backup[ws];
+  if (b) {
+    if (r.later.length) b.later = r.later;
+    else delete b.later;
+    if (r.failed.length) b.failed = [...(b.failed || []), ...r.failed];
+    await chrome.storage.local.set({ backup });
+  }
+  await chrome.storage.session.remove('pendingFeed');
+  await noteStartFed(ws, r.ids);
+  return r.later.length > 0;
+}
+
+// Setzt ein unterbrochenes Nachlegen fort, bevor etwas anderes die Fenster ändert (über
+// resumeSwitch vor jeder Aktion und jedem Abgleich): Tabs, die seither im Fenster
+// dazugekommen sind und der Reihe nach zu den zurückgestellten Einträgen passen, sind schon
+// angelegt. Gescheiterte Einträge (failed) bekommen keinen davon.
+async function resumeFeed() {
+  const { pendingFeed: f } = await chrome.storage.session.get('pendingFeed');
+  if (!f) return false;
+  const list = (await getBackup()).backup[f.ws]?.later || [];
+  const { stash, mains } = await scan();
+  const { sw, showing } = windowsOf(f.ws, await sess(), stash, mains);
+  const win = [...showing, sw].find((w) => w?.id === f.windowId);
+  if (!list.length || !win) {
+    await chrome.storage.session.remove('pendingFeed');
+    return false;
+  }
+  const gone = (f.failed || []).filter((x) => list[x.i]?.url === x.url).map((x) => x.i);
+  const have = [];
+  let i = 0;
+  for (const t of win.tabs) {
+    if (f.known.includes(t.id) || t.pinned || isStashTab(t)) continue;
+    while (gone.includes(i)) i++;
+    if (urlOf(t) !== list[i]?.url) break;
+    have.push(t);
+    i++;
+  }
+  console.info('[workspaces] setze unterbrochenes Nachlegen fort:', f.ws, have.length);
+  await feedInto(f.ws, f.windowId, have, gone);
+  return true;
+}
+
+// Nach restoreStart merkt sich dropStartCopies die nachgelegten Tabs (startFed): Stellt
+// Chromium die Sitzung doch noch wieder her, sind die darunter, die es auch kannte, Kopien
+async function noteStartFed(ws, ids) {
+  const { startCopies, startWs, startFed = [] } = await chrome.storage.session.get(['startCopies', 'startWs', 'startFed']);
+  if (!startCopies || startWs !== ws || !ids.length) return;
+  const added = (await chrome.tabs.query({})).filter((t) => ids.includes(t.id)).map((t) => ({ id: t.id, url: urlOf(t) }));
+  await chrome.storage.session.set({ startFed: [...startFed, ...added] });
+}
+
 // Legt die fehlgeschlagenen Tabs eines Workspace erneut an, im Fenster windowId.
 // Zeigt das Fenster einen anderen Workspace, wird vorher dorthin gewechselt.
 async function retryFailed(windowId, wsId) {
@@ -136,14 +284,15 @@ async function retryFailed(windowId, wsId) {
   if ((await sess()).windowWs[windowId] !== wsId) return;
   const list = (await getBackup()).backup[wsId]?.failed || [];
   if (!list.length) return;
-  const still = await moving(async () => {
+  const { still, later } = await moving(async () => {
     const p = await recreate(list.filter((e) => e.p), windowId, true);
     const r = await recreate(list.filter((e) => !e.p), windowId, false, true);
-    return [...p.failed, ...r.failed];
+    return { still: [...p.failed, ...r.failed], later: r.later };
   });
   const { backup } = await getBackup();
   backup[wsId].failed = still;
   await chrome.storage.local.set({ backup });
+  await keepLater(wsId, later);
   await updateAllIcons();
   await snapshot();
 }
@@ -194,7 +343,8 @@ async function repairFromBackup(cfg, s, stash, mains) {
     if (!b || (!wins.length && !sw)) continue;
     const live = [...wins.flatMap(movableTabsOf), ...(sw ? stashTabsOf(sw) : [])];
     const shown = (b.shown || []).filter((e) => e.url);
-    const saved = savedOf(b).filter((e) => e.url);
+    // Ohne die zurückgestellten Einträge: Sie fehlen nicht, feedLater legt sie an
+    const saved = [...shown, ...(b.stash || [])].filter((e) => e.url);
     let budget = saved.length - live.length;
     if (budget <= 0) continue;
     const match = align(

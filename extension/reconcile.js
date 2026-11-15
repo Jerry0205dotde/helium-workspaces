@@ -203,6 +203,7 @@ async function reconcile() {
       const p = await recreate(backupPinned, win.id, true);
       const r = await recreate(backup[target]?.shown || [], win.id);
       await keepFailed(target, [...asPinned(p.failed), ...r.failed]);
+      await keepLater(target, r.later, 'shown');
       let ids = r.ids;
       const st = stash.get(target);
       if (st) ids = ids.concat(await moveOrdered(stashTabsOf(st), win.id));
@@ -267,6 +268,7 @@ async function reconcile() {
   if (changed) await updateAllIcons();
   await checkSession();
   if (changed) await snapshot();
+  await feedLater();
   await syncMute();
 }
 
@@ -286,6 +288,7 @@ async function restoreStart(wins, wsId) {
     const p = await recreate(pinned, win.id, true);
     const r = await recreate(tabs, win.id);
     await keepFailed(wsId, [...asPinned(p.failed), ...r.failed]);
+    await keepLater(wsId, r.later, 'saved');
     const ids = r.ids;
     const own = movableTabsOf(win);
     const blank = own.length === 1 && isNewTab(own[0]) ? own[0] : null;
@@ -293,13 +296,23 @@ async function restoreStart(wins, wsId) {
       await chrome.tabs.update(ids[0], { active: true });
       await chrome.tabs.remove(blank.id);
     }
-    // Für dropStartCopies: die angelegten Kopien und alle Tabs, die es jetzt schon gibt
-    const copies = [...p.ids, ...ids];
+    // Für dropStartCopies: die angelegten Kopien und alle Tabs, die es jetzt schon gibt.
+    // Kopien sind nur Tabs aus Einträgen, die vor dem Ende offen waren; die aus vorher schon
+    // zurückgestellten (keepLater) kennt Chromium nicht und kommen wie die später
+    // nachgelegten nach startFed.
     const all = await chrome.tabs.query({});
+    const entry = (t) => ({ id: t.id, url: urlOf(t) });
+    const known = new Map();
+    for (const e of [...(backup[wsId]?.shown || []), ...(backup[wsId]?.stash || [])]) known.set(e.url, (known.get(e.url) || 0) + 1);
+    const wasOpen = (t) => known.get(urlOf(t)) > 0 && known.set(urlOf(t), known.get(urlOf(t)) - 1);
+    const made = all.filter((t) => ids.includes(t.id));
+    const copies = [...all.filter((t) => p.ids.includes(t.id)), ...made.filter(wasOpen)];
     await chrome.storage.session.set({
-      startCopies: all.filter((t) => copies.includes(t.id)).map((t) => ({ id: t.id, url: urlOf(t) })),
+      startCopies: copies.map(entry),
+      startFed: made.filter((t) => !copies.includes(t)).map(entry),
       startSeen: all.map((t) => t.id),
       startCopiesUntil: Date.now() + 60000,
+      startWs: wsId,
     });
   });
   console.info('[workspaces] Workspace nach dem Start aus der Sicherung aufgebaut');
@@ -317,10 +330,13 @@ async function restoreStart(wins, wsId) {
 // Minute zählen nur Tabs, die wie Chromiums Wiederherstellung gemeinsam erscheinen: in
 // einem Schwung (START_BURST) mindestens so viele wie die Kopien, mindestens zwei. Öffnet
 // man eine der Seiten selbst neu, bleiben beide.
+// Wurde der Workspace schubweise aufgebaut (startWs), kennt Chromium womöglich nur einen
+// Teil der Tabs: Was es über die Kopien hinaus zurückbringt, schließt die seither
+// nachgelegten Tabs (startFed) und wird nicht mehr nachgelegt; der Rest kommt weiter.
 const START_BURST = 5000;
 async function dropStartCopies(s, stash) {
-  const keys = ['startCopies', 'startSeen', 'startCopiesUntil', 'startNew'];
-  const { startCopies, startSeen, startCopiesUntil, startNew = {} } = await chrome.storage.session.get(keys);
+  const keys = ['startCopies', 'startSeen', 'startCopiesUntil', 'startNew', 'startWs', 'startFed'];
+  const { startCopies, startSeen, startCopiesUntil, startNew = {}, startWs, startFed = [] } = await chrome.storage.session.get(keys);
   if (!startCopies || !(Date.now() <= startCopiesUntil)) {
     ownTabs.clear();
     if (startCopies) await chrome.storage.session.remove(keys);
@@ -347,7 +363,47 @@ async function dropStartCopies(s, stash) {
   if (live.length && (missingIn(want, have).length || burst.length < Math.max(live.length, 2))) return false;
   await chrome.storage.session.remove(keys);
   if (!live.length) return false;
-  await moving(() => chrome.tabs.remove(live.map((c) => c.id)));
+  // Von Chromium zurückgebracht, aber keine der Kopien (je Workspace und Adresse gezählt)
+  const extra = new Map();
+  for (const e of missingIn(have, want)) extra.set(e.url, (extra.get(e.url) || 0) + 1);
+  const take = (k) => extra.get(k) > 0 && extra.set(k, extra.get(k) - 1);
+  const fed = startFed.filter((c) => {
+    const t = tabs.find((x) => x.id === c.id && urlOf(x) === c.url);
+    return t && take(key(t));
+  });
+  await moving(() => chrome.tabs.remove([...live, ...fed].map((c) => c.id)));
+  // Die übrigen nachgelegten Tabs kannte Chromium nicht: Sie gehören hinter seine Tabs, und
+  // lagen sie mit Kopien in einer Gruppe, in die Gruppe mit gleichem Titel und gleicher Farbe,
+  // in der Chromium die meisten dieser Kopien wiederhergestellt hat. Ist das nicht eindeutig,
+  // bleibt ihre Gruppe für sich.
+  const kept = (await chrome.tabs.query({})).filter((t) => startFed.some((c) => c.id === t.id && !fed.includes(c)));
+  if (kept.length) {
+    await moving(async () => {
+      await moveOrdered(kept, kept[0].windowId);
+      const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
+      for (const gid of new Set(kept.map((t) => t.groupId).filter((g) => g >= 0))) {
+        const g = groups.get(gid);
+        const like = (t) => groups.get(t.groupId)?.title === g?.title && groups.get(t.groupId)?.color === g?.color;
+        const votes = new Map();
+        const pool = burst.filter((t) => t.groupId >= 0 && like(t));
+        for (const c of live.map((x) => tabs.find((t) => t.id === x.id)).filter((t) => t.groupId === gid)) {
+          const i = pool.findIndex((t) => key(t) === key(c));
+          if (i < 0) continue;
+          const [t] = pool.splice(i, 1);
+          votes.set(t.groupId, (votes.get(t.groupId) || 0) + 1);
+        }
+        const [best, next] = [...votes].sort((a, b) => b[1] - a[1]);
+        if (best && (!next || next[1] < best[1])) await groupEntry(kept.filter((t) => t.groupId === gid).map((t) => t.id), g.windowId, null, best[0]);
+      }
+    });
+  }
+  const { backup } = await getBackup();
+  const b = backup[startWs];
+  if (b?.later) {
+    b.later = b.later.filter((e) => !take(`${startWs} ${e.url}`));
+    if (!b.later.length) delete b.later;
+    await chrome.storage.local.set({ backup });
+  }
   console.info('[workspaces] Kopien aus der Sicherung geschlossen, Chromium hat die Sitzung wiederhergestellt');
   return true;
 }

@@ -91,6 +91,7 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
   assert.deepEqual(b.errors.map((e) => `${e.name}: ${e.error?.stack || e.error}`), [], 'Fehler in Ereignis-Listenern');
   assert.equal(b.session.data.pendingSwitch, undefined, 'ein Wechsel ist noch nicht abgeschlossen');
   assert.equal(b.session.data.pendingStash, undefined, 'eine Ablage ist noch nicht vollständig aufgebaut');
+  assert.equal(b.session.data.pendingFeed, undefined, 'zurückgestellte Tabs werden noch nachgelegt');
   assert.equal(w.eval('switching'), 0, 'switching wurde nicht zurückgesetzt');
   // Die Erweiterung lädt nie eine Seite neu (Navigation per tabs.update mit url)
   assert.deepEqual(b.calls.filter((c) => c.name === 'tabs.update' && c.args[1] && 'url' in c.args[1]), [], 'Tab wurde neu geladen');
@@ -138,7 +139,7 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
     const id = env.ids[name];
     assert.ok(id, `Testfehler: unbekannter Workspace ${name}`);
     const exp = items.map(norm);
-    const saved = [...(backup[id]?.shown || []), ...(backup[id]?.stash || [])].filter((e) => !(allowNewTab && e.url === NEWTAB));
+    const saved = [...(backup[id]?.shown || []), ...(backup[id]?.stash || []), ...(backup[id]?.later || [])].filter((e) => !(allowNewTab && e.url === NEWTAB));
     // Sicherung stimmt mit dem Bestand überein
     assert.deepEqual(sortUrls(saved.map((e) => e.url)), sortUrls(exp.map((e) => e.url)), `Sicherung von ${name}`);
     if (live.has(name)) {
