@@ -243,3 +243,23 @@ test('Geleerter Download-Verlauf: Es bleiben trotzdem höchstens zehn Dateien (#
   const last = (await autoState(w)).last;
   assert.equal(JSON.parse(b.files.get(last.file)).exported, new Date(last.at).toISOString());
 });
+
+test('Wird der Speicherdialog erst nach dem Warten bestätigt, räumt die nächste Sicherung den Verlauf auf (#192)', async () => {
+  const env = await setup(SPEC);
+  const { b, w } = env;
+  const own = () => b.downloads.filter((d) => d.byExtensionId && d.state === 'complete').length;
+  await enable(w, 1);
+  for (let i = 0; i < 9; i++) await ok(w.request({ type: 'autoBackupNow' }));
+  assert.equal(own(), 10);
+  // Datei 1 noch einmal, der Dialog bleibt länger offen, als die Erweiterung wartet
+  b.downloadMode = 'hold';
+  await ok(w.request({ type: 'autoBackupNow' }));
+  await w.advance(HOUR);
+  b.finishDownload(b.downloads.at(-1).id);
+  await w.settle();
+  assert.equal(own(), 11);
+  b.downloadMode = 'complete';
+  await ok(w.request({ type: 'autoBackupNow' }));
+  assert.equal(own(), 10);
+  assert.equal(files(b).length, 10);
+});

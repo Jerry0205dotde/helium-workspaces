@@ -49,11 +49,12 @@ async function autoBackupIfDue(wait = 10 * 60000, force = false) {
   const { autoBackupAt = 0 } = await chrome.storage.local.get('autoBackupAt');
   if (!force && Date.now() - autoBackupAt < days * 24 * HOUR - HOUR / 2) return null;
   try {
+    await eraseOlderEntries().catch((e) => console.warn('[workspaces] Download-Verlauf', e));
     const { autoBackupCount = 0 } = await chrome.storage.local.get('autoBackupCount');
     const id = await startAutoBackup((autoBackupCount % AUTO_KEEP) + 1);
     await chrome.storage.local.set({ autoBackupAt: Date.now(), autoBackupId: id, autoBackupCount: autoBackupCount + 1 });
     await chrome.storage.local.remove('autoBackupError');
-    const done = downloadDone(id, wait).then(() => eraseOlderEntries(id));
+    const done = downloadDone(id, wait).then(eraseOlderEntries);
     return { done: done.catch((e) => console.warn('[workspaces] Download-Verlauf', e)) };
   } catch (e) {
     console.warn('[workspaces] Automatische Sicherung', e);
@@ -120,13 +121,19 @@ async function autoBackupState() {
 }
 
 // Ältere Einträge derselben Datei im Download-Verlauf zeigen nur noch auf die überschriebene
-// Datei. Sie verschwinden, damit der Verlauf nicht mit jeder Sicherung wächst. Die Datei
-// selbst bleibt.
-async function eraseOlderEntries(id) {
-  const [item] = await chrome.downloads.search({ id });
-  if (item?.state !== 'complete') return;
-  const same = await chrome.downloads.search({ filename: item.filename });
-  for (const i of same) {
-    if (i.id !== id && i.byExtensionId === chrome.runtime.id) await chrome.downloads.erase({ id: i.id });
+// Datei. Sie verschwinden, damit der Verlauf nicht mit jeder Sicherung wächst, je Datei
+// bleibt der neueste. Die Dateien selbst bleiben. Läuft vor und nach jeder Sicherung: Wird
+// der Speicherdialog erst nach dem Warten bestätigt, holt es die nächste nach.
+async function eraseOlderEntries() {
+  const items = await chrome.downloads.search({
+    filenameRegex: `[\\\\/]${AUTO_DIR}[\\\\/]${AUTO_PREFIX}[^\\\\/]*\\.json$`,
+    state: 'complete',
+    orderBy: ['-startTime'],
+  });
+  const seen = new Set();
+  for (const i of items) {
+    if (i.byExtensionId !== chrome.runtime.id) continue;
+    if (seen.has(i.filename)) await chrome.downloads.erase({ id: i.id });
+    seen.add(i.filename);
   }
 }
