@@ -66,6 +66,34 @@ test('Wechsel zu einem Workspace, der schon in einem anderen Fenster offen ist, 
   check(env, { ...ALL, B: [...SPEC.workspaces.B, 'b3'] });
 });
 
+test('Popup: Workspace, den ein anderes Fenster zeigt, holt dieses Fenster nach vorn (#190)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const win2 = await newWindow(env);
+  await ok(w.request({ type: 'switch', windowId: win2, wsId: ids.B }));
+  await b.chrome.windows.update(win2, { state: 'minimized' });
+  await b.chrome.windows.update(win, { focused: true });
+  await w.settle();
+  const before = tabIds(env);
+
+  // Fenster 1 zeigt A, Fenster 2 zeigt B: Klick auf B im Popup von Fenster 1
+  await ok(w.request({ type: 'show', windowId: win, wsId: ids.B }));
+  const w2 = b.windows.find((x) => x.id === win2);
+  assert.equal(w2.focused, true);
+  assert.notEqual(w2.state, 'minimized');
+  assert.equal(shows(env, win), 'A');
+  assert.equal(shows(env, win2), 'B');
+  assert.deepEqual(tabIds(env), before, 'Tabs wurden verschoben oder neu angelegt');
+  assert.equal(b.windows.find((x) => x.id === win).tabs.some((t) => t.url === NEWTAB), false);
+  check(env, ALL);
+
+  // Zeigt kein anderes Fenster den Workspace, wechselt das Fenster wie bisher
+  await ok(w.request({ type: 'show', windowId: win, wsId: ids.C }));
+  assert.equal(shows(env, win), 'C');
+  assert.equal(where(env, 'c1').win.id, win);
+  check(env, ALL);
+});
+
 test('Workspace ohne Ablage-Fenster, der schon anderswo offen ist, kommt nicht aus der Sicherung', async () => {
   const env = await setup(SPEC);
   const { b, w, win } = env;

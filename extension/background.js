@@ -198,6 +198,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return serial(ensureToken);
       case 'switch':
         return userAction(() => switchTo(msg.windowId, msg.wsId));
+      case 'show':
+        return userAction(() => showWs(msg.windowId, msg.wsId));
       case 'create':
         return userAction(() => createWs(msg.name));
       case 'update':

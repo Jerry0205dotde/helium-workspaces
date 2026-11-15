@@ -158,7 +158,7 @@ Good to know:
 - Pinned tabs belong to all workspaces and always stay in the window.
 - Tab groups survive switching.
 - If you pick a tab from a stash window, for example via the tab search, the last used main window shows its workspace with the selected tab.
-- Several windows may show the same workspace, for example after <kbd>Ctrl</kbd>+<kbd>N</kbd>.
+- Several windows may show the same workspace, for example after <kbd>Ctrl</kbd>+<kbd>N</kbd>. Clicking a workspace in the list that another window shows brings that window to the front.
 - **Unload stashes after** (default: **never**) unloads the tabs in a stash once they have been there for that long. The time counts from switching away from the workspace. Unloaded tabs free their memory and keep their address, title, group and back history. When you switch back they reload; playing videos, scroll position and unsaved input are gone then. Tabs whose sound can be heard, or could be heard within that time, stay loaded, such as a video call in which nobody is talking right now; muted ones are unloaded too.
 - A deleted workspace can be brought back with **Undo** at the top of the list until the browser restarts, tabs included. Its tabs then open again from the backup when you switch to it. The same goes for the workspaces removed by **Replace** on import.
 - If the last window is closed with the X button, or its last tab is closed, the extension closes the stash windows as well, and the browser quits. On the next start it rebuilds all workspaces from its backup. The pages then reload and have no back history (see [What is preserved](#what-is-preserved)). If you quit Helium from the menu, the windows come back with their history.

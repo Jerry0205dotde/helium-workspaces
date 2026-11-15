@@ -161,7 +161,7 @@ popupTest('Name eingeben und anderen Workspace anklicken speichert und wechselt'
   await page.type('Uni');
   await page.click(`[data-focus="ws:${env.ids.B}"]`);
   assert.equal(ws('A').name, 'Uni');
-  assert.deepEqual(types(), ['update', 'switch']);
+  assert.deepEqual(types(), ['update', 'show']);
   assert.equal(env.b.session.data.windowWs[env.win], env.ids.B);
   assert.equal(await page.closed(), true);
 });
@@ -258,6 +258,28 @@ test('↪ verschiebt alle markierten Tabs und sagt das auch', { skip }, async ()
     assert.equal(where(env, 'a1').ws, ids.B);
     assert.equal(where(env, 'a3').ws, ids.B);
     assert.equal(where(env, 'a2').ws, ids.A);
+  } finally {
+    await page.close();
+  }
+});
+
+test('Klick auf einen Workspace in einem anderen Fenster holt dieses Fenster nach vorn (#190)', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  const { b, w, win, ids } = env;
+  const win2 = (await b.chrome.windows.create({ focused: true })).id;
+  await w.settle();
+  await w.request({ type: 'switch', windowId: win2, wsId: ids.B });
+  await b.chrome.windows.update(win, { focused: true });
+  await w.settle();
+  const page = await browser.open('popup.html', env);
+  try {
+    const entry = `[data-focus="ws:${ids.B}"]`;
+    assert.match(await page.text(entry), /anderes Fenster$/);
+    await page.click(entry);
+    assert.equal(await page.closed(), true);
+    assert.equal(b.windows.find((x) => x.id === win2).focused, true);
+    assert.equal(b.session.data.windowWs[win], ids.A);
+    assert.equal(where(env, 'b1').win.id, win2);
   } finally {
     await page.close();
   }
