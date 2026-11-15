@@ -59,6 +59,8 @@ ul { margin: 0 0 8px; padding: 0; list-style: none; }
 .ws-list li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
 .ws-list .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-list .meta { color: var(--muted); font-size: 13px; white-space: nowrap; }
+#earlier { margin-top: 10px; }
+#earlier-list li.chosen .name { font-weight: 600; }
 .badge {
   flex: none;
   width: 20px;

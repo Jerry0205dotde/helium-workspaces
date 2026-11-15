@@ -171,7 +171,8 @@ Good to know:
 The extension stores permanently in the profile:
 
 - the workspaces with name, color, emoji and order as well as the workspace used last,
-- a backup of all tabs with address, title and tab group, plus the pinned tabs.
+- a backup of all tabs with address, title and tab group, plus the pinned tabs,
+- the last three states of these (workspaces and backup) from before a browser start. If a start assigns tabs wrongly and so overwrites the backup, **Export / Import → Import** brings one of them back like a file, with **Replace** preselected.
 
 Only within the running browser session:
 

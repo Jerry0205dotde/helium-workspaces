@@ -244,6 +244,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return serial(() => chrome.storage.local.set({ autoHintOff: true }));
       case 'export':
         return userAction(exportAll);
+      case 'earlier':
+        return earlierStates();
+      case 'earlierText':
+        return earlierText(msg.at);
       case 'importPreview':
         return userAction(() => previewImport(msg.text));
       case 'import':
@@ -270,6 +274,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 chrome.runtime.onInstalled.addListener(() => serial(buildMenus));
 chrome.runtime.onStartup.addListener(() =>
   serial(async () => {
+    await keepEarlier().catch((e) => console.warn('[workspaces] Früheren Stand nicht aufgehoben', e));
     // Fenster- und Tab-IDs gelten nur innerhalb einer Browsersitzung. Gelöschte
     // Workspaces lassen sich nur bis zum nächsten Browserstart zurückholen.
     await chrome.storage.local.remove(['stashWins', 'stashMuted', 'deleted']);
