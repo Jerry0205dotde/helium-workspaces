@@ -357,26 +357,34 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     await env.settled({ live: true });
   });
 
-  await step('Automatische Sicherung: Datei im Download-Ordner, die letzten zehn bleiben', async () => {
+  await step('Automatische Sicherung: zehn feste Dateien im Download-Ordner, reihum überschrieben (#192)', async () => {
     const dir = path.join(env.profile, 'Downloads', 'helium-workspaces');
+    const slot = (n) => path.join(dir, `helium-workspaces-auto-${n}.json`);
     const st = await b.sw('const r = await userAction(() => setAutoBackup(1)); await r?.done; return autoBackupState();');
     assert.equal(st.last.state, 'complete');
-    assert.equal(path.dirname(st.last.file), dir);
+    assert.equal(st.last.file, slot(1));
     const data = JSON.parse(fs.readFileSync(st.last.file, 'utf8'));
     assert.deepEqual(data.workspaces.map((w) => w.name).sort(), ['A', 'B', 'C']);
     assert.deepEqual(data.workspaces.flatMap((w) => w.tabs.map((x) => env.name(x.url))).sort(), Object.values(SPEC.workspaces).flat().map((e) => norm(e).name).sort());
-    // Elf weitere Sicherungen: Die ältesten verschwinden aus dem Ordner und dem Verlauf
-    for (let i = 0; i < 11; i++) {
-      await b.sw('await chrome.storage.local.set({ autoBackupAt: 0 }); const r = await userAction(() => autoBackupIfDue(15000)); await r?.done;');
-    }
-    await waitFor(() => assert.equal(fs.readdirSync(dir).length, 10));
-    // Die Dateinamen enthalten nur die Minute, eine spätere übernimmt den Namen einer
-    // gelöschten. Deshalb über die IDs im Verlauf: Es bleiben die zehn neuesten.
-    const { ids, last } = await b.sw(`
+    // Den Download-Verlauf leeren: Aufräumen hängt nicht mehr an ihm
+    await b.sw('await chrome.downloads.erase({});');
+    // Elf weitere Sicherungen: 2 bis 10, dann werden 1 und 2 überschrieben
+    const backup = 'await chrome.storage.local.set({ autoBackupAt: 0 }); const r = await userAction(() => autoBackupIfDue(15000)); await r?.done; return autoBackupState();';
+    let last;
+    for (let i = 0; i < 11; i++) last = (await b.sw(backup)).last;
+    assert.equal(last.state, 'complete');
+    assert.equal(last.file, slot(2));
+    assert.deepEqual(fs.readdirSync(dir).sort(), Array.from({ length: 10 }, (_, i) => path.basename(slot(i + 1))).sort());
+    // 1 wurde nach 10 noch einmal geschrieben, 3 nicht mehr
+    assert.ok(fs.statSync(slot(1)).mtimeMs > fs.statSync(slot(10)).mtimeMs, 'Datei 1 wurde nicht überschrieben');
+    assert.ok(fs.statSync(slot(3)).mtimeMs < fs.statSync(slot(10)).mtimeMs);
+    // Im Verlauf bleibt je Datei nur der neueste Eintrag
+    const { files, ids, lastId } = await b.sw(`
       const own = (await chrome.downloads.search({ orderBy: ['-startTime'] })).filter((d) => d.byExtensionId === chrome.runtime.id);
       const { autoBackupId } = await chrome.storage.local.get('autoBackupId');
-      return { ids: own.map((d) => d.id), last: autoBackupId };`);
-    assert.deepEqual(ids, Array.from({ length: 10 }, (_, i) => last - i));
+      return { files: own.map((d) => d.filename), ids: own.map((d) => d.id), lastId: autoBackupId };`);
+    assert.equal(ids[0], lastId);
+    assert.deepEqual([...files].sort(), Array.from({ length: 10 }, (_, i) => slot(i + 1)).sort());
     await b.sw('await userAction(() => setAutoBackup(0));');
     assert.equal(await b.sw("return !!(await chrome.alarms.get('autoBackup'));"), false);
     await env.settled({ live: true });

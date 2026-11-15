@@ -3,7 +3,9 @@
 // Workspaces und Sicherung liegen nur im Speicher der Erweiterung im Profil. Wird die
 // Erweiterung entfernt oder geht das Profil kaputt, sind sie weg. Auf Wunsch legt die
 // Erweiterung deshalb regelmäßig einen Export in einem Unterordner von Downloads ab und
-// behält davon die letzten AUTO_KEEP.
+// behält davon die letzten AUTO_KEEP. Dafür gibt es AUTO_KEEP feste Dateinamen, die reihum
+// überschrieben werden. Aufräumen über den Download-Verlauf ginge nicht mehr, sobald jemand
+// ihn leert (#192).
 
 // Option „Automatisch sichern“: alle so viele Tage, 0 = nie
 const AUTO_CHOICES = [0, 1, 7];
@@ -47,12 +49,13 @@ async function autoBackupIfDue(wait = 10 * 60000, force = false) {
   const { autoBackupAt = 0 } = await chrome.storage.local.get('autoBackupAt');
   if (!force && Date.now() - autoBackupAt < days * 24 * HOUR - HOUR / 2) return null;
   try {
-    await pruneAutoBackups();
-    const id = await startAutoBackup();
-    await chrome.storage.local.set({ autoBackupAt: Date.now(), autoBackupId: id });
+    await eraseOlderEntries().catch((e) => console.warn('[workspaces] Download-Verlauf', e));
+    const { autoBackupCount = 0 } = await chrome.storage.local.get('autoBackupCount');
+    const id = await startAutoBackup((autoBackupCount % AUTO_KEEP) + 1);
+    await chrome.storage.local.set({ autoBackupAt: Date.now(), autoBackupId: id, autoBackupCount: autoBackupCount + 1 });
     await chrome.storage.local.remove('autoBackupError');
-    const done = downloadDone(id, wait).then(pruneAutoBackups);
-    return { done: done.catch((e) => console.warn('[workspaces] Alte Sicherungen', e)) };
+    const done = downloadDone(id, wait).then(eraseOlderEntries);
+    return { done: done.catch((e) => console.warn('[workspaces] Download-Verlauf', e)) };
   } catch (e) {
     console.warn('[workspaces] Automatische Sicherung', e);
     await chrome.storage.local.set({ autoBackupError: { at: Date.now(), message: String(e?.message || e) } });
@@ -65,21 +68,18 @@ async function autoBackupIfDue(wait = 10 * 60000, force = false) {
 // also nach einer Woche.
 const autoBackupNow = () => autoBackupIfDue(15000, true);
 
-const pad = (n) => String(n).padStart(2, '0');
-
-// Startet den Download des Exports und gibt seine ID zurück. Ein Service Worker hat kein
-// URL.createObjectURL, deshalb eine data:-URL.
-async function startAutoBackup() {
+// Startet den Download des Exports in die Datei mit der Nummer slot und gibt seine ID
+// zurück. Ein Service Worker hat kein URL.createObjectURL, deshalb eine data:-URL. Das
+// Datum steht in der Datei (exported) und im Änderungsdatum.
+async function startAutoBackup(slot) {
   const data = await exportAll();
   const bytes = new TextEncoder().encode(JSON.stringify(data, null, 2) + '\n');
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  const d = new Date();
-  const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}`;
   return chrome.downloads.download({
     url: `data:application/json;base64,${btoa(bin)}`,
-    filename: `${AUTO_DIR}/${AUTO_PREFIX}${stamp}.json`,
-    conflictAction: 'uniquify',
+    filename: `${AUTO_DIR}/${AUTO_PREFIX}${slot}.json`,
+    conflictAction: 'overwrite',
     saveAs: false,
   });
 }
@@ -120,21 +120,20 @@ async function autoBackupState() {
   return { days, choices: AUTO_CHOICES, keep: AUTO_KEEP, dir: AUTO_DIR, last, error: days ? error : null };
 }
 
-// Löscht die älteren automatischen Sicherungen dieser Erweiterung, die letzten AUTO_KEEP
-// bleiben. Eigene Exporte und Dateien, die der Verlauf nicht mehr kennt, bleiben unberührt.
-async function pruneAutoBackups() {
+// Ältere Einträge derselben Datei im Download-Verlauf zeigen nur noch auf die überschriebene
+// Datei. Sie verschwinden, damit der Verlauf nicht mit jeder Sicherung wächst, je Datei
+// bleibt der neueste. Die Dateien selbst bleiben. Läuft vor und nach jeder Sicherung: Wird
+// der Speicherdialog erst nach dem Warten bestätigt, holt es die nächste nach.
+async function eraseOlderEntries() {
   const items = await chrome.downloads.search({
     filenameRegex: `[\\\\/]${AUTO_DIR}[\\\\/]${AUTO_PREFIX}[^\\\\/]*\\.json$`,
     state: 'complete',
     orderBy: ['-startTime'],
   });
-  const own = items.filter((i) => i.byExtensionId === chrome.runtime.id && i.exists !== false);
-  for (const i of own.slice(AUTO_KEEP)) {
-    try {
-      await chrome.downloads.removeFile(i.id);
-      await chrome.downloads.erase({ id: i.id });
-    } catch (e) {
-      console.warn('[workspaces] Alte Sicherung nicht gelöscht:', i.filename, e);
-    }
+  const seen = new Set();
+  for (const i of items) {
+    if (i.byExtensionId !== chrome.runtime.id) continue;
+    if (seen.has(i.filename)) await chrome.downloads.erase({ id: i.id });
+    seen.add(i.filename);
   }
 }
