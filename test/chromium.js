@@ -180,6 +180,32 @@ class Chromium {
     return r.result.value;
   }
 
+  // Führt fn mit einer DevTools-Sitzung der Seite mit dieser Adresse aus
+  async withPage(url, fn) {
+    const t = await waitFor(async () => {
+      const { targetInfos } = await this.send('Target.getTargets');
+      const x = targetInfos.find((i) => i.type === 'page' && i.url === url);
+      if (!x) throw new Error(`keine Seite mit ${url}`);
+      return x;
+    });
+    const { sessionId } = await this.send('Target.attachToTarget', { targetId: t.targetId, flatten: true });
+    try {
+      return await fn(sessionId);
+    } finally {
+      await this.send('Target.detachFromTarget', { sessionId }).catch(() => {});
+    }
+  }
+
+  // Wertet expression in der Seite aus
+  inPage(url, expression) {
+    return this.withPage(url, (s) => this.send('Runtime.evaluate', { expression }, s));
+  }
+
+  // Zahl der Einträge im Verlauf der Seite
+  historyOf(url) {
+    return this.withPage(url, async (s) => (await this.send('Page.getNavigationHistory', {}, s)).entries.length);
+  }
+
   // Wie das Popup: dieselbe Aktion, die runtime.onMessage für diese Nachricht ausführt
   action(code, ...args) {
     return this.sw(`return userAction(() => (${code})(...args));`, ...args);

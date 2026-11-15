@@ -494,6 +494,7 @@ async function onWindowRemoved(winId) {
     scheduleReconcile();
     return;
   }
+  const prev = s.prevWs[winId];
   delete s.windowWs[winId];
   delete s.prevWs[winId];
   await saveSess(s);
@@ -530,7 +531,12 @@ async function onWindowRemoved(winId) {
         return;
       }
     }
-    for (const w of stash.values()) await chrome.windows.remove(w.id).catch(() => {});
+    // Chromium stellt beim nächsten Start nur das zuletzt geschlossene Fenster samt Verlauf
+    // wieder her, die anderen Workspaces kommen aus der Sicherung. Zuletzt deshalb die
+    // Ablage des davor gezeigten Workspace schließen, sonst die mit den meisten Tabs.
+    const rank = (w) => stashTabsOf(w).length * (stash.get(prev) === w ? 1e9 : 1);
+    const order = [...stash.values()].sort((a, b) => rank(a) - rank(b));
+    for (const w of order) await chrome.windows.remove(w.id).catch(() => {});
     return;
   }
   // Ein Fenster von mehreren wurde geschlossen: seine Tabs sind bewusst weg.

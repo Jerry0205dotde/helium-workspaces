@@ -485,6 +485,11 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
 
   for (const restore of ['last', 'newtab']) {
     await step(`Schließen per X und Neustart (${restore === 'last' ? '„Dort weitermachen“' : '„Neuer Tab“'})`, async () => {
+      // C ist der vor A zuletzt gezeigte Workspace, sein c1 bekommt einen zweiten Eintrag im
+      // Verlauf. B hat mehr Tabs.
+      await env.switchTo('C');
+      await b.inPage(`${base}c1`, 'history.pushState(null, "", location.href)');
+      assert.equal(await b.historyOf(`${base}c1`), 2);
       const { main } = await env.switchTo('A');
       // Das letzte Hauptfenster schließen (wie per X): Die Erweiterung schließt die
       // Ablagen mit, damit sich der Browser beendet
@@ -493,6 +498,13 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
       await env.launch(restore);
       const r = await env.settled();
       assert.equal(r.shows, 'A');
+      if (restore === 'last') {
+        // Chromium stellt nur das zuletzt geschlossene Fenster samt Verlauf wieder her: Das
+        // ist die Ablage von C, dem zuletzt vor A gezeigten Workspace (#191)
+        const back = r.st.windows.filter((w) => w.tabs[0].url.startsWith(env.stash) && w.tabs.length > 1);
+        assert.deepEqual(back.map((w) => r.st.workspaces.find((x) => `${env.stash}${x.id}` === w.tabs[0].url).name), ['C'], env.describe(r.st));
+        assert.equal(await b.historyOf(`${base}c1`), 2, 'c1 hat keinen Verlauf mehr');
+      }
       await env.cycle(['B', 'C', 'A']);
     });
   }
