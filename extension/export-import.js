@@ -137,7 +137,8 @@ const keptIn = (adopt) => [...adopt.values()].reduce((n, w) => n + movableTabsOf
 
 // Macht die übernommenen Fenster zu Fenstern der neuen Workspaces (ids wie data.workspaces).
 // Ein minimiertes Fenster wird wieder zur Ablage, etwa eine alte Ablage nach dem Umstieg;
-// ein sichtbares zeigt den Workspace. Fehlende Tabs aus der Datei kommen dazu.
+// ein sichtbares zeigt den Workspace. Fehlende Tabs aus der Datei kommen dazu, die über
+// LOAD_AT_ONCE hinaus zurückgestellten nach und nach (#184).
 async function adoptWindows(data, ids, adopt, stamp) {
   const s = await sess();
   let failed = 0;
@@ -157,6 +158,7 @@ async function adoptWindows(data, ids, adopt, stamp) {
     if (!add.length) continue;
     const r = await moving(() => recreate(importEntries(add, stamp, { from: imp.tabs, join: true }), win.id, false, true));
     await keepFailed(id, r.failed);
+    await keepLater(id, r.later);
     failed += r.failed.length;
   }
   return failed;

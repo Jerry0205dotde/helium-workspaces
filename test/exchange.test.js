@@ -556,6 +556,41 @@ test('Umstieg: Eine alte Ablage mit neuer Tab-Seite wird übernommen, die Tab-Se
   assert.deepEqual(b.tabsByUrl(url('b1')).map((t) => t.id), [b1], 'b1 wurde neu angelegt');
 });
 
+// Fehlen im übernommenen Fenster mehr Tabs, als gleichzeitig laden dürfen, kommt der Rest
+// nach und nach und fehlt nicht in der Sicherung (#184)
+test('Ersetzen: Ein übernommenes Fenster bekommt auch die zurückgestellten fehlenden Tabs (#184)', async () => {
+  const A = Array.from({ length: 20 }, (_, i) => `a${i + 1}`);
+  const env = await setup({ workspaces: { A: A.slice(0, 11), B: ['b1'] } });
+  const { b } = env;
+  const file = await request(env, { type: 'export' });
+  file.workspaces[0].tabs.push(...A.slice(11).map((n) => tab(n)));
+  const kept = b.tabsByUrl(url('a1'))[0].id;
+
+  // Nur eine Sekunde: settle() ließe auch die Wartezeit der nicht fertig ladenden Tabs ablaufen
+  b.holdLoads = true;
+  let res = null;
+  b.worker.send({ type: 'import', text: JSON.stringify(file), mode: 'replace', confirmed: true }).then((r) => (res = r));
+  await b.worker.advance(1000);
+  res = plain(await ok(res));
+  assert.deepEqual([res.kept, res.added, res.failed], [11, 21, 0]);
+  const now = envOf(b);
+  const backupA = () => b.local.data.backup[now.ids.A];
+  const saved = () => {
+    const s = backupA();
+    return [...(s.shown || []), ...(s.stash || []), ...(s.later || [])].map((e) => e.url);
+  };
+  assert.deepEqual(backupA().later.map((e) => e.url), A.slice(17).map(url), 'zurückgestellt');
+  assert.deepEqual(saved(), A.map(url), 'Sicherung direkt nach dem Import');
+  b.releaseLoads();
+  await b.worker.settle();
+  assert.equal(shows(now, now.win), 'A');
+  assert.deepEqual(b.tabsByUrl(url('a1')).map((t) => t.id), [kept], 'a1 wurde neu angelegt');
+  check(now, { A, B: ['b1'], pinned: [] });
+  assert.deepEqual(saved(), A.map(url));
+  const again = await request(now, { type: 'export' });
+  assert.deepEqual(again.workspaces[0].tabs.map((t) => t.url), A.map(url));
+});
+
 // Fenster 1 hat p1 einmal angeheftet, ein zweites Hauptfenster mit C zweimal
 async function pinnedTwiceInSecondWindow() {
   const env = await setup(SPEC);
