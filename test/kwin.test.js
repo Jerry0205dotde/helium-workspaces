@@ -179,8 +179,10 @@ test('Fremde Fenster mit „HWS-Ablage“ im Titel behalten skipTaskbar (#188)',
   const k = run([yakuake]);
   yakuake.caption = 'grep -rn "HWS-Ablage ${token}" extension — Yakuake';
   yakuake.captionChanged.emit();
-  k.add(kwinWindow('org.kde.yakuake', `echo HWS-Ablage ${TOKEN}x · — Yakuake`, { skipTaskbar: true }));
+  const echo = kwinWindow('org.kde.yakuake', `echo HWS-Ablage ${TOKEN}x · — Yakuake`, { skipTaskbar: true });
+  k.add(echo);
   assert.ok(yakuake.skipTaskbar && yakuake.skipSwitcher && yakuake.skipPager, 'Yakuake in die Taskleiste geholt');
+  assert.ok(echo.skipTaskbar, echo.caption);
 });
 
 test('Ablagen mit fremdem Schlüssel oder sichtbar gemachte Ablagen kommen weiter zurück (#188)', () => {
