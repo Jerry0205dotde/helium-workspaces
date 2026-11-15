@@ -7,6 +7,9 @@
 // verloren gehen. Ohne Schlüssel (install.sh --uninstall löscht ihn zuerst) holt das
 // Skript alle Ablagen zurück.
 const PREFIX = "HWS-Ablage ";
+// Titel jeder Ablage, auch mit fremdem Schlüssel oder sichtbar gemacht ("HWS-Ablage · <Name>").
+// Nur solche Fenster holt das Skript zurück, nicht jedes mit "HWS-Ablage " im Titel (#188).
+const STASH = /HWS-Ablage ([0-9a-f]{24} )?· /;
 const MARKS = String(readConfig("token", "")).split(",")
     .map(function (s) { return s.trim(); }).filter(Boolean)
     .map(function (token) { return PREFIX + token + " "; });
@@ -32,7 +35,7 @@ function check(w) {
         if (!w.skipSwitcher) w.skipSwitcher = true;
         if (!w.skipPager) w.skipPager = true;
         if (!w.minimized) w.minimized = true;
-    } else if (hidden[id] || (caption.indexOf(PREFIX) !== -1 && w.skipTaskbar)) {
+    } else if (hidden[id] || (STASH.test(caption) && w.skipTaskbar)) {
         // Auch Ablagen eines Browsers, der nicht mehr in der Liste steht, und Ablagen mit
         // einem Schlüssel, der nicht mehr eingetragen ist (install.sh --remove), kommen zurück
         delete hidden[id];

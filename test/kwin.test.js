@@ -171,3 +171,23 @@ test('Wird ein Schlüssel ausgetragen, kommen nur seine Ablagen zurück in die T
   assert.ok(isHidden(helium));
   assert.ok(!chromium.skipTaskbar && !chromium.skipSwitcher && !chromium.skipPager);
 });
+
+test('Fremde Fenster mit „HWS-Ablage“ im Titel behalten skipTaskbar (#188)', () => {
+  // Ein Dropdown-Terminal wie Yakuake zeigt den laufenden Befehl im Titel und steht nicht in der Taskleiste
+  const yakuake = kwinWindow('org.kde.yakuake', "grep 'HWS-Ablage ' main.js — Yakuake",
+    { skipTaskbar: true, skipSwitcher: true, skipPager: true });
+  const k = run([yakuake]);
+  yakuake.caption = 'grep -rn "HWS-Ablage ${token}" extension — Yakuake';
+  yakuake.captionChanged.emit();
+  const echo = kwinWindow('org.kde.yakuake', `echo HWS-Ablage ${TOKEN}x · — Yakuake`, { skipTaskbar: true });
+  k.add(echo);
+  assert.ok(yakuake.skipTaskbar && yakuake.skipSwitcher && yakuake.skipPager, 'Yakuake in die Taskleiste geholt');
+  assert.ok(echo.skipTaskbar, echo.caption);
+});
+
+test('Ablagen mit fremdem Schlüssel oder sichtbar gemachte Ablagen kommen weiter zurück (#188)', () => {
+  const old = kwinWindow('helium', 'HWS-Ablage ffffffffffffffffffffffff · Uni – Helium', { skipTaskbar: true });
+  const shown = kwinWindow('helium', 'HWS-Ablage · Uni – Helium', { skipTaskbar: true });
+  run([old, shown]);
+  for (const w of [old, shown]) assert.ok(!w.skipTaskbar, w.caption);
+});
