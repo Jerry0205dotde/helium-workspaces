@@ -91,6 +91,76 @@ test('Beim Wiederherstellen verlorene Tabs werden an ihrer Stelle und in ihrer G
   await cycle(env);
 });
 
+// Sicherung aus n Einträgen, jede URL doppelt (p0 … p(n/2-1), danach noch einmal dieselben).
+// In den Fenstern fehlen die Einträge an den Stellen lost, der an redirect zeigt eine
+// umgeleitete Seite. Erwartet: alle übrigen Einträge an ihrem Tab, die übrigen -1.
+function alignCase(n, lost, redirect) {
+  const saved = Array.from({ length: n }, (_, i) => `https://p${i % (n / 2)}.test/`);
+  const live = [];
+  const expected = saved.map((u, i) => {
+    if (lost.includes(i)) return -1;
+    live.push(i === redirect ? 'https://umgeleitet.test/' : u);
+    return i === redirect ? -1 : live.length - 1;
+  });
+  return { saved, live, expected };
+}
+
+test('Abgleich nach dem Start: große Workspaces mit doppelten URLs und umgeleiteten Seiten (#194)', async () => {
+  const env = await setup(SPEC);
+  // 400: genaue Rechnung; 3000: zu groß dafür, gierig; 20000: höchstens so viele erlaubt der Import
+  for (const n of [400, 3000, 20000]) {
+    const { saved, live, expected } = alignCase(n, [5, n / 2, n - 10], n / 4);
+    const started = Date.now();
+    const match = env.w.eval(`align(${JSON.stringify(saved)}, ${JSON.stringify(live)})`);
+    assert.deepEqual([...match], expected, `${n} Tabs`);
+    assert.ok(Date.now() - started < 2000, `${n} Tabs: Abgleich dauert ${Date.now() - started} ms`);
+  }
+  assert.ok(env.w.eval('ALIGN_CELLS') < 3000 * 3000, '3000 Tabs würden genau gerechnet');
+  // Nur Anfang und Ende gleich, dazwischen nichts: kein Eintrag wird falsch zugeordnet
+  const saved = ['a', ...Array.from({ length: 3000 }, (_, i) => `x${i}`), 'z'];
+  const live = ['a', ...Array.from({ length: 2000 }, (_, i) => `y${i}`), 'z'];
+  const match = env.w.eval(`align(${JSON.stringify(saved)}, ${JSON.stringify(live)})`);
+  assert.deepEqual([...match], [0, ...new Array(3000).fill(-1), 2001]);
+});
+
+test('Beim Wiederherstellen verlorene Tabs eines sehr großen Workspace werden an ihrer Stelle ergänzt (#194)', async () => {
+  const many = Array.from({ length: 2100 }, (_, i) => `t${i}`);
+  const spec = { workspaces: { A: many, B: ['b1'] } };
+  const env = await setup(spec);
+  const lost = new Set([url('t3'), url('t1050'), url('t2090')]);
+  env.b.restart({ loseTab: (t) => lost.has(t.url) });
+  const w = env.b.startWorker('startup');
+  await w.settle();
+  check(env, spec.workspaces);
+  const main = env.b.windows.find((x) => x.id === env.b.mains()[0].id);
+  assert.deepEqual(main.tabs.map((t) => t.url), many.map(url), 'verlorener Tab steht nicht an seiner alten Stelle');
+});
+
+test('Sehr großer Workspace mit wiederkehrenden URLs und einer umgeleiteten Seite: genau die verlorenen Tabs kommen zurück (#194)', async () => {
+  const many = Array.from({ length: 2100 }, (_, i) => `t${i}`);
+  const A = ['a', 'd', 'c', 'b', 'a', 'd', 'c', 'b', 'a', ...many, 'd', 'c', 'b', 'a', 'd'];
+  const env = await setup({ workspaces: { A, B: ['b1'] } });
+  // Verloren: das zweite d und c und das dritte d. Das zweite a öffnet nach dem Start
+  // eine andere Seite (der Wiederherstellungsstand wird dafür direkt geändert).
+  const seen = new Map();
+  env.b.restart({
+    loseTab: (t) => {
+      const k = `${t.url}#${(seen.get(t.url) || 0) + 1}`;
+      seen.set(t.url, (seen.get(t.url) || 0) + 1);
+      if (k === `${url('a')}#2`) t.url = url('r');
+      return [`${url('d')}#2`, `${url('c')}#2`, `${url('d')}#3`].includes(k);
+    },
+  });
+  const w = env.b.startWorker('startup');
+  await w.settle();
+  // check() verlangt eindeutige URLs, daher hier nur Fehler und Tabs des Fensters
+  assert.deepEqual(env.b.errors, []);
+  // Wie bei main: Die ergänzten d und c kommen hinter das letzte zugeordnete b, also vor r
+  const expected = ['a', 'd', 'c', 'b', 'd', 'c', 'r', 'b', 'a', ...A.slice(9)];
+  const main = env.b.windows.find((x) => x.id === env.b.mains()[0].id);
+  assert.deepEqual(main.tabs.map((t) => t.url), expected.map(url));
+});
+
 test('Ein kurz nach dem Start geschlossener Tab kommt nicht aus der Sicherung zurück (#150)', async () => {
   // auch, wenn der Tab vorher noch zu einer anderen Seite gewechselt ist, und wenn er
   // genau dann geschlossen wird, während die Sicherung mit der neuen Seite gespeichert wird

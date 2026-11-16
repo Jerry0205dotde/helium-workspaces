@@ -364,22 +364,92 @@ async function dismissFailed(wsId) {
   await updateAllIcons();
 }
 
+// Größe der Tabelle, bis zu der align genau rechnet (4 Mio. Zellen, 8 MB). Darüber, etwa
+// bei Tausenden Tabs eines Imports, reicht eine gierige Zuordnung (#194).
+const ALIGN_CELLS = 1 << 22;
+
 // Ordnet die gesicherten URLs den lebenden zu (längste gemeinsame Teilfolge).
 // Ergebnis: für jeden gesicherten Eintrag der Index des lebenden Tabs oder -1.
 function align(saved, live) {
-  const n = saved.length;
-  const m = live.length;
-  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      dp[i][j] = saved[i] === live[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const match = new Array(saved.length).fill(-1);
+  // Gleiche Anfangs- und Endstücke direkt zuordnen, meist bleibt kaum etwas übrig
+  let lo = 0;
+  let n = saved.length;
+  let m = live.length;
+  while (lo < n && lo < m && saved[lo] === live[lo]) match[lo] = lo++;
+  while (n > lo && m > lo && saved[n - 1] === live[m - 1]) match[--n] = --m;
+  const rows = n - lo;
+  const cols = m - lo;
+  if (!rows || !cols) return match;
+  if ((rows + 1) * (cols + 1) > ALIGN_CELLS) return alignGreedy(saved, live, lo, n, m, match);
+  // dp[i * w + j]: Länge der gemeinsamen Teilfolge ab saved[lo + i] und live[lo + j].
+  // Die Werte bleiben unter 2048 (Wurzel aus ALIGN_CELLS), Uint16 genügt.
+  const w = cols + 1;
+  const dp = new Uint16Array((rows + 1) * w);
+  for (let i = rows - 1; i >= 0; i--) {
+    for (let j = cols - 1; j >= 0; j--) {
+      const k = i * w + j;
+      dp[k] = saved[lo + i] === live[lo + j] ? dp[k + w + 1] + 1 : Math.max(dp[k + w], dp[k + 1]);
     }
   }
-  const match = new Array(n).fill(-1);
-  for (let i = 0, j = 0; i < n && j < m; ) {
-    if (saved[i] === live[j]) match[i++] = j++;
-    else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+  for (let i = 0, j = 0; i < rows && j < cols; ) {
+    const k = i * w + j;
+    if (saved[lo + i] === live[lo + j]) match[lo + i++] = lo + j++;
+    else if (dp[k + w] >= dp[k + 1]) i++;
     else j++;
+  }
+  return match;
+}
+
+// Gierige Zuordnung für saved[lo..n) und live[lo..m), linear in Zeit und Speicher: einmal
+// von vorn und einmal von hinten, die längere gilt. Was hier nicht zugeordnet wird,
+// ergänzt repairFromBackup trotzdem nur, wenn die URL insgesamt seltener offen ist als
+// gesichert.
+function alignGreedy(saved, live, lo, n, m, match) {
+  const s = saved.slice(lo, n);
+  const l = live.slice(lo, m);
+  const fwd = greedyMatch(s, l);
+  const bwd = greedyMatch(s.reverse(), l.reverse())
+    .reverse()
+    .map((j) => (j < 0 ? -1 : l.length - 1 - j));
+  const count = (x) => x.filter((j) => j >= 0).length;
+  const best = count(bwd) > count(fwd) ? bwd : fwd;
+  best.forEach((j, i) => (match[lo + i] = j < 0 ? -1 : lo + j));
+  return match;
+}
+
+// Bei einer Abweichung wird übersprungen, was weniger kostet: die lebenden Tabs bis zum
+// nächsten Vorkommen der gesicherten URL oder die gesicherten Einträge bis zum nächsten
+// Vorkommen der lebenden URL.
+function greedyMatch(saved, live) {
+  // Für jede URL ihre Positionen und ein Zeiger auf die erste noch nicht überholte
+  const positions = (list) => {
+    const at = new Map();
+    list.forEach((u, x) => {
+      const p = at.get(u);
+      if (p) p.list.push(x);
+      else at.set(u, { list: [x], next: 0 });
+    });
+    return (url, from) => {
+      const p = at.get(url);
+      if (!p) return Infinity;
+      while (p.next < p.list.length && p.list[p.next] < from) p.next++;
+      return p.next < p.list.length ? p.list[p.next] : Infinity;
+    };
+  };
+  const inLive = positions(live);
+  const inSaved = positions(saved);
+  const match = new Array(saved.length).fill(-1);
+  for (let i = 0, j = 0; i < saved.length && j < live.length; ) {
+    if (saved[i] === live[j]) {
+      match[i++] = j++;
+      continue;
+    }
+    const dj = inLive(saved[i], j) - j;
+    const di = inSaved(live[j], i) - i;
+    if (dj === Infinity) i++;
+    else if (di === Infinity || dj <= di) j++;
+    else i++;
   }
   return match;
 }
