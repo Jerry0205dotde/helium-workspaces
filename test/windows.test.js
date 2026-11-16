@@ -76,7 +76,7 @@ test('Wechsel weg von einem leeren Workspace: seine neue Tab-Seite wird geschlos
   await ok(w.request({ type: 'switch', windowId: win, wsId: env.ids.A }));
   assert.deepEqual(b.tabsByUrl(NEWTAB), []);
   assert.equal(b.windows.some((x) => b.stashOf(x) === env.ids.E), false, 'Ablage für den leeren Workspace entstanden');
-  check(env, { ...ALL, E: [] }, { allowNewTab: false });
+  check(env, { ...ALL, E: [] });
   // Zurück zu E: wieder genau eine neue Tab-Seite
   await ok(w.request({ type: 'switch', windowId: win, wsId: env.ids.E }));
   assert.equal(b.tabsByUrl(NEWTAB).length, 1);
