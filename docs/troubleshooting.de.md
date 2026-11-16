@@ -20,12 +20,12 @@ Ein sichtbares Ablage-Fenster hat einen Titel wie `HWS-Ablage 3f9c… · Uni` un
    ```
 
    In der Ausgabe muss der Schlüssel stehen, den das Popup unter **Schlüssel für install.sh** zeigt (bei mehreren Browsern oder Profilen kommagetrennt), und der Fenstertitel muss ihn nach `HWS-Ablage` zeigen. Steht im Titel kein Schlüssel (`HWS-Ablage · Uni`), die Erweiterung in `chrome://extensions` neu laden.
-3. Zum Reparieren im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. Das Skript lädt das KWin-Skript neu, nach ein bis zwei Sekunden verschwinden die Ablagen aus der Taskleiste.
+3. Zum Reparieren `./install.sh` im Repository-Ordner ausführen, die Frage mit <kbd>Enter</kbd> beantworten (meldet `native-host.sh` neu an, die Schlüssel bleiben) und das Popup öffnen. Bleiben die Ablagen sichtbar, im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. Das Skript lädt das KWin-Skript neu, nach ein bis zwei Sekunden verschwinden die Ablagen aus der Taskleiste.
 
 ## `install.sh` bricht ab
 
 - **`Es fehlen Programme, die install.sh braucht`**: Die darunter genannten Programme aus den [Voraussetzungen](../README.de.md#voraussetzungen) installieren. `install.sh` hat noch nichts geändert.
-- **`Ungültiger Schlüssel`**: Es wurde kein oder ein unvollständiger Schlüssel eingegeben. Im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den kopierten Befehl ausführen. Der Schlüssel besteht aus 24 Zeichen `0`–`9` und `a`–`f`.
+- **`Ungültiger Schlüssel`**: Es wurde ein unvollständiger Schlüssel eingegeben. <kbd>Enter</kbd> ohne Eingabe überlässt das Eintragen der Erweiterung. Im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den kopierten Befehl ausführen. Der Schlüssel besteht aus 24 Zeichen `0`–`9` und `a`–`f`.
 - **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** oder **`KWin-Skript wurde nicht geladen`**: `install.sh` erreicht KWin nicht, etwa über SSH oder in einer Textkonsole. Das Skript ist dann schon installiert, aber nicht geladen. In einem Terminal in der Plasma-Sitzung erneut starten.
 
 ## Tabs fehlen nach einem Neustart

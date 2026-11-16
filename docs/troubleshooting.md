@@ -20,12 +20,12 @@ A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its fir
    ```
 
    The output must contain the key the popup shows under **Key for install.sh** (comma-separated with several browsers or profiles), and the window title must show it after `HWS-Ablage`. If the title contains no key (`HWS-Ablage · Uni`), reload the extension in `chrome://extensions`.
-3. To repair, click **Copy** under **Key for install.sh** in the popup and run the command in the repository folder. The script reloads the KWin script, and after one or two seconds the stashes disappear from the taskbar.
+3. To repair, run `./install.sh` in the repository folder, answer the question with <kbd>Enter</kbd> (registers `native-host.sh` again, the keys are kept) and open the popup. If the stashes stay visible, click **Copy** under **Key for install.sh** in the popup and run the command in the repository folder. The script reloads the KWin script, and after one or two seconds the stashes disappear from the taskbar.
 
 ## `install.sh` aborts
 
 - **`Programs that install.sh needs are missing`**: install the programs listed below it from the [requirements](../README.md#requirements). `install.sh` has not changed anything yet.
-- **`Invalid key`**: no key or an incomplete key was entered. In the popup, click **Copy** under **Key for install.sh** and run the copied command. The key consists of 24 characters `0`–`9` and `a`–`f`.
+- **`Invalid key`**: an incomplete key was entered. <kbd>Enter</kbd> without input leaves writing the key to the extension. In the popup, click **Copy** under **Key for install.sh** and run the copied command. The key consists of 24 characters `0`–`9` and `a`–`f`.
 - **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** or **`KWin script was not loaded`**: `install.sh` cannot reach KWin, for example over SSH or in a text console. The script is then already installed but not loaded. Run it again in a terminal inside the Plasma session.
 
 ## Tabs are missing after a restart
