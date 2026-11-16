@@ -27,6 +27,9 @@ function kwinWindow(resourceClass, caption, extra = {}) {
     minimized: false,
     captionChanged: signal(),
     minimizedChanged: signal(),
+    skipTaskbarChanged: signal(),
+    skipSwitcherChanged: signal(),
+    skipPagerChanged: signal(),
     closed: signal(),
     ...extra,
   };
@@ -190,4 +193,22 @@ test('Ablagen mit fremdem Schlüssel oder sichtbar gemachte Ablagen kommen weite
   const shown = kwinWindow('helium', 'HWS-Ablage · Uni – Helium', { skipTaskbar: true });
   run([old, shown]);
   for (const w of [old, shown]) assert.ok(!w.skipTaskbar, w.caption);
+});
+
+test('Setzt der Browser skipTaskbar & Co. zurück, versteckt das Skript die Ablage wieder (#216)', () => {
+  // Chromium unter X11 nimmt beim Wechsel der Arbeitsfläche _NET_WM_STATE_SKIP_TASKBAR weg
+  const w = stash('helium');
+  run([w]);
+  assert.ok(isHidden(w));
+  for (const [prop, changed] of [['skipTaskbar', 'skipTaskbarChanged'], ['skipSwitcher', 'skipSwitcherChanged'], ['skipPager', 'skipPagerChanged']]) {
+    w[prop] = false;
+    w[changed].emit();
+    assert.ok(isHidden(w), `${prop} bleibt false`);
+  }
+  // Fremde Fenster behalten, was sie selbst setzen
+  const konsole = kwinWindow('konsole', 'Konsole', { skipTaskbar: true });
+  run([konsole]);
+  konsole.skipTaskbar = false;
+  konsole.skipTaskbarChanged.emit();
+  assert.ok(!konsole.skipTaskbar);
 });

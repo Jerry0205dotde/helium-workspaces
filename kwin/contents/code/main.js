@@ -49,6 +49,10 @@ function watch(w) {
     check(w);
     w.captionChanged.connect(function () { check(w); });
     w.minimizedChanged.connect(function () { check(w); });
+    // Chromium setzt unter X11 beim Wechsel der Arbeitsfläche skipTaskbar zurück (#216)
+    w.skipTaskbarChanged.connect(function () { check(w); });
+    w.skipSwitcherChanged.connect(function () { check(w); });
+    w.skipPagerChanged.connect(function () { check(w); });
     w.closed.connect(function () { delete hidden[String(w.internalId)]; });
 }
 
