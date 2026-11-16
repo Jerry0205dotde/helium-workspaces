@@ -84,6 +84,13 @@ async function discard(t) {
   if (t.mutedInfo?.muted) await chrome.tabs.update(d.id, { muted: true }).catch(() => {});
 }
 
+// Ein entladener Tab lädt sonst neu, sobald er aktiv wird. Wechselt das Popup den
+// Workspace, bleibt er manchmal aktiv und entladen stehen, der Inhalt grau (#217).
+async function loadIfDiscarded(tabId) {
+  const t = await chrome.tabs.get(tabId).catch(() => null);
+  if (t?.active && t.discarded) await chrome.tabs.reload(tabId).catch((e) => console.warn('[workspaces] Tab lädt nicht:', t.url, e));
+}
+
 async function unloadRestored(tabId) {
   if (await getPending()) return;
   const t = await chrome.tabs.get(tabId).catch(() => null);

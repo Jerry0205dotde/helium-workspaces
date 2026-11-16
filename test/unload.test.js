@@ -65,6 +65,23 @@ test('Ablagen werden nach der eingestellten Zeit entladen, Gruppen, Sicherung un
   check(env, ALL);
 });
 
+test('Bleibt der entladene Tab beim Wechsel über das Popup entladen, lädt die Erweiterung ihn (#217)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await ok(w.request({ type: 'unloadAfter', minutes: 5 }));
+  await b.chrome.tabs.update(where(env, 'a3').tab.id, { active: true });
+  await w.settle();
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await w.advance(6 * MIN);
+  assert.deepEqual(discarded(env, ['a1', 'a2', 'a3', 'a4']), [true, true, true, true]);
+
+  b.popupOpen = true;
+  await ok(w.request({ type: 'show', windowId: win, wsId: ids.A }));
+  assert.equal(where(env, 'a3').tab.active, true);
+  assert.deepEqual(discarded(env, ['a1', 'a2', 'a3', 'a4']), [true, true, false, true], 'nur der aktive Tab lädt');
+  check(env, ALL);
+});
+
 test('Ein Tab, der Ton abspielt, bleibt in der Ablage geladen', async () => {
   const env = await setup(SPEC);
   const { b, w, win, ids } = env;
