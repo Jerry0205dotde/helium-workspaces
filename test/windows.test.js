@@ -83,6 +83,26 @@ test('Wechsel weg von einem leeren Workspace: seine neue Tab-Seite wird geschlos
   check(env, { ...ALL, E: [] });
 });
 
+test('Popup: beim eigenen Workspace steht die Tab-Zahl, auch wenn ein zweites Fenster ihn zeigt (#220)', async () => {
+  const env = await setup(SPEC);
+  const { w, win, ids } = env;
+  const win2 = await newWindow(env);
+  assert.equal(shows(env, win2), 'A');
+  const of = (st, id) => st.workspaces.find((x) => x.id === id);
+  for (const id of [win, win2]) {
+    const st = await ok(w.request({ type: 'state', windowId: id }));
+    assert.equal(st.current, ids.A);
+    assert.equal(of(st, ids.A).elsewhere, false, `Fenster ${id} zeigt A selbst`);
+  }
+
+  // Zeigt Fenster 2 dann B, ist A dort „anderes Fenster“ und B der eigene
+  await ok(w.request({ type: 'switch', windowId: win2, wsId: ids.B }));
+  const st = await ok(w.request({ type: 'state', windowId: win2 }));
+  assert.equal(of(st, ids.A).elsewhere, true);
+  assert.equal(of(st, ids.B).elsewhere, false);
+  assert.equal(of((await ok(w.request({ type: 'state', windowId: win }))), ids.B).elsewhere, true);
+});
+
 test('Wechsel zu einem Workspace, der schon in einem anderen Fenster offen ist, verdoppelt nichts', async () => {
   const env = await setup(SPEC);
   const { w, win, ids } = env;
