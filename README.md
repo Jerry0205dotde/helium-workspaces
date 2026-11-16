@@ -252,6 +252,12 @@ node --test test/*.test.js
 
 This only needs Node.js 22 or later, no browser and no KWin. The tests load `background.js` and the files it loads unchanged into a replica of the Chrome APIs and use it to run through switches with groups and pinned tabs, several windows, restarts with and without session restore, reloading the extension, deliberately failing API calls, changes in quick succession, and export and import including merging and replacing. On top of that come syntax, manifest and KWin metadata, and the KWin script runs against a replica of the KWin API to check which windows it hides. `install.sh` runs against stand-ins for the KDE commands: installing including the hint about the startup setting, the check for missing programs, several keys, `--help`, `--remove`, `--uninstall`, and `--update`, which pulls with real `git` from a test repository. The messages of `install.sh` are checked in German and English. The same checks run in CI on every pull request.
 
+ESLint checks that every name used in the extension and the KWin script is defined, including in branches no test takes. The scripts that share a global scope (the service worker with everything `background.js` loads, each page with its `<script>` tags) are checked together, see [`eslint.config.js`](./eslint.config.js). CI runs it, locally it needs network access for `npx`:
+
+```bash
+npx eslint@10.14.0 extension kwin
+```
+
 If anything in `extension/` changes, the version in [`manifest.json`](./extension/manifest.json) must be higher than on `main`, otherwise `static.test.js` fails. The version is shown in the bottom right of the popup, so after an update you can see whether the new code is running. The KWin script carries the same version in [`metadata.json`](./kwin/metadata.json), `static.test.js` checks that too, and `install.sh` names it at the end. The comparison is against `origin/main`; `VERSION_BASE` selects a different ref. If the ref is missing, the check is skipped.
 
 When a higher version lands on `main`, [`tag.yml`](./.github/workflows/tag.yml) tags that commit as `v<version>`, for example `v0.2.0`, and creates a [release](https://github.com/Jerry0205dotde/helium-workspaces/releases) listing the PRs since the previous version.
