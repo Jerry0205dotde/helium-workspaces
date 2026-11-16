@@ -90,7 +90,7 @@ const options = (env) => ({ languageOptions: { ecmaVersion: 'latest', sourceType
 const rel = (f) => path.relative(__dirname, f);
 
 module.exports = [
-  { files: ['extension/*.js'], processor },
+  { files: ['extension/**/*.js'], ignores: ['extension/**/*.js/*'], processor },
   // Für den zusammengefügten Block und die letzte Datei selbst: Ist der Block gleich der Datei
   // (eine Umgebung aus nur einem Skript), prüft ESLint ihn mit deren Konfiguration
   ...[...contexts].map(([entry, { env }]) => ({ files: [rel(entry), `${rel(entry)}/*`], ...options(env) })),
