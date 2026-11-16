@@ -148,7 +148,9 @@ async function switchTo(windowId, targetWs) {
         brought = [t.id];
       }
       const want = s.lastTab[targetWs];
-      await chrome.tabs.update(brought.includes(want) ? want : brought[0], { active: true });
+      const show = brought.includes(want) ? want : brought[0];
+      await chrome.tabs.update(show, { active: true });
+      await loadIfDiscarded(show);
     });
   } catch (err) {
     console.warn('[workspaces] Wechsel unterbrochen, schließe ihn anhand der Fenster ab:', err);

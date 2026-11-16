@@ -22,7 +22,8 @@
 //   dazwischen neu zu starten; mit loadOnly(n) laden nur die ersten n zurückgehaltenen fertig.
 // - tabs.discard gibt dem Tab eine neue ID (tabs.onReplaced) und hebt seine
 //   Stummschaltung auf, wie Helium 0.21.3 mit Chromium 157. Ein entladener Tab lädt neu,
-//   sobald er aktiv wird.
+//   sobald er aktiv wird. Mit popupOpen = true bleibt er dabei entladen, wie in Helium,
+//   wenn das Popup den Wechsel auslöst (#217); tabs.reload lädt ihn.
 // - Wecker (chrome.alarms) klingeln nur, während ein Test mit advance() Zeit vergehen lässt.
 // - Downloads (chrome.downloads) landen in files unter DOWNLOADS, das einen Neustart und
 //   das Entfernen der Erweiterung übersteht. downloadMode: 'complete' (sofort fertig),
@@ -120,6 +121,7 @@ class Browser {
     this.downloadSeq = 1;
     this.holdLoads = false;
     this.heldLoads = [];
+    this.popupOpen = false;
     this.chrome = this.buildApi(null); // für Bedienschritte im Test, wie von Hand im Browser
   }
 
@@ -291,11 +293,7 @@ class Browser {
     t.active = true;
     this.fire('tabs.onActivated', { tabId: t.id, windowId: w.id });
     this.fire('tabs.onHighlighted', { windowId: w.id, tabIds: [t.id] });
-    if (t.discarded) {
-      t.discarded = false;
-      this.fire('tabs.onUpdated', t.id, { discarded: false }, this.tabInfo(t, w));
-      this.loaded(t);
-    }
+    if (t.discarded && !this.popupOpen) this.reload(t, w);
     const g = this.groups.get(t.groupId);
     if (g?.collapsed) {
       g.collapsed = false;
@@ -339,6 +337,14 @@ class Browser {
     w.focused = true;
     if (w.state === 'minimized') w.state = 'normal';
     this.fire('windows.onFocusChanged', w.id);
+  }
+
+  // Lädt einen entladenen Tab
+  reload(t, w) {
+    if (!t.discarded) return;
+    t.discarded = false;
+    this.fire('tabs.onUpdated', t.id, { discarded: false }, this.tabInfo(t, w));
+    this.loaded(t);
   }
 
   // Meldet kurz darauf, dass der Tab fertig geladen hat (nach der Antwort des Aufrufs)
@@ -667,6 +673,10 @@ class Browser {
           for (const id of [].concat(ids)) b.removeTab(id);
         }),
         discard: api('tabs.discard', (id) => b.discardTab(id)),
+        reload: api('tabs.reload', (id) => {
+          const { t, w } = b.findTab(id);
+          b.reload(t, w);
+        }),
         // Markiert die Tabs an diesen Positionen, der erste wird aktiv
         highlight: api('tabs.highlight', ({ windowId, tabs }) => {
           const w = b.findWin(windowId);
