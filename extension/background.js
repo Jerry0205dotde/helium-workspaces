@@ -169,7 +169,9 @@ async function stateFor(windowId) {
     const failed = backup[ws.id]?.failed?.length || 0;
     const audible = audibleOf(ws.id, s, stash, mains).length;
     const silenced = silencedOf(ws.id, s, stash, mains, !!muteStash).length;
-    return { ...ws, count, failed, audible, silenced, elsewhere: showing.some((w) => w.id !== windowId) };
+    // Zeigt dieses Fenster den Workspace selbst, steht die Tab-Zahl da, nicht „anderes Fenster“ (#220)
+    const elsewhere = s.windowWs[windowId] !== ws.id && showing.some((w) => w.id !== windowId);
+    return { ...ws, count, failed, audible, silenced, elsewhere };
   });
   const { backupError } = await chrome.storage.session.get('backupError');
   const auto = await autoBackupState();
