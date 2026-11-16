@@ -136,6 +136,31 @@ test('Beim Wiederherstellen verlorene Tabs eines sehr großen Workspace werden a
   assert.deepEqual(main.tabs.map((t) => t.url), many.map(url), 'verlorener Tab steht nicht an seiner alten Stelle');
 });
 
+test('Sehr großer Workspace mit wiederkehrenden URLs und einer umgeleiteten Seite: genau die verlorenen Tabs kommen zurück (#194)', async () => {
+  const many = Array.from({ length: 2100 }, (_, i) => `t${i}`);
+  const A = ['a', 'd', 'c', 'b', 'a', 'd', 'c', 'b', 'a', ...many, 'd', 'c', 'b', 'a', 'd'];
+  const env = await setup({ workspaces: { A, B: ['b1'] } });
+  // Verloren: das zweite d und c und das dritte d. Das zweite a öffnet nach dem Start
+  // eine andere Seite (der Wiederherstellungsstand wird dafür direkt geändert).
+  const seen = new Map();
+  env.b.restart({
+    loseTab: (t) => {
+      const k = `${t.url}#${(seen.get(t.url) || 0) + 1}`;
+      seen.set(t.url, (seen.get(t.url) || 0) + 1);
+      if (k === `${url('a')}#2`) t.url = url('r');
+      return [`${url('d')}#2`, `${url('c')}#2`, `${url('d')}#3`].includes(k);
+    },
+  });
+  const w = env.b.startWorker('startup');
+  await w.settle();
+  // check() verlangt eindeutige URLs, daher hier nur Fehler und Tabs des Fensters
+  assert.deepEqual(env.b.errors, []);
+  // Wie bei main: Die ergänzten d und c kommen hinter das letzte zugeordnete b, also vor r
+  const expected = ['a', 'd', 'c', 'b', 'd', 'c', 'r', 'b', 'a', ...A.slice(9)];
+  const main = env.b.windows.find((x) => x.id === env.b.mains()[0].id);
+  assert.deepEqual(main.tabs.map((t) => t.url), expected.map(url));
+});
+
 test('Ein kurz nach dem Start geschlossener Tab kommt nicht aus der Sicherung zurück (#150)', async () => {
   // auch, wenn der Tab vorher noch zu einer anderen Seite gewechselt ist, und wenn er
   // genau dann geschlossen wird, während die Sicherung mit der neuen Seite gespeichert wird

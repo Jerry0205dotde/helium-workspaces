@@ -401,20 +401,35 @@ function align(saved, live) {
   return match;
 }
 
-// Gierige Zuordnung für saved[lo..n) und live[lo..m), linear in Zeit und Speicher. Bei
-// einer Abweichung wird übersprungen, was weniger kostet: die lebenden Tabs bis zum
-// nächsten Vorkommen der gesicherten URL oder die gesicherten Einträge bis zum nächsten
-// Vorkommen der lebenden URL. Was hier nicht zugeordnet wird, ergänzt repairFromBackup
-// trotzdem nur, wenn die URL insgesamt seltener offen ist als gesichert.
+// Gierige Zuordnung für saved[lo..n) und live[lo..m), linear in Zeit und Speicher: einmal
+// von vorn und einmal von hinten, die längere gilt. Was hier nicht zugeordnet wird,
+// ergänzt repairFromBackup trotzdem nur, wenn die URL insgesamt seltener offen ist als
+// gesichert.
 function alignGreedy(saved, live, lo, n, m, match) {
+  const s = saved.slice(lo, n);
+  const l = live.slice(lo, m);
+  const fwd = greedyMatch(s, l);
+  const bwd = greedyMatch(s.reverse(), l.reverse())
+    .reverse()
+    .map((j) => (j < 0 ? -1 : l.length - 1 - j));
+  const count = (x) => x.filter((j) => j >= 0).length;
+  const best = count(bwd) > count(fwd) ? bwd : fwd;
+  best.forEach((j, i) => (match[lo + i] = j < 0 ? -1 : lo + j));
+  return match;
+}
+
+// Bei einer Abweichung wird übersprungen, was weniger kostet: die lebenden Tabs bis zum
+// nächsten Vorkommen der gesicherten URL oder die gesicherten Einträge bis zum nächsten
+// Vorkommen der lebenden URL.
+function greedyMatch(saved, live) {
   // Für jede URL ihre Positionen und ein Zeiger auf die erste noch nicht überholte
-  const positions = (list, end) => {
+  const positions = (list) => {
     const at = new Map();
-    for (let x = lo; x < end; x++) {
-      const p = at.get(list[x]);
+    list.forEach((u, x) => {
+      const p = at.get(u);
       if (p) p.list.push(x);
-      else at.set(list[x], { list: [x], next: 0 });
-    }
+      else at.set(u, { list: [x], next: 0 });
+    });
     return (url, from) => {
       const p = at.get(url);
       if (!p) return Infinity;
@@ -422,9 +437,10 @@ function alignGreedy(saved, live, lo, n, m, match) {
       return p.next < p.list.length ? p.list[p.next] : Infinity;
     };
   };
-  const inLive = positions(live, m);
-  const inSaved = positions(saved, n);
-  for (let i = lo, j = lo; i < n && j < m; ) {
+  const inLive = positions(live);
+  const inSaved = positions(saved);
+  const match = new Array(saved.length).fill(-1);
+  for (let i = 0, j = 0; i < saved.length && j < live.length; ) {
     if (saved[i] === live[j]) {
       match[i++] = j++;
       continue;
