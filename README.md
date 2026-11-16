@@ -4,6 +4,8 @@
 
 Helium Workspaces brings Opera-style workspaces to the [Helium browser](https://github.com/imputnet/helium-linux): several sets of tabs in the same window, switchable by click or keyboard shortcut. Nothing reloads when you switch, so videos and logins simply keep going.
 
+![Switching from “Me” to “Uni” and back in the workspace list: the tabs of the other workspace appear, and “Me” comes back with the same tab open](docs/switch-en.gif)
+
 It consists of a browser extension and a small KWin script for KDE Plasma. The extension speaks English and German and follows the language of the browser. The UI names in this README are the English ones.
 
 ## "Why not just use profiles?"
@@ -133,6 +135,11 @@ Several browsers or profiles with the extension, such as Helium and Chromium or 
 To bring workspaces to another device, use the export (see below). It does not contain the key.
 
 ## Usage
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/popup-en-dark.png">
+  <img src="docs/popup-en-light.png" width="408" alt="The workspace list with the workspaces Me, Uni and Projects, below them New workspace, Export / import, Mute stashes and Unload stashes after">
+</picture>
 
 | Action | How |
 | --- | --- |
@@ -292,6 +299,7 @@ The tests do not check KWin. After changing that, briefly check by hand:
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): the page that marks a window as a stash
   - [`label.js`](./extension/label.js): the character shown in a workspace's icon
 - [`kwin/`](./kwin): KWin script that hides the stash windows
+- [`docs/`](./docs): the pictures in this README
 - [`install.sh`](./install.sh): set up the KWin script and write the key, remove a key with `--remove`, update with `--update`, remove it again with `--uninstall`
 - [`test/`](./test): automated tests, [`fake-browser.js`](./test/fake-browser.js) replicates the Chrome APIs, [`page.js`](./test/page.js) drives the popup and the import page in Chromium, [`chromium.js`](./test/chromium.js) drives a real Chromium
 
