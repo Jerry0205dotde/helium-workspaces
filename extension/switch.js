@@ -203,7 +203,13 @@ async function finishSwitch() {
       await keepLater(p.to, r.later, 'saved');
     }
 
-    const oldLeft = tabs.filter((t) => old.has(t.id));
+    // Eine leere neue Tab-Seite (etwa von Strg+N) hält nichts fest: schließen statt ablegen,
+    // sonst sammelt sie sich im alten Workspace an (#219). Tippt man darin gerade eine
+    // Adresse, steht sie schon in pendingUrl, und der Tab bleibt.
+    const blank = (t) => isNewTab(t) && (!t.pendingUrl || isNewTab({ url: t.pendingUrl }));
+    const blanks = tabs.filter((t) => old.has(t.id) && blank(t));
+    if (blanks.length) await chrome.tabs.remove(blanks.map((t) => t.id)).catch(() => {}); // schon geschlossen
+    const oldLeft = tabs.filter((t) => old.has(t.id) && !blank(t));
     if (oldLeft.length) {
       const st = await ensureStash(p.from, false);
       await moveOrdered(oldLeft, st.windowId);

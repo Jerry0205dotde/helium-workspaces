@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { setup, check, ok, url, shows } = require('./harness');
+const { setup, check, ok, url, shows, NEWTAB } = require('./harness');
 
 const B = Array.from({ length: 20 }, (_, i) => `b${i + 1}`);
 // Die Gruppe reicht über die Grenze des ersten Schubs hinaus
@@ -348,4 +348,30 @@ test('Absturz während des Nachlegens und „Wiederherstellen“: dieselbe Adres
   const groupColor = (t) => (t.groupId >= 0 ? b.groups.get(t.groupId).color : null);
   assert.deepEqual(tabs.map(groupColor), names.map((_, i) => color(i)));
   assert.equal(new Set(tabs.filter((t, i) => color(i) === 'red').map((t) => t.groupId)).size, 1, 'rote Gruppe zerteilt');
+});
+
+test('Wechsel weg, bevor mehr als die leere neue Tab-Seite angelegt ist: die zurückgestellten Tabs bleiben (#219)', async () => {
+  const spec = { pinned: ['p1'], workspaces: { A: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'], B: ['b1', 'b2'] } };
+  const env = await setup(spec);
+  const { b } = env;
+  // Die Sicherung von B beginnt mit einer neuen Tab-Seite (vor #219 so abgelegt)
+  const saved = b.local.data.backup[env.ids.B];
+  saved.stash = [{ url: NEWTAB }, ...saved.stash];
+  b.restart({ restore: 'none' });
+  b.holdLoads = true;
+  await b.startWorker('startup').advance(1000);
+  const main = b.mains()[0].id;
+  assert.equal(shows(env, main), 'A');
+  // Die sechs Tabs von A laden noch: Von B entsteht nur die neue Tab-Seite
+  await request(env, { type: 'switch', windowId: main, wsId: env.ids.B });
+  assert.equal(shows(env, main), 'B');
+  assert.deepEqual(b.local.data.backup[env.ids.B].later.map((e) => e.url), [url('b1'), url('b2')]);
+  await request(env, { type: 'switch', windowId: main, wsId: env.ids.A });
+  assert.deepEqual(b.tabsByUrl(NEWTAB), []);
+  assert.deepEqual(backupOf(env).filter((u) => u !== NEWTAB), [url('b1'), url('b2')], 'zurückgestellte Tabs von B verloren');
+  b.releaseLoads();
+  await b.worker.settle();
+  await ok(b.worker.request({ type: 'switch', windowId: main, wsId: env.ids.B }));
+  await b.worker.settle();
+  check(env, { ...spec.workspaces, pinned: spec.pinned });
 });

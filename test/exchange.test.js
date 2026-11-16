@@ -462,10 +462,12 @@ test('Rückgängig nach dem Ersetzen holt alle alten Workspaces vorn zurück, di
 });
 
 test('Nach dem Ersetzen hat das Importfenster wieder den Fokus, seine Meldung bleibt sichtbar', async () => {
-  // Frisches Profil: Der angezeigte Workspace hat noch keine Ablage
+  // Frisches Profil mit einer geöffneten Seite: Der angezeigte Workspace hat noch keine Ablage
   const env = await fresh();
   const { b } = env;
   const main = b.mains()[0];
+  await b.chrome.tabs.create({ windowId: main.id, url: url('z1') });
+  await env.w.settle();
   // Die Importseite läuft wie aus dem Popup geöffnet in einem eigenen Popup-Fenster
   const popup = b.createWindow({ url: `${b.origin}transfer.html`, type: 'popup' });
   await env.w.settle();

@@ -47,6 +47,42 @@ test('Strg+N zeigt den zuletzt benutzten Workspace, jedes Fenster wechselt für 
   for (const [u, id] of Object.entries(before)) assert.equal(tabIds(env)[u], id, `${u} wurde neu angelegt`);
 });
 
+test('Strg+N und Wechsel: die leere neue Tab-Seite wird geschlossen, nicht im alten Workspace abgelegt (#219)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const win2 = await newWindow(env);
+  assert.equal(shows(env, win2), 'A');
+  const blank = b.windows.find((x) => x.id === win2).tabs.find((t) => t.url === NEWTAB).id;
+
+  await ok(w.request({ type: 'switch', windowId: win2, wsId: ids.B }));
+  assert.equal(shows(env, win2), 'B');
+  assert.deepEqual(b.tabsByUrl(NEWTAB), [], 'neue Tab-Seite ist geblieben');
+  assert.ok(!b.calls.some((c) => c.name === 'tabs.move' && [c.args[0]].flat().includes(blank)), 'neue Tab-Seite wurde verschoben');
+  check(env, ALL, { allowNewTab: false });
+
+  // Fenster 1 wechselt weiter: A kommt ohne zusätzlichen Tab in die Ablage
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.C }));
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.A }));
+  assert.deepEqual(b.tabsByUrl(NEWTAB), []);
+  check(env, ALL, { allowNewTab: false });
+});
+
+test('Wechsel weg von einem leeren Workspace: seine neue Tab-Seite wird geschlossen (#219)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  env.ids.E = (await ok(w.request({ type: 'create', name: 'E' }))).id;
+  await ok(w.request({ type: 'switch', windowId: win, wsId: env.ids.E }));
+  assert.equal(b.tabsByUrl(NEWTAB).length, 1);
+  await ok(w.request({ type: 'switch', windowId: win, wsId: env.ids.A }));
+  assert.deepEqual(b.tabsByUrl(NEWTAB), []);
+  assert.equal(b.windows.some((x) => b.stashOf(x) === env.ids.E), false, 'Ablage für den leeren Workspace entstanden');
+  check(env, { ...ALL, E: [] });
+  // Zurück zu E: wieder genau eine neue Tab-Seite
+  await ok(w.request({ type: 'switch', windowId: win, wsId: env.ids.E }));
+  assert.equal(b.tabsByUrl(NEWTAB).length, 1);
+  check(env, { ...ALL, E: [] });
+});
+
 test('Wechsel zu einem Workspace, der schon in einem anderen Fenster offen ist, verdoppelt nichts', async () => {
   const env = await setup(SPEC);
   const { w, win, ids } = env;
