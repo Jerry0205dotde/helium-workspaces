@@ -432,9 +432,11 @@ test('Start ohne Sitzungswiederherstellung: zusammen wiederhergestellte Ablage-S
   const all = { ...spec.workspaces, pinned: spec.pinned };
   const env = await setup(spec);
   const { b } = env;
-  // D bekommt eine neue Tab-Seite in seine Ablage, zuletzt zeigt das Fenster wieder S
-  await ok(env.w.request({ type: 'switch', windowId: env.win, wsId: env.ids.D }));
-  await ok(env.w.request({ type: 'switch', windowId: env.win, wsId: env.ids.S }));
+  // D bekommt eine neue Tab-Seite in seine Ablage, das Fenster zeigt weiter S. Ein Wechsel
+  // weg von D schließt sie (#219), verschoben landet sie dort
+  const blank = await b.chrome.tabs.create({ windowId: env.win, active: false });
+  await env.w.settle();
+  await ok(env.w.request({ type: 'moveTab', tabId: blank.id, wsId: env.ids.D }));
   // Ablagen von U und D sowie die leere Ablage von S
   assert.equal(b.windows.filter((x) => b.stashOf(x)).length, 3);
   // Wie im beobachteten Fall steht die Ablage-Seite von U im Startfenster vorn

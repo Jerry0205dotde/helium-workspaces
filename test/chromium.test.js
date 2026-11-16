@@ -318,6 +318,22 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     assert.deepEqual(after.st.windows.flatMap((w) => w.tabs.map((x) => `${x.id} ${x.url}`)).sort(), tabIds, 'Tabs wurden ersetzt');
   });
 
+  await step('Strg+N und Wechsel: die leere neue Tab-Seite kommt nicht in die Ablage (#219)', async () => {
+    await env.settled({ live: true });
+    const win2 = await b.sw('return (await chrome.windows.create({ focused: true })).id;');
+    await waitFor(async () => assert.ok((await env.state()).windowWs[win2], 'neues Fenster ist noch nicht zugeordnet'));
+    await b.action('(w, ws) => switchTo(w, ws)', win2, env.ids.B);
+    const st = await env.state();
+    assert.equal(st.windowWs[win2], env.ids.B);
+    const blanks = st.windows.flatMap((w) => w.tabs).filter((x) => NEWTAB.test(x.url));
+    assert.deepEqual(blanks.map((x) => x.url), [], `neue Tab-Seite ist geblieben\n${env.describe(st)}`);
+    // Zurück zu A, das das erste Fenster zeigt: B geht in seine Ablage, im zweiten Fenster
+    // bleibt nur eine neue Tab-Seite, und es wird geschlossen
+    await b.action('(w, ws) => switchTo(w, ws)', win2, env.ids.A);
+    await b.sw('await chrome.windows.remove(args[0]);', win2);
+    await env.cycle();
+  });
+
   await step('Seite lädt noch: Das Symbol zeigt schon den Workspace (#187)', async () => {
     const { main, shows } = await env.settled({ live: true });
     const want = await b.sw('return tr("iconTitle", args[0]);', shows);
