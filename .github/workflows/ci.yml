@@ -31,6 +31,9 @@ jobs:
           install-dependencies: true
       # Quoting- und Portabilitätsfehler in install.sh, auch auf Wegen, die kein Test nimmt
       - run: shellcheck install.sh
+      # Undefinierte Namen in der Erweiterung und im KWin-Skript, auch in Zweigen, die kein Test nimmt.
+      # Die Skripte einer Umgebung werden zusammen geprüft (eslint.config.js)
+      - run: npx --yes eslint@10.14.0 extension kwin
       # Syntax, Manifest samt erhöhter Version und KWin-Metadaten (test/static.test.js), das Verhalten der
       # Hintergrundlogik mit nachgebildeten Chrome-APIs und dieselben Abläufe in Chrome
       - run: node --test test/*.test.js
