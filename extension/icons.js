@@ -45,7 +45,12 @@ async function setTabIcon(tabId, wsId, src) {
   if (sessionFull) title += '\n' + tr('iconTitleStorageFull');
   const badge = missing ? String(missing) : sessionFull ? '!' : '';
   const tab = tabId === undefined ? {} : { tabId };
-  await chrome.action.setIcon({ ...tab, imageData: iconFor(ws) }).catch(() => {});
+  // Mit Promise lehnt setIcon nicht ab, wenn der Tab inzwischen geschlossen ist, sondern
+  // meldet „Unchecked runtime.lastError: No tab with id“ unter chrome://extensions. Mit
+  // Callback, der lastError liest, bleibt der Fehler still.
+  await new Promise((done) =>
+    chrome.action.setIcon({ ...tab, imageData: iconFor(ws) }, () => done(chrome.runtime.lastError)),
+  );
   await chrome.action.setTitle({ ...tab, title }).catch(() => {});
   await chrome.action.setBadgeText({ ...tab, text: badge }).catch(() => {});
   if (badge) await chrome.action.setBadgeBackgroundColor({ ...tab, color: '#dc2626' }).catch(() => {});

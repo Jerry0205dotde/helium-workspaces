@@ -579,3 +579,16 @@ test('Sicherung scheitert beim Schließen des letzten Fensters ohne Ablagen: das
   await w.settle();
   check(env, { A: SPEC.workspaces.A, pinned: SPEC.pinned });
 });
+
+// Ein Tab, der zu ist, bevor sein Symbol gesetzt wird (z. B. sofort wieder geschlossen):
+// setIcon scheitert, ohne „Unchecked runtime.lastError“ unter chrome://extensions
+test('Tab gleich wieder geschlossen: kein ungeprüfter Fehler beim Setzen des Symbols', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  const from = b.calls.length;
+  const tab = await b.chrome.tabs.create({ windowId: win, url: url('a5'), active: false });
+  await b.chrome.tabs.remove(tab.id);
+  await w.settle();
+  assert.ok(b.calls.slice(from).some((c) => c.name === 'action.setIcon' && c.args[0].tabId === tab.id), 'setIcon für den geschlossenen Tab wurde nicht aufgerufen');
+  check(env, ALL);
+});

@@ -540,14 +540,22 @@ class Browser {
     const b = this;
     const api = (name, fn) => this.api(name, fn, owner);
     const bytesInUse = api('storage.session.getBytesInUse', () => b.session.bytes());
+    const runtime = {
+      id: new URL(b.origin).host,
+      getURL: (p) => b.origin + String(p).replace(/^\//, ''),
+      onMessage: b.event('runtime.onMessage'),
+      onInstalled: b.event('runtime.onInstalled'),
+      onStartup: b.event('runtime.onStartup'),
+    };
+    // Die Symbol-Aufrufe scheitern wie in Chromium für einen Tab, den es nicht mehr gibt
+    const onTab = (d) => {
+      if (d?.tabId !== undefined) b.findTab(d.tabId);
+    };
+    // Wie in Chromium: Mit Promise lehnt setIcon bei einem Fehler nicht ab, sondern meldet
+    // ihn als „Unchecked runtime.lastError“. Mit Callback steht er in runtime.lastError.
+    const setIcon = api('action.setIcon', onTab);
     return {
-      runtime: {
-        id: new URL(b.origin).host,
-        getURL: (p) => b.origin + String(p).replace(/^\//, ''),
-        onMessage: b.event('runtime.onMessage'),
-        onInstalled: b.event('runtime.onInstalled'),
-        onStartup: b.event('runtime.onStartup'),
-      },
+      runtime,
       i18n: { getMessage: (key, subs) => i18n.getMessage(DE, key, subs) },
       storage: {
         local: {
@@ -756,10 +764,24 @@ class Browser {
         onRemoved: b.event('tabGroups.onRemoved'),
       },
       action: {
-        setIcon: api('action.setIcon', () => {}),
-        setTitle: api('action.setTitle', () => {}),
-        setBadgeText: api('action.setBadgeText', () => {}),
-        setBadgeBackgroundColor: api('action.setBadgeBackgroundColor', () => {}),
+        setIcon: (d, cb) => {
+          const r = setIcon(d);
+          if (!cb) return r.catch((e) => b.errors.push({ name: 'action.setIcon', error: `Unchecked runtime.lastError: ${e.message}` }));
+          r.then(
+            () => cb(),
+            (e) => {
+              runtime.lastError = { message: e.message };
+              try {
+                cb();
+              } finally {
+                delete runtime.lastError;
+              }
+            },
+          );
+        },
+        setTitle: api('action.setTitle', onTab),
+        setBadgeText: api('action.setBadgeText', onTab),
+        setBadgeBackgroundColor: api('action.setBadgeBackgroundColor', onTab),
       },
       contextMenus: {
         create: (o) => {
