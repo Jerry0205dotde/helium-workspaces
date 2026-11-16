@@ -1,5 +1,5 @@
 'use strict';
-// Die Handschritte aus der README gegen einen echten Chromium: Wechsel mit Gruppe und
+// Die Handschritte aus der Doku gegen einen echten Chromium: Wechsel mit Gruppe und
 // angeheftetem Tab, Neuladen der Erweiterung, Beenden und Neustart mit „Dort
 // weitermachen, wo ich aufgehört habe“ und mit „Neuer Tab“, Schließen per X und
 // Neustart, dazu der Umstieg auf die feste Erweiterungs-ID. Läuft nur, wenn CHROME auf
@@ -521,7 +521,7 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
   }
 });
 
-// Der Umstieg aus der README: Eine Installation ohne Schlüssel im Manifest hat eine ID aus
+// Der Umstieg aus docs/updating.de.md: Eine Installation ohne Schlüssel im Manifest hat eine ID aus
 // dem Pfad. Mit dem Schlüssel bekommt sie beim Neuladen die feste ID und leeren Speicher,
 // Chromium schließt die Ablage-Seiten der alten ID. Ersetzen mit dem vorher gemachten
 // Export übernimmt dann die alten Fenster samt Tabs (#156).
