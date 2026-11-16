@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Wöchentlich gegen das aktuelle Chrome Stable (setup-chrome unten), damit eine neue
+  # Chrome-Version, die die Erweiterung bricht, nicht erst beim nächsten PR auffällt
+  schedule:
+    - cron: '17 5 * * 1'
 
 permissions:
   contents: read
