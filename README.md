@@ -71,7 +71,7 @@ When updating from version 0.2.23 or older, you need an export first: see [switc
    ./install.sh --update
    ```
 
-   This runs `git pull --ff-only` and sets up the KWin script again without asking. The key and the browser list are kept. When updating to 0.3.10 or later it also registers `native-host.sh`, which from then on writes new keys by itself.
+   This runs `git pull --ff-only` and sets up the KWin script again without asking. The key and the browser list are kept. When updating to 0.3.13 or later it also registers `native-host.sh`, which from then on writes new keys by itself.
 2. In `chrome://extensions`, click **Reload** (the circular arrow) on "Workspaces". Restarting Helium is not enough, the old background logic can still be running afterwards. At the end `install.sh` names the new version, the popup shows it in the bottom right.
 
 Do not remove and re-add the extension to update it. When it is removed, Helium deletes all workspaces and the backup. Only an export is left then, manual or automatic (see [Export and import](./docs/usage.md#export-and-import)).

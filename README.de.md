@@ -71,7 +71,7 @@ Wer von Version 0.2.23 oder älter aktualisiert, braucht vorher einen Export: si
    ./install.sh --update
    ```
 
-   Das führt `git pull --ff-only` aus und richtet das KWin-Skript ohne Rückfrage neu ein. Schlüssel und Browserliste bleiben. Beim Update auf 0.3.10 oder neuer meldet es dabei auch `native-host.sh` an, das danach neue Schlüssel selbst einträgt.
+   Das führt `git pull --ff-only` aus und richtet das KWin-Skript ohne Rückfrage neu ein. Schlüssel und Browserliste bleiben. Beim Update auf 0.3.13 oder neuer meldet es dabei auch `native-host.sh` an, das danach neue Schlüssel selbst einträgt.
 2. In `chrome://extensions` bei „Workspaces“ auf **Neu laden** (Kreispfeil) klicken. Ein Neustart von Helium reicht nicht, danach kann noch die alte Hintergrundlogik laufen. `install.sh` nennt am Ende die neue Version, das Popup zeigt sie unten rechts.
 
 Die Erweiterung zum Aktualisieren nicht entfernen und neu hinzufügen. Beim Entfernen löscht Helium alle Workspaces und die Sicherung. Nur ein Export bleibt dann übrig, von Hand oder automatisch (siehe [Exportieren und importieren](./docs/usage.de.md#exportieren-und-importieren)).
