@@ -122,6 +122,10 @@ class Browser {
     this.holdLoads = false;
     this.heldLoads = [];
     this.popupOpen = false;
+    // Native-Messaging-Host für den Schlüssel (native-host.sh): null = nicht angemeldet, sonst
+    // die Funktion, die eine Nachricht beantwortet. Was er bekommen hat, steht in nativeSent.
+    this.nativeHost = null;
+    this.nativeSent = [];
     this.chrome = this.buildApi(null); // für Bedienschritte im Test, wie von Hand im Browser
   }
 
@@ -552,6 +556,11 @@ class Browser {
       onMessage: b.event('runtime.onMessage'),
       onInstalled: b.event('runtime.onInstalled'),
       onStartup: b.event('runtime.onStartup'),
+      sendNativeMessage: api('runtime.sendNativeMessage', (host, msg) => {
+        if (!b.nativeHost) throw new Error('Specified native messaging host not found.');
+        b.nativeSent.push({ host, msg: clone(msg) });
+        return b.nativeHost(msg);
+      }),
     };
     // Die Symbol-Aufrufe scheitern wie in Chromium für einen Tab, den es nicht mehr gibt
     const onTab = (d) => {

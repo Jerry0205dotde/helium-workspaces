@@ -62,6 +62,8 @@ class Chromium {
     this.profile = profile;
     this.ext = ext;
     this.extId = extIdOf(ext);
+    // Umgebung des Browsers, die auch ein Native-Messaging-Host bekommt
+    this.env = process.env;
   }
 
   // Startet den Browser mit dem Profil. Beim ersten Start wird die Erweiterung wie über
@@ -90,7 +92,7 @@ class Chromium {
     // Ohne Bildschirm unsichtbar, aber sonst wie ein normaler Browser (anders als
     // --headless beendet er sich z. B., wenn das letzte Fenster geschlossen wird)
     if (!process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) args.push('--ozone-platform=headless');
-    const proc = spawn(this.bin, args, { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
+    const proc = spawn(this.bin, args, { env: this.env, stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
     this.proc = proc;
     this.log = '';
     proc.stderr.on('data', (d) => (this.log = (this.log + d).slice(-200000)));

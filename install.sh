@@ -2,14 +2,18 @@
 # Installiert bzw. aktualisiert das KWin-Skript auf diesem Gerät und trägt den
 # Schlüssel der Erweiterung in kwinrc ein. Die Erweiterung erzeugt ihn beim ersten Start,
 # ihr Popup zeigt ihn unter "Schlüssel für install.sh".
-# Aufruf: ./install.sh [--browsers Liste] [Schlüssel]. Ohne Schlüssel fragt das Skript danach.
+# Aufruf: ./install.sh [--browsers Liste] [Schlüssel]. Ohne Schlüssel fragt das Skript danach,
+# Enter ohne Eingabe lässt die Erweiterung ihn selbst eintragen (siehe unten).
+# Dazu meldet install.sh native-host.sh bei Helium, Google Chrome und Chromium als
+# Native-Messaging-Host an. Die Erweiterung schickt ihm bei jedem Start ihren Schlüssel, und er
+# trägt ihn hier ein, falls er noch fehlt.
 # Jeder Browser bzw. jedes Profil mit der Erweiterung hat einen eigenen Schlüssel. Ein neuer
 # Schlüssel kommt zu den eingetragenen dazu, ./install.sh --remove <Schlüssel> trägt einen aus.
 # --browsers legt kommagetrennt die Fensterklassen (X11) bzw. App-IDs (Wayland) der Browser
 # fest, deren Ablagen versteckt werden, z. B. --browsers helium,brave-browser. Eine leere
 # Liste stellt die Standardliste wieder her, ohne --browsers bleibt die bisherige Einstellung.
 # ./install.sh --uninstall holt versteckte Ablagen zurück in die Taskleiste, entlädt und entfernt
-# dann das KWin-Skript samt seiner Einträge in kwinrc.
+# dann das KWin-Skript samt seiner Einträge in kwinrc und meldet native-host.sh ab.
 # ./install.sh --update holt mit git pull den neuen Stand und richtet das KWin-Skript ohne
 # Rückfrage neu ein, Schlüssel und Browserliste bleiben.
 # Nach der Installation weist das Skript auf Profile von Helium, Google Chrome und Chromium hin,
@@ -36,6 +40,15 @@ for l in "${LANGS[@]}"; do
 done
 # t "deutsch" "english" gibt die Meldung in der Sprache der Sitzung aus
 t() { if [ -n "$DE" ]; then printf '%s\n' "$1"; else printf '%s\n' "$2"; fi; }
+
+# Browser, deren Profile install.sh kennt: Ordner unter ~/.config und Name. Die Erweiterung
+# hat dort die feste ID aus dem Schlüssel in manifest.json.
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
+BROWSER_DIRS=("net.imput.helium:Helium" "google-chrome:Google Chrome" "chromium:Chromium")
+EXT_ID=jchklfejnmfphkbcpnhdejmeoncejjbe
+# Name des Native-Messaging-Hosts, unter dem die Erweiterung native-host.sh aufruft (core.js)
+HOST_NAME=helium_workspaces
+host_manifest() { printf '%s/%s/NativeMessagingHosts/%s.json' "$CONFIG" "${1%%:*}" "$HOST_NAME"; }
 
 TOKEN=""
 BROWSERS=""
@@ -166,6 +179,7 @@ if [ -n "$UNINSTALL" ]; then
   [ -z "$INSTALLED" ] || kpackagetool6 --type=KWin/Script -r helium-workspaces >/dev/null
   kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete
   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers --delete
+  for entry in "${BROWSER_DIRS[@]}"; do rm -f "$(host_manifest "$entry")"; done
   t "KWin-Skript entfernt." "KWin script removed."
   exit 0
 fi
@@ -178,15 +192,25 @@ BROWSERS="$(printf '%s' "$BROWSERS" | tr -d '[:space:]' | tr '[:upper:]' '[:lowe
 read_keys
 OLD="$(join_keys)"
 if [ -z "$TOKEN" ]; then
-  read -rp "$(t "Schlüssel aus dem Popup der Erweiterung${OLD:+ (Enter behält $OLD)}: " \
-              "Key from the extension's popup${OLD:+ (Enter keeps $OLD)}: ")" TOKEN || true
+  if [ -n "$OLD" ]; then
+    ENTER_DE="behält $OLD"; ENTER_EN="keeps $OLD"
+  else
+    ENTER_DE="trägt die Erweiterung selbst ein"; ENTER_EN="the extension sets it up itself"
+  fi
+  read -rp "$(t "Schlüssel aus dem Popup der Erweiterung (Enter: $ENTER_DE): " \
+              "Key from the extension's popup (Enter: $ENTER_EN): ")" TOKEN || true
   TOKEN="${TOKEN:-$OLD}"
+  # Während der Frage kann native-host.sh einen Schlüssel eingetragen haben, der bleibt
+  read_keys
 fi
-# Mehrere Schlüssel kommagetrennt, so gibt --update die eingetragenen weiter
+# Mehrere Schlüssel kommagetrennt, so gibt --update die eingetragenen weiter. Leer bleibt er
+# nur nach Enter ohne eingetragenen Schlüssel, dann schickt ihn die Erweiterung an native-host.sh.
 TOKEN="$(clean_key "$TOKEN")"
-[[ "$TOKEN" =~ ^[0-9a-f]{24}(,[0-9a-f]{24})*$ ]] || invalid_key
-IFS=, read -ra NEW <<< "$TOKEN"
-for k in "${NEW[@]}"; do has_key "$k" || KEYS+=("$k"); done
+if [ -n "$TOKEN" ]; then
+  [[ "$TOKEN" =~ ^[0-9a-f]{24}(,[0-9a-f]{24})*$ ]] || invalid_key
+  IFS=, read -ra NEW <<< "$TOKEN"
+  for k in "${NEW[@]}"; do has_key "$k" || KEYS+=("$k"); done
+fi
 # Überbleibsel älterer Versionen, die den Schlüssel als Datei abgelegt haben
 rm -f "$DIR/extension/token.js"
 
@@ -197,7 +221,7 @@ if kpackagetool6 --type=KWin/Script -s helium-workspaces >/dev/null 2>&1; then
 else
   kpackagetool6 --type=KWin/Script -i "$DIR/kwin" >/dev/null
 fi
-kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token "$(join_keys)"
+[ ${#KEYS[@]} -eq 0 ] || kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token "$(join_keys)"
 if [ -n "$SET_BROWSERS" ]; then
   if [ -n "$BROWSERS" ]; then
     kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers "$BROWSERS"
@@ -212,16 +236,28 @@ kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true
 [ "$("$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces)" = true ] \
   || { t "KWin-Skript wurde nicht geladen" "KWin script was not loaded" >&2; exit 1; }
 
+# native-host.sh bei jedem Browser anmelden, den es auf diesem Gerät gibt. Der Pfad zeigt in
+# dieses Repository, ein erneuter Aufruf (auch --update) schreibt ihn neu. Sonderzeichen im
+# Pfad für JSON maskieren.
+HOST_PATH="$DIR/native-host.sh"
+HOST_PATH="${HOST_PATH//\\/\\\\}"
+HOST_PATH="${HOST_PATH//\"/\\\"}"
+for entry in "${BROWSER_DIRS[@]}"; do
+  [ -d "$CONFIG/${entry%%:*}" ] || continue
+  manifest="$(host_manifest "$entry")"
+  mkdir -p "${manifest%/*}"
+  printf '{\n  "name": "%s",\n  "description": "Workspaces: key for the KWin script",\n  "path": "%s",\n  "type": "stdio",\n  "allowed_origins": ["chrome-extension://%s/"]\n}\n' \
+    "$HOST_NAME" "$HOST_PATH" "$EXT_ID" > "$manifest"
+done
+
 # session.restore_on_startup ist 1 bei „Dort weitermachen, wo ich aufgehört habe“. Fehlt der
 # Wert, gilt der Standard „Neuer Tab“ (5). Die gleichnamigen Prüfsummen unter protection.macs
 # sind Zeichenketten und passen deshalb nicht auf das Muster. Profile ohne die Erweiterung
 # zählen nicht: Ihre Einstellungen unter extensions.settings stehen je nach Browser in
 # Preferences oder Secure Preferences, unter der festen ID aus dem Schlüssel in manifest.json.
-EXT_ID=jchklfejnmfphkbcpnhdejmeoncejjbe
-CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
 RESTORE_RE='"restore_on_startup":([0-9]+)'
 NOT_RESTORING=()
-for entry in "net.imput.helium:Helium" "google-chrome:Google Chrome" "chromium:Chromium"; do
+for entry in "${BROWSER_DIRS[@]}"; do
   dir="$CONFIG/${entry%%:*}"
   for prefs in "$dir/Default/Preferences" "$dir"/Profile\ */Preferences; do
     [ -f "$prefs" ] || continue
@@ -250,5 +286,11 @@ if [ ${#NOT_RESTORING[@]} -gt 0 ]; then
 fi
 # Die Version des KWin-Skripts ist dieselbe wie die der Erweiterung (test/static.test.js)
 [ ${#KEYS[@]} -lt 2 ] || t "Eingetragene Schlüssel: $(join_keys)" "Keys set up: $(join_keys)"
+if [ ${#KEYS[@]} -eq 0 ]; then
+  t "Noch kein Schlüssel eingetragen. Die Erweiterung trägt ihn selbst ein, sobald du ihr Popup öffnest." \
+    "No key set up yet. The extension sets it up itself as soon as you open its popup."
+  t "Sonst im Popup unter \"Schlüssel für install.sh\" auf Kopieren klicken und den Befehl hier ausführen." \
+    "Otherwise click Copy in the popup under \"Key for install.sh\" and run the command here."
+fi
 KWIN_VERSION="$(sed -n 's/^ *"Version": *"\([^"]*\)".*/\1/p' "$DIR/kwin/metadata.json")"
 t "Fertig, KWin-Skript $KWIN_VERSION installiert." "Done, KWin script $KWIN_VERSION installed."

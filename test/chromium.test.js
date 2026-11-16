@@ -18,6 +18,7 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { Chromium, EXT, EXT_ID, extIdOf, waitFor } = require('./chromium');
+const { spawnSync } = require('node:child_process');
 const { messages } = require('./i18n');
 
 const NEWTAB = /^chrome:\/\/(newtab|new-tab-page)\//;
@@ -589,5 +590,110 @@ test('Echter Chromium: Umstieg auf die feste Erweiterungs-ID per Export und Erse
   assert.deepEqual(tabIds(r.st), before, 'Tabs wurden geschlossen oder neu angelegt');
   await env.cycle();
   assert.deepEqual(new Map(hits), loads, 'eine Seite wurde neu geladen');
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});
+
+// install.sh mit nachgebildeten KDE-Befehlen, kwinrc ist eine Datei je Schlüssel. Chromium
+// nutzt das Profil unter $XDG_CONFIG_HOME/chromium wie sein Standardprofil, install.sh meldet
+// den Host also genau dort an, wo Chromium ihn sucht. ext: Ordner der Erweiterung.
+function hostEnv(t, ext = EXT) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-host-'));
+  const ROOT = path.join(__dirname, '..');
+  const repo = path.join(dir, 'repo');
+  fs.mkdirSync(repo);
+  for (const f of ['install.sh', 'native-host.sh']) fs.copyFileSync(path.join(ROOT, f), path.join(repo, f));
+  fs.cpSync(path.join(ROOT, 'kwin'), path.join(repo, 'kwin'), { recursive: true });
+  const kde = path.join(dir, 'bin');
+  const kwinrc = path.join(dir, 'kwinrc');
+  const log = path.join(dir, 'log');
+  fs.mkdirSync(kde);
+  fs.mkdirSync(kwinrc);
+  const fake = (name, body) => fs.writeFileSync(path.join(kde, name), `#!/bin/bash\necho "${name} $*" >> "${log}"\n${body}\n`, { mode: 0o755 });
+  fake('kreadconfig6', `cat "${kwinrc}/$6" 2>/dev/null; exit 0`);
+  fake('kwriteconfig6', `if [ "$7" = --delete ]; then rm -f "${kwinrc}/$6"; else printf '%s\\n' "$7" > "${kwinrc}/$6"; fi`);
+  fake('kpackagetool6', 'exit 0');
+  fake('qdbus6', 'echo true');
+  const env = { ...process.env, PATH: `${kde}:${process.env.PATH}`, XDG_CONFIG_HOME: path.join(dir, 'config'), LANG: 'de_DE.UTF-8' };
+  for (const k of ['LANGUAGE', 'LC_ALL', 'LC_MESSAGES']) delete env[k];
+  const b = new Chromium(bin, path.join(dir, 'config', 'chromium'), ext);
+  b.env = env;
+  t.after(async () => {
+    await b.kill();
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  });
+  const tokenFile = path.join(kwinrc, 'token');
+  return {
+    b,
+    // Erstinstallation ohne Schlüssel: Enter an der Frage
+    install() {
+      const r = spawnSync('bash', [path.join(repo, 'install.sh')], { input: '\n', env, encoding: 'utf8' });
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /Noch kein Schlüssel eingetragen\. Die Erweiterung trägt ihn selbst ein/);
+    },
+    key: () => (fs.existsSync(tokenFile) ? fs.readFileSync(tokenFile, 'utf8').trim() : ''),
+    // Wie oft install.sh das KWin-Skript eingerichtet hat
+    installs: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter((l) => l.startsWith('kpackagetool6 --type=KWin/Script -u')).length : 0),
+    token: () =>
+      waitFor(async () => {
+        const { token } = await b.sw("return chrome.storage.local.get('token');");
+        assert.match(token || '', /^[0-9a-f]{24}$/);
+        return token;
+      }),
+    delivered: async () => (await b.sw("return chrome.storage.session.get('keyDelivered');")).keyDelivered,
+  };
+}
+
+test('Echter Chromium: install.sh meldet native-host.sh an, das Popup trägt den Schlüssel ein', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 120000 }, async (t) => {
+  const h = hostEnv(t);
+  const { b } = h;
+  await b.launch();
+  const token = await h.token();
+  // Ohne angemeldeten Host bleibt kwinrc leer, sonst passiert nichts
+  assert.equal(h.key(), '');
+  h.install();
+  assert.equal(h.key(), '');
+  assert.equal(h.installs(), 1);
+
+  // Das Popup öffnen genügt, der Host trägt den Schlüssel mit install.sh ein
+  await b.sw("await chrome.tabs.create({ url: chrome.runtime.getURL('popup.html') });");
+  await waitFor(() => assert.equal(h.key(), token), { timeout: 30000 });
+  assert.equal(h.installs(), 2);
+  await waitFor(async () => assert.equal(await h.delivered(), token));
+
+  // Nach dem Neuladen schickt die Erweiterung ihn wieder, der Host lässt kwinrc dann in Ruhe
+  b.sw('chrome.runtime.reload();').catch(() => {});
+  await b.attachWorker();
+  await waitFor(async () => assert.equal(await h.delivered(), token), { timeout: 30000 });
+  assert.equal(h.installs(), 2);
+  assert.equal(h.key(), token);
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});
+
+// Wie ein Update per install.sh --update: Die installierte Fassung kennt nativeMessaging noch
+// nicht, Neuladen unter chrome://extensions bringt die Berechtigung ohne Rückfrage mit
+test('Echter Chromium: Nach dem Update auf die Fassung mit nativeMessaging trägt schon das Neuladen den Schlüssel ein', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 120000 }, async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-ext-'));
+  fs.cpSync(EXT, dir, { recursive: true });
+  const manifest = path.join(dir, 'manifest.json');
+  const m = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+  fs.writeFileSync(manifest, JSON.stringify({ ...m, permissions: m.permissions.filter((p) => p !== 'nativeMessaging') }));
+  const h = hostEnv(t, dir);
+  // Nach dem Beenden des Browsers (hostEnv), Hooks laufen in der Reihenfolge des Anlegens
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const { b } = h;
+  await b.launch();
+  const token = await h.token();
+  h.install();
+  // Ohne die Berechtigung kommt nichts an, auch nicht beim Öffnen des Popups
+  await b.sw("await chrome.tabs.create({ url: chrome.runtime.getURL('popup.html') });");
+  await new Promise((r) => setTimeout(r, 2000));
+  assert.equal(h.key(), '');
+
+  fs.copyFileSync(path.join(EXT, 'manifest.json'), manifest);
+  b.sw('chrome.runtime.reload();').catch(() => {});
+  await b.attachWorker();
+  await waitFor(() => assert.equal(h.key(), token), { timeout: 30000 });
+  assert.equal(await h.token(), token, 'Schlüssel hat sich beim Neuladen geändert');
+  assert.equal(h.installs(), 2);
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });

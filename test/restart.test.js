@@ -651,6 +651,47 @@ test('Ältere Installation ohne Schlüssel bekommt ihn beim nächsten Start des 
   assert.equal(await ok(w.request({ type: 'token' })), token);
 });
 
+// native-host.sh trägt den Schlüssel in kwinrc ein, ohne Kopieren aus dem Popup
+test('Der Schlüssel geht an native-host.sh, sobald es ihn gibt, und dann einmal je Browsersitzung', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  const { token } = b.local.data;
+  const sent = () => b.nativeSent.map((s) => `${s.host} ${s.msg.key}`);
+  const expected = `helium_workspaces ${token}`;
+  // Ohne angemeldeten Host bleibt nur das Popup, nichts geht schief
+  assert.deepEqual(sent(), []);
+  assert.equal(await ok(env.w.request({ type: 'token' })), token);
+  // install.sh hat den Host angemeldet: Das nächste Öffnen des Popups schickt den Schlüssel
+  b.nativeHost = () => ({ ok: true, added: true });
+  assert.equal(await ok(env.w.request({ type: 'token' })), token);
+  await env.w.settle();
+  assert.deepEqual(sent(), [expected]);
+  // Weiteres Öffnen, ein neuer Service Worker und Neuladen schicken ihn nicht noch einmal
+  await ok(env.w.request({ type: 'token' }));
+  let w = b.startWorker(null);
+  await w.settle();
+  await ok(w.request({ type: 'token' }));
+  await w.settle();
+  assert.deepEqual(sent(), [expected]);
+  // Nach einem Neustart des Browsers gleich beim Start, etwa falls kwinrc inzwischen anders aussieht
+  b.restart();
+  w = b.startWorker('startup');
+  await w.settle();
+  assert.deepEqual(sent(), [expected, expected]);
+  // Scheitert das Eintragen, versucht sie es beim nächsten Öffnen des Popups wieder
+  b.restart();
+  b.nativeHost = () => ({ ok: false, error: 'install' });
+  w = b.startWorker('startup');
+  await w.settle();
+  b.nativeHost = () => ({ ok: true });
+  await ok(w.request({ type: 'token' }));
+  await w.settle();
+  assert.equal(sent().length, 4);
+  await ok(w.request({ type: 'token' }));
+  await w.settle();
+  assert.equal(sent().length, 4);
+});
+
 // Start ohne Sitzungswiederherstellung: B und C liegen nur in der Sicherung. Danach ist die
 // Startphase vorbei, in der repairFromBackup fehlende Tabs ergänzt.
 async function onlyBackedUp() {
