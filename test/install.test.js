@@ -540,14 +540,14 @@ test('install.sh meldet native-host.sh bei den Browsern an, die es auf dem Gerä
   for (const text of Object.values(r.checked)) {
     assert.deepEqual(JSON.parse(text), {
       name: 'helium_workspaces',
-      description: 'Workspaces: key for the KWin script',
+      description: 'Workspaces: key for the KWin script and automatic backups',
       path: path.join(ROOT, 'native-host.sh'),
       type: 'stdio',
       allowed_origins: [`chrome-extension://${EXT_ID}/`],
     });
   }
   // Die Erweiterung ruft den Host unter diesem Namen, er liegt ausführbar daneben
-  assert.match(fs.readFileSync(path.join(ROOT, 'extension', 'core.js'), 'utf8'), /KEY_HOST = 'helium_workspaces'/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'extension', 'core.js'), 'utf8'), /NATIVE_HOST = 'helium_workspaces'/);
   fs.accessSync(path.join(ROOT, 'native-host.sh'), fs.constants.X_OK);
 });
 

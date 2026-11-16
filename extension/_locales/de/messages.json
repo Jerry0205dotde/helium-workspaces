@@ -678,10 +678,10 @@
     "message": "Automatisch sichern"
   },
   "autoText": {
-    "message": "Legt regelmäßig einen Export in Downloads/$1/ ab und behält davon die letzten $2. So bleiben die Workspaces erhalten, auch wenn die Erweiterung entfernt wird oder das Profil kaputtgeht."
+    "message": "Legt regelmäßig einen Export in $1 ab und behält davon die letzten $2. Der Ordner liegt außerhalb von Downloads und Browserprofil, jedes Profil hat einen eigenen. So bleiben die Workspaces erhalten, auch wenn die Erweiterung entfernt wird oder das Profil kaputtgeht. Dafür muss install.sh eingerichtet sein."
   },
   "autoPlainText": {
-    "message": "Auch die Sicherungen enthalten alle Adressen und Titel im Klartext, samt Zugangstoken und Passwort-Reset-Links. Wer den Downloads-Ordner synchronisiert, gibt sie mit."
+    "message": "Auch die Sicherungen enthalten alle Adressen und Titel im Klartext, samt Zugangstoken und Passwort-Reset-Links. Wer den Ordner synchronisiert oder weitergibt, gibt sie mit."
   },
   "autoLabel": {
     "message": "Häufigkeit"
@@ -701,9 +701,6 @@
   "autoLastAt": {
     "message": "Zuletzt am $1."
   },
-  "autoPending": {
-    "message": "Gestartet am $1, die Datei ist noch nicht gespeichert."
-  },
   "autoFailed": {
     "message": "Automatische Sicherung am $1 fehlgeschlagen"
   },
@@ -713,8 +710,17 @@
   "autoBackupInvalid": {
     "message": "Unbekannter Abstand für die automatische Sicherung."
   },
-  "autoBackupInterrupted": {
-    "message": "Download abgebrochen ($1)"
+  "autoBackupNoHost": {
+    "message": "Das Hilfsprogramm für die Sicherung ist nicht eingerichtet. Im Ordner des Repositorys ./install.sh ausführen, nach einem Update ./install.sh --update."
+  },
+  "autoBackupWriteFailed": {
+    "message": "Die Sicherung konnte nicht geschrieben werden: $1"
+  },
+  "autoBackupHostFailed": {
+    "message": "native-host.sh hat die Sicherung abgelehnt ($1). Im Ordner des Repositorys ./install.sh --update ausführen."
+  },
+  "autoBackupTimeout": {
+    "message": "native-host.sh antwortet nicht."
   },
   "autoHint": {
     "message": "Die automatische Sicherung ist aus. Wird die Erweiterung entfernt oder geht das Profil kaputt, sind alle Workspaces weg."

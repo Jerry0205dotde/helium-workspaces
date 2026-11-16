@@ -36,8 +36,7 @@ importScripts(
 chrome.windows.onCreated.addListener(() => scheduleReconcile(), { windowTypes: ['normal'] });
 chrome.windows.onRemoved.addListener((id) => serial(() => onWindowRemoved(id)), { windowTypes: ['normal'] });
 
-// Beim Beenden kommen noch Fokuswechsel (etwa vom Download-Hinweis der automatischen
-// Sicherung), deren Speichern dann scheitert. Das ist harmlos.
+// Beim Beenden kommen noch Fokuswechsel, deren Speichern dann scheitert. Das ist harmlos.
 chrome.windows.onFocusChanged.addListener(async (winId) => {
   if (winId === chrome.windows.WINDOW_ID_NONE) return;
   try {

@@ -1,17 +1,22 @@
 // Hintergrundlogik: automatische Sicherung als Datei
 //
 // Workspaces und Sicherung liegen nur im Speicher der Erweiterung im Profil. Wird die
-// Erweiterung entfernt oder geht das Profil kaputt, sind sie weg. Auf Wunsch legt die
-// Erweiterung deshalb regelmäßig einen Export in einem Unterordner von Downloads ab und
-// behält davon die letzten AUTO_KEEP. Dafür gibt es AUTO_KEEP feste Dateinamen, die reihum
-// überschrieben werden. Aufräumen über den Download-Verlauf ginge nicht mehr, sobald jemand
-// ihn leert (#192).
+// Erweiterung entfernt oder geht das Profil kaputt, sind sie weg. Auf Wunsch schreibt die
+// Erweiterung deshalb regelmäßig einen Export in einen eigenen Ordner außerhalb von Downloads
+// und Browserprofil und behält davon die letzten AUTO_KEEP. Erweiterungen selbst können nur in
+// Downloads schreiben, deshalb schreibt native-host.sh, den install.sh als
+// Native-Messaging-Host anmeldet (#221). Jedes Profil bekommt einen eigenen Unterordner, benannt
+// nach seinem Schlüssel aus ensureToken: Profile und Browser überschreiben sich so nicht
+// gegenseitig (#215). Darin gibt es AUTO_KEEP feste Dateinamen, die reihum überschrieben werden.
 
 // Option „Automatisch sichern“: alle so viele Tage, 0 = nie
 const AUTO_CHOICES = [0, 1, 7];
 const AUTO_KEEP = 10;
-const AUTO_DIR = 'helium-workspaces';
-const AUTO_PREFIX = 'helium-workspaces-auto-';
+// Wo native-host.sh die Sicherungen ablegt, wenn XDG_DATA_HOME nicht gesetzt ist. Nach der
+// ersten Sicherung zeigt die Exportseite den tatsächlichen Ordner.
+const AUTO_DIR = '~/.local/share/helium-workspaces/backups/';
+// So lange darf native-host.sh für eine Sicherung brauchen
+const AUTO_TIMEOUT = 60000;
 const HOUR = 3600000;
 
 async function getAutoBackup() {
@@ -31,109 +36,78 @@ async function setAutoBackup(days) {
   if (!AUTO_CHOICES.includes(days)) throw new Error(tr('autoBackupInvalid'));
   await chrome.storage.local.set({ autoBackup: days });
   await scheduleAutoBackup();
-  return autoBackupIfDue(15000);
+  return autoBackupIfDue();
 }
 
-// Fällig, wenn seit dem letzten Versuch die eingestellten Tage vergangen sind. Eine halbe
+// Fällig, wenn seit der letzten Sicherung die eingestellten Tage vergangen sind. Eine halbe
 // Stunde Spielraum, weil der Wecker nicht auf die Sekunde genau klingelt: So rutscht die
-// tägliche Sicherung nicht jeden Tag eine Stunde später. Scheitert schon der Start, gilt der Versuch nicht und der
-// Wecker probiert es nach einer Stunde wieder. Ein gestarteter Download zählt, auch wenn er
-// später abbricht: Fragt Helium nach dem Speicherort und wird das abgebrochen, käme die
-// Frage sonst jede Stunde.
-// Gibt { done } zurück, ein Promise auf das Ende des Downloads. In einem Objekt, damit
-// serial() nicht darauf wartet: Der Dialog zum Speicherort kann offen bleiben.
+// tägliche Sicherung nicht jeden Tag eine Stunde später. Scheitert sie, probiert es der
+// Wecker nach einer Stunde wieder.
+// Gibt { done } zurück, ein Promise auf das Ende des Schreibens. In einem Objekt, damit
+// serial() nicht darauf wartet: Wechsel sollen nicht auf native-host.sh warten. Der Export
+// selbst entsteht innerhalb von serial(), damit er einen stimmigen Stand zeigt.
 // force sichert auch, wenn noch nichts fällig ist (siehe autoBackupNow).
-async function autoBackupIfDue(wait = 10 * 60000, force = false) {
+let autoWriting = null;
+async function autoBackupIfDue(force = false) {
   const days = await getAutoBackup();
-  if (!days || (await getPending())) return null;
-  const { autoBackupAt = 0 } = await chrome.storage.local.get('autoBackupAt');
+  if (!days || autoWriting || (await getPending())) return null;
+  const { autoBackupAt = 0, autoBackupCount = 0 } = await chrome.storage.local.get(['autoBackupAt', 'autoBackupCount']);
   if (!force && Date.now() - autoBackupAt < days * 24 * HOUR - HOUR / 2) return null;
+  let msg;
   try {
-    await eraseOlderEntries().catch((e) => console.warn('[workspaces] Download-Verlauf', e));
-    const { autoBackupCount = 0 } = await chrome.storage.local.get('autoBackupCount');
-    const id = await startAutoBackup((autoBackupCount % AUTO_KEEP) + 1);
-    await chrome.storage.local.set({ autoBackupAt: Date.now(), autoBackupId: id, autoBackupCount: autoBackupCount + 1 });
-    await chrome.storage.local.remove('autoBackupError');
-    const done = downloadDone(id, wait).then(eraseOlderEntries);
-    return { done: done.catch((e) => console.warn('[workspaces] Download-Verlauf', e)) };
+    msg = await autoBackupMessage((autoBackupCount % AUTO_KEEP) + 1);
   } catch (e) {
-    console.warn('[workspaces] Automatische Sicherung', e);
-    await chrome.storage.local.set({ autoBackupError: { at: Date.now(), message: String(e?.message || e) } });
+    await autoBackupFailed(e);
     return null;
   }
+  autoWriting = writeAutoBackup(msg, autoBackupCount).finally(() => (autoWriting = null));
+  return { done: autoWriting };
 }
 
-// „Jetzt sichern“ neben der Fehlermeldung im Popup. Sonst käme nach einem abgebrochenen
-// Download die nächste Sicherung erst nach dem eingestellten Abstand, bei wöchentlicher
-// also nach einer Woche.
-const autoBackupNow = () => autoBackupIfDue(15000, true);
+// „Jetzt sichern“ neben der Fehlermeldung im Popup. Sonst käme nach einer gescheiterten
+// Sicherung die nächste erst nach dem eingestellten Abstand, bei wöchentlicher also nach
+// einer Woche.
+const autoBackupNow = () => autoBackupIfDue(true);
 
-// Startet den Download des Exports in die Datei mit der Nummer slot und gibt seine ID
-// zurück. Ein Service Worker hat kein URL.createObjectURL, deshalb eine data:-URL. Das
-// Datum steht in der Datei (exported) und im Änderungsdatum.
-async function startAutoBackup(slot) {
+// Die Nachricht an native-host.sh: Nummer der Datei, Unterordner des Profils und der Export
+// in Base64, so braucht der Host keinen JSON-Parser. Das Datum steht in der Datei (exported).
+async function autoBackupMessage(slot) {
   const data = await exportAll();
   const bytes = new TextEncoder().encode(JSON.stringify(data, null, 2) + '\n');
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return chrome.downloads.download({
-    url: `data:application/json;base64,${btoa(bin)}`,
-    filename: `${AUTO_DIR}/${AUTO_PREFIX}${slot}.json`,
-    conflictAction: 'overwrite',
-    saveAs: false,
-  });
+  return { at: Date.parse(data.exported), msg: { backup: slot, profile: await ensureToken(), data: btoa(bin) } };
 }
 
-// Wartet, bis der Download fertig oder abgebrochen ist, höchstens ms
-function downloadDone(id, ms) {
-  return new Promise((resolve) => {
-    const finish = () => {
-      clearTimeout(timer);
-      chrome.downloads.onChanged.removeListener(changed);
-      resolve();
-    };
-    const check = async () => {
-      const [item] = await chrome.downloads.search({ id }).catch(() => []);
-      if (item?.state !== 'in_progress') finish();
-    };
-    const changed = (delta) => {
-      if (delta.id === id && delta.state) check();
-    };
-    const timer = setTimeout(finish, ms);
-    chrome.downloads.onChanged.addListener(changed);
-    check();
-  });
+async function writeAutoBackup({ at, msg }, count) {
+  let timer;
+  try {
+    const r = await Promise.race([
+      chrome.runtime.sendNativeMessage(NATIVE_HOST, msg),
+      new Promise((resolve, reject) => (timer = setTimeout(() => reject(new Error(tr('autoBackupTimeout'))), AUTO_TIMEOUT))),
+    ]);
+    if (!r?.ok) throw new Error(r?.error === 'write' ? tr('autoBackupWriteFailed', r.file || '') : tr('autoBackupHostFailed', r?.error || ''));
+    await chrome.storage.local.set({ autoBackupAt: at, autoBackupFile: r.file, autoBackupCount: count + 1 });
+    // autoBackupId: Download-ID aus Fassungen, die nach Downloads gesichert haben
+    await chrome.storage.local.remove(['autoBackupError', 'autoBackupId']);
+  } catch (e) {
+    await autoBackupFailed(/native messaging host not found/i.test(e?.message) ? new Error(tr('autoBackupNoHost')) : e);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-// Stand für die Exportseite und das Popup. Ob die letzte Sicherung gelang, steht im
-// Download-Verlauf; hat jemand ihn geleert, bleibt nur der Zeitpunkt.
+async function autoBackupFailed(e) {
+  console.warn('[workspaces] Automatische Sicherung', e);
+  await chrome.storage.local.set({ autoBackupError: { at: Date.now(), message: String(e?.message || e) } });
+}
+
+// Stand für die Exportseite und das Popup. dir ist der Ordner der letzten Sicherung, vor der
+// ersten der, in den sie ohne XDG_DATA_HOME käme.
 async function autoBackupState() {
-  const { autoBackupAt, autoBackupId, autoBackupError } = await chrome.storage.local.get(['autoBackupAt', 'autoBackupId', 'autoBackupError']);
+  const { autoBackupAt, autoBackupFile, autoBackupError, token } = await chrome.storage.local.get(['autoBackupAt', 'autoBackupFile', 'autoBackupError', 'token']);
   const days = await getAutoBackup();
-  let last = null;
-  let error = autoBackupError || null;
-  if (autoBackupAt) {
-    const [item] = autoBackupId === undefined ? [] : await chrome.downloads.search({ id: autoBackupId }).catch(() => []);
-    last = { at: autoBackupAt, file: item?.filename || '', state: item?.state || 'unknown' };
-    if (item?.state === 'interrupted' && !error) error = { at: autoBackupAt, message: tr('autoBackupInterrupted', item.error || '') };
-  }
-  return { days, choices: AUTO_CHOICES, keep: AUTO_KEEP, dir: AUTO_DIR, last, error: days ? error : null };
-}
-
-// Ältere Einträge derselben Datei im Download-Verlauf zeigen nur noch auf die überschriebene
-// Datei. Sie verschwinden, damit der Verlauf nicht mit jeder Sicherung wächst, je Datei
-// bleibt der neueste. Die Dateien selbst bleiben. Läuft vor und nach jeder Sicherung: Wird
-// der Speicherdialog erst nach dem Warten bestätigt, holt es die nächste nach.
-async function eraseOlderEntries() {
-  const items = await chrome.downloads.search({
-    filenameRegex: `[\\\\/]${AUTO_DIR}[\\\\/]${AUTO_PREFIX}[^\\\\/]*\\.json$`,
-    state: 'complete',
-    orderBy: ['-startTime'],
-  });
-  const seen = new Set();
-  for (const i of items) {
-    if (i.byExtensionId !== chrome.runtime.id) continue;
-    if (seen.has(i.filename)) await chrome.downloads.erase({ id: i.id });
-    seen.add(i.filename);
-  }
+  const dir = autoBackupFile ? autoBackupFile.replace(/[^/]*$/, '') : `${AUTO_DIR}${token || ''}${token ? '/' : ''}`;
+  const last = autoBackupAt ? { at: autoBackupAt, file: autoBackupFile || '' } : null;
+  return { days, choices: AUTO_CHOICES, keep: AUTO_KEEP, dir, last, error: days ? autoBackupError || null : null };
 }

@@ -74,10 +74,7 @@ function renderAuto(a) {
   }));
   $('auto').value = String(a.days);
   const last = a.last;
-  $('auto-info').textContent = !last ? ''
-    : last.state === 'complete' ? tr('autoLast', when(last.at), last.file)
-    : last.state === 'in_progress' ? tr('autoPending', when(last.at))
-    : tr('autoLastAt', when(last.at));
+  $('auto-info').textContent = !last ? '' : last.file ? tr('autoLast', when(last.at), last.file) : tr('autoLastAt', when(last.at));
   const box = $('auto-error');
   box.hidden = !a.error;
   box.replaceChildren(...(a.error ? [el('p', 'msg', tr('autoFailed', when(a.error.at))), el('p', 'detail', errorText(a.error.message))] : []));

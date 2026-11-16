@@ -678,10 +678,10 @@
     "message": "Automatic backup"
   },
   "autoText": {
-    "message": "Regularly saves an export to Downloads/$1/ and keeps the last $2. This way the workspaces survive even if the extension is removed or the profile breaks."
+    "message": "Regularly saves an export to $1 and keeps the last $2. The folder is outside of Downloads and the browser profile, each profile has its own. This way the workspaces survive even if the extension is removed or the profile breaks. This needs install.sh to be set up."
   },
   "autoPlainText": {
-    "message": "The backups also contain all addresses and titles in plain text, including access tokens and password reset links. Syncing the Downloads folder passes those on too."
+    "message": "The backups also contain all addresses and titles in plain text, including access tokens and password reset links. Syncing or passing on the folder passes those on too."
   },
   "autoLabel": {
     "message": "Frequency"
@@ -701,9 +701,6 @@
   "autoLastAt": {
     "message": "Last on $1."
   },
-  "autoPending": {
-    "message": "Started on $1, the file is not saved yet."
-  },
   "autoFailed": {
     "message": "Automatic backup on $1 failed"
   },
@@ -713,8 +710,17 @@
   "autoBackupInvalid": {
     "message": "Unknown interval for the automatic backup."
   },
-  "autoBackupInterrupted": {
-    "message": "Download interrupted ($1)"
+  "autoBackupNoHost": {
+    "message": "The helper program for the backup is not set up. Run ./install.sh in the repository folder, after an update ./install.sh --update."
+  },
+  "autoBackupWriteFailed": {
+    "message": "The backup could not be written: $1"
+  },
+  "autoBackupHostFailed": {
+    "message": "native-host.sh rejected the backup ($1). Run ./install.sh --update in the repository folder."
+  },
+  "autoBackupTimeout": {
+    "message": "native-host.sh does not respond."
   },
   "autoHint": {
     "message": "Automatic backup is off. If the extension is removed or the profile breaks, all workspaces are gone."

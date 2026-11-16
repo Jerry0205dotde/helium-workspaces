@@ -37,6 +37,6 @@ Without the extension the stash windows lose their marker, but their tabs stay i
    ```
 
    This brings the stash windows back to the taskbar and Alt+Tab, then unloads the script, removes it and deletes its entries from `kwinrc`. As with installing, run it in a terminal inside the Plasma session. If it cannot reach KWin, it stops without removing anything.
-4. **Remove the extension.** In `chrome://extensions`, click **Remove** on "Workspaces". This deletes the workspaces and the backup from the profile. After that the repository folder can be deleted.
+4. **Remove the extension.** In `chrome://extensions`, click **Remove** on "Workspaces". This deletes the workspaces and the backup from the profile. After that the repository folder can be deleted. The automatic backups in `~/.local/share/helium-workspaces/backups/` stay until you delete them yourself.
 
 The stash windows stay minimized until you click them. Each one contains the tabs of one workspace. Merge or close the tabs as you like. Leftover tabs with the address `chrome-extension://…/stash.html#…` are empty and can be closed. If a window still stays invisible, quit Helium and start it again.

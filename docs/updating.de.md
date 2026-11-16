@@ -37,6 +37,6 @@ Ohne die Erweiterung verlieren die Ablage-Fenster ihre Markierung, ihre Tabs ble
    ```
 
    Das holt die Ablage-Fenster zurück in Taskleiste und Alt+Tab, entlädt dann das Skript, entfernt es und löscht seine Einträge aus `kwinrc`. Wie beim Installieren in einem Terminal in der Plasma-Sitzung ausführen. Erreicht es KWin nicht, bricht es ab, ohne etwas zu entfernen.
-4. **Erweiterung entfernen.** In `chrome://extensions` bei „Workspaces“ auf **Entfernen** klicken. Das löscht die Workspaces und die Sicherung aus dem Profil. Danach kann der Repository-Ordner gelöscht werden.
+4. **Erweiterung entfernen.** In `chrome://extensions` bei „Workspaces“ auf **Entfernen** klicken. Das löscht die Workspaces und die Sicherung aus dem Profil. Danach kann der Repository-Ordner gelöscht werden. Die automatischen Sicherungen in `~/.local/share/helium-workspaces/backups/` bleiben, bis man sie selbst löscht.
 
 Die Ablage-Fenster bleiben minimiert, bis man sie anklickt. Jedes enthält die Tabs eines Workspace. Die Tabs nach Wunsch zusammenführen oder schließen. Übrig gebliebene Tabs mit der Adresse `chrome-extension://…/stash.html#…` sind leer und können zu. Bleibt doch ein Fenster unsichtbar, Helium beenden und neu starten.
