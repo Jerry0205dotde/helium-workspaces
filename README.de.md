@@ -4,6 +4,8 @@
 
 Helium Workspaces bringt Arbeitsbereiche wie in Opera in den [Helium-Browser](https://github.com/imputnet/helium-linux): mehrere Tab-Sätze im selben Fenster, umschaltbar per Klick oder Tastenkürzel. Beim Wechseln wird nichts neu geladen, Videos und Logins laufen einfach weiter.
 
+![Wechsel von „Ich“ zu „Uni“ und zurück in der Workspace-Liste: Die Tabs des anderen Workspace erscheinen, und „Ich“ kommt mit demselben offenen Tab zurück](docs/switch-de.gif)
+
 Besteht aus einer Browser-Erweiterung und einem kleinen KWin-Skript für KDE Plasma. Die Erweiterung spricht Deutsch und Englisch und richtet sich nach der Sprache des Browsers.
 
 ## „Warum nicht einfach Profile?“
@@ -133,6 +135,11 @@ Mehrere Browser oder Profile mit der Erweiterung, etwa Helium und Chromium oder 
 Workspaces auf ein anderes Gerät bringt der Export (siehe unten). Er enthält den Schlüssel nicht.
 
 ## Benutzung
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/popup-de-dark.png">
+  <img src="docs/popup-de-light.png" width="408" alt="Die Workspace-Liste mit den Workspaces Ich, Uni und Projekte, darunter Neuer Workspace, Exportieren / Importieren, Ablagen stummschalten und Ablagen entladen nach">
+</picture>
 
 | Aktion | So geht's |
 | --- | --- |
@@ -292,6 +299,7 @@ KWin prüfen die Tests nicht. Nach Änderungen daran kurz von Hand:
   - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): die Seite, die ein Fenster als Ablage markiert
   - [`label.js`](./extension/label.js): das Zeichen im Symbol eines Workspace
 - [`kwin/`](./kwin): KWin-Skript, das die Ablage-Fenster versteckt
+- [`docs/`](./docs): die Bilder dieser README
 - [`install.sh`](./install.sh): KWin-Skript einrichten und den Schlüssel eintragen, mit `--remove` einen Schlüssel austragen, mit `--update` aktualisieren, mit `--uninstall` wieder entfernen
 - [`test/`](./test): automatische Tests, [`fake-browser.js`](./test/fake-browser.js) bildet die Chrome-APIs nach, [`page.js`](./test/page.js) bedient Popup und Importseite in Chromium, [`chromium.js`](./test/chromium.js) steuert einen echten Chromium
 
