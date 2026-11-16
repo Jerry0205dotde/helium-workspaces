@@ -254,7 +254,7 @@ Braucht nur Node.js ab Version 22, keinen Browser und kein KWin. Die Tests laden
 
 Ändert sich etwas in `extension/`, muss die Version in [`manifest.json`](./extension/manifest.json) höher sein als auf `main`, sonst schlägt `static.test.js` fehl. Die Version steht unten rechts im Popup, so sieht man nach einem Update, ob der neue Stand läuft. Das KWin-Skript trägt in [`metadata.json`](./kwin/metadata.json) dieselbe Version, auch das prüft `static.test.js`, und `install.sh` nennt sie am Ende. Verglichen wird mit `origin/main`, mit `VERSION_BASE` lässt sich eine andere Ref angeben. Fehlt die Ref, wird die Prüfung übersprungen.
 
-Landet eine höhere Version auf `main`, setzt [`tag.yml`](./.github/workflows/tag.yml) auf diesen Commit das Tag `v<Version>`, zum Beispiel `v0.2.0`.
+Landet eine höhere Version auf `main`, setzt [`tag.yml`](./.github/workflows/tag.yml) auf diesen Commit das Tag `v<Version>`, zum Beispiel `v0.2.0`, und legt dazu ein [Release](https://github.com/Jerry0205dotde/helium-workspaces/releases) an, das die PRs seit der vorigen Version auflistet.
 
 Mit einem Chromium-Browser laufen die wichtigsten Abläufe zusätzlich in einem echten Browser:
 
