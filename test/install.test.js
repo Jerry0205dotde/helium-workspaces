@@ -259,9 +259,15 @@ test('--help zeigt den Kopfkommentar und ändert nichts, auch ohne KDE-Programme
 });
 
 // So schreiben Helium und Chrome die Einstellung: der Wert unter session, die gleichnamige
-// Prüfsumme unter protection.macs. Ohne Wert gilt „Neuer Tab“.
-const prefs = (restore) =>
+// Prüfsumme unter protection.macs. Ohne Wert gilt „Neuer Tab“. Mit extension steht die
+// Erweiterung unter extensions.settings, ohne kommt ihre ID nur als Wert vor, wie in
+// extensions.commands nach dem Entfernen.
+const EXT_ID = 'jchklfejnmfphkbcpnhdejmeoncejjbe';
+const prefs = (restore, { extension = true } = {}) =>
   JSON.stringify({
+    extensions: extension
+      ? { settings: { [EXT_ID]: { location: 4 } } }
+      : { commands: { 'linux:Alt+W': { command_name: '_execute_action', extension: EXT_ID } } },
     protection: { macs: { session: { restore_on_startup: '81940185F7F78D0317AB3741FA4A2839' } } },
     session: restore === undefined ? {} : { restore_on_startup: restore },
   });
@@ -278,14 +284,14 @@ test('Installation weist auf Profile hin, die nicht dort weitermachen, wo man au
   };
   const r = run([TOKEN], { profiles });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /Hinweis: Diese Profile starten nicht mit „Dort weitermachen, wo ich aufgehört habe“/);
+  assert.match(r.stdout, /^\nAchtung: In diesen Profilen ist die Erweiterung installiert, sie starten aber nicht mit\n„Dort weitermachen, wo ich aufgehört habe“:\n/);
   const listed = r.stdout.split('\n').filter((l) => l.startsWith('  '));
   assert.deepEqual(listed, [
     '  Helium: ~/.config/net.imput.helium/Profile 1',
     '  Google Chrome: ~/.config/google-chrome/Default',
     '  Chromium: ~/.config/chromium/Profile 2',
   ]);
-  assert.ok(r.stdout.endsWith(DONE_DE), r.stdout);
+  assert.ok(r.stdout.endsWith(`Option wählen.\n\n${DONE_DE}`), r.stdout);
   // Nur ein Hinweis, die Einstellungen bleiben unverändert
   assert.deepEqual(r.profiles, profiles);
 });
@@ -293,7 +299,30 @@ test('Installation weist auf Profile hin, die nicht dort weitermachen, wo man au
 test('Installation gibt keinen Hinweis, wenn alle Profile dort weitermachen', () => {
   const r = run([TOKEN], { profiles: { 'net.imput.helium/Default': prefs(1), 'chromium/Profile 3': prefs(1) } });
   assert.equal(r.status, 0, r.stderr);
-  assert.doesNotMatch(r.stdout, /Hinweis/);
+  assert.equal(r.stdout, DONE_DE);
+});
+
+test('Installation gibt keinen Hinweis für Profile ohne die Erweiterung', () => {
+  const r = run([TOKEN], {
+    profiles: { 'google-chrome/Default': prefs(5, { extension: false }), 'chromium/Default': prefs(undefined, { extension: false }) },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, DONE_DE);
+});
+
+test('Installation findet die Erweiterung auch in Secure Preferences', () => {
+  const r = run([TOKEN], {
+    profiles: { 'google-chrome/Default': prefs(5, { extension: false }) },
+    setup: (dir) => {
+      fs.writeFileSync(
+        path.join(dir, 'home/.config/google-chrome/Default/Secure Preferences'),
+        JSON.stringify({ extensions: { settings: { [EXT_ID]: { location: 4 } } } }),
+      );
+      return INSTALL;
+    },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.stdout.split('\n').filter((l) => l.startsWith('  ')), ['  Google Chrome: ~/.config/google-chrome/Default']);
 });
 
 test('Installation gibt keinen Hinweis ohne Browserprofile', () => {
@@ -586,11 +615,11 @@ test('Hinweis auf Profile auf Englisch', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.equal(
     r.stdout,
-    'Note: these profiles do not start with "Continue where you left off":\n' +
+    '\nWarning: these profiles have the extension installed but do not start with\n' +
+      '"Continue where you left off":\n' +
       '  Chromium: ~/.config/chromium/Default\n' +
-      'The browser then does not restore the stash windows on startup, and their tabs reload\n' +
-      'and lose their history. If you use the extension in one of these profiles, choose that\n' +
-      'option there under Settings → On startup.\n' +
+      'After a browser restart, the tabs of the stashes reload there and lose their history.\n' +
+      'Fix: choose that option in the browser under Settings → On startup.\n\n' +
       DONE_EN,
   );
 });

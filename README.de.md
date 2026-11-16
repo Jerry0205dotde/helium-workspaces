@@ -38,7 +38,7 @@ Drei Teile arbeiten zusammen:
 - KDE Plasma 6 mit KWin 6, unter Wayland oder X11. Andere Desktops verstecken die Ablage-Fenster nicht.
 - Für `install.sh`: `bash`, `sed`, `tr` und `git` sowie `kpackagetool6`, `kreadconfig6`, `kwriteconfig6` und `qdbus6`. Bei Arch heißen die Pakete `coreutils`, `kpackage`, `kconfig` und `qt6-tools`. Statt `qdbus6` nimmt `install.sh` auch `qdbus-qt6` (so bei Fedora) oder `qdbus`. Fehlt etwas, nennt `install.sh` die Programme und bricht ab, bevor es etwas ändert.
 - Eine laufende Plasma-Sitzung. `install.sh` lädt das Skript über den D-Bus dieser Sitzung direkt in KWin. Am sichersten in einem Terminal innerhalb der Sitzung starten.
-- In Helium unter *Einstellungen → Beim Start* die Option **„Dort weitermachen, wo ich aufgehört habe“**. Mit einer anderen Starteinstellung stellt Helium die Ablage-Fenster beim Start nicht wieder her. Die Erweiterung baut die Workspaces dann aus ihrer Sicherung neu auf, die Tabs laden dabei aber neu und verlieren ihren Verlauf (siehe [Was erhalten bleibt](#was-erhalten-bleibt)). `install.sh` nennt am Ende die Profile von Helium, Google Chrome und Chromium, in denen die Option fehlt, und ändert dort nichts.
+- In Helium unter *Einstellungen → Beim Start* die Option **„Dort weitermachen, wo ich aufgehört habe“**. Mit einer anderen Starteinstellung stellt Helium die Ablage-Fenster beim Start nicht wieder her. Die Erweiterung baut die Workspaces dann aus ihrer Sicherung neu auf, die Tabs laden dabei aber neu und verlieren ihren Verlauf (siehe [Was erhalten bleibt](#was-erhalten-bleibt)). `install.sh` nennt am Ende die Profile von Helium, Google Chrome und Chromium, in denen die Erweiterung installiert ist, die Option aber fehlt, und ändert dort nichts.
 
 ### Google Chrome und Chromium
 

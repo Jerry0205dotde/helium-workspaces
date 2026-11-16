@@ -71,7 +71,8 @@ test('manifest.json hat einen festen Schlüssel, die README nennt die ID daraus'
   assert.equal(crypto.createPublicKey({ key: der, format: 'der', type: 'spki' }).asymmetricKeyType, 'rsa');
   const id = [...crypto.createHash('sha256').update(der).digest('hex').slice(0, 32)].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
   assert.equal(id, 'jchklfejnmfphkbcpnhdejmeoncejjbe');
-  for (const f of ['README.md', 'README.de.md']) assert.ok(fs.readFileSync(path.join(ROOT, f), 'utf8').includes(id), `${f} nennt die ID nicht`);
+  // install.sh erkennt an der ID, in welchen Profilen die Erweiterung installiert ist
+  for (const f of ['README.md', 'README.de.md', 'install.sh']) assert.ok(fs.readFileSync(path.join(ROOT, f), 'utf8').includes(id), `${f} nennt die ID nicht`);
 });
 
 test('manifest.json nennt eine Mindestversion, die alle benutzten Schnittstellen hat', () => {

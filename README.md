@@ -38,7 +38,7 @@ Three parts work together:
 - KDE Plasma 6 with KWin 6, on Wayland or X11. Other desktops do not hide the stash windows.
 - For `install.sh`: `bash`, `sed`, `tr` and `git` as well as `kpackagetool6`, `kreadconfig6`, `kwriteconfig6` and `qdbus6`. On Arch the packages are called `coreutils`, `kpackage`, `kconfig` and `qt6-tools`. Instead of `qdbus6`, `install.sh` also accepts `qdbus-qt6` (as on Fedora) or `qdbus`. If anything is missing, `install.sh` lists the programs and stops before it changes anything.
 - A running Plasma session. `install.sh` loads the script straight into KWin over the D-Bus of that session. The safest way is to run it in a terminal inside the session.
-- In Helium, under *Settings → On startup*, the option **"Continue where you left off"**. With any other startup setting Helium does not restore the stash windows on startup. The extension then rebuilds the workspaces from its backup, but the tabs reload and lose their history (see [What is preserved](#what-is-preserved)). At the end, `install.sh` lists the Helium, Google Chrome and Chromium profiles that lack this option and changes nothing there.
+- In Helium, under *Settings → On startup*, the option **"Continue where you left off"**. With any other startup setting Helium does not restore the stash windows on startup. The extension then rebuilds the workspaces from its backup, but the tabs reload and lose their history (see [What is preserved](#what-is-preserved)). At the end, `install.sh` lists the Helium, Google Chrome and Chromium profiles that have the extension installed but lack this option, and changes nothing there.
 
 ### Google Chrome and Chromium
 

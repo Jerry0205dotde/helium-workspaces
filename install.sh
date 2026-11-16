@@ -13,7 +13,8 @@
 # ./install.sh --update holt mit git pull den neuen Stand und richtet das KWin-Skript ohne
 # Rückfrage neu ein, Schlüssel und Browserliste bleiben.
 # Nach der Installation weist das Skript auf Profile von Helium, Google Chrome und Chromium hin,
-# die nicht mit „Dort weitermachen, wo ich aufgehört habe“ starten. Es ändert dort nichts.
+# in denen die Erweiterung installiert ist, die aber nicht mit „Dort weitermachen, wo ich
+# aufgehört habe“ starten. Es ändert dort nichts.
 # Bevor es etwas ändert, prüft das Skript, ob alle benötigten Programme da sind. Für qdbus6
 # nimmt es auch qdbus-qt6 (Fedora) oder qdbus. ./install.sh --help zeigt diesen Text.
 set -euo pipefail
@@ -213,7 +214,10 @@ kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true
 
 # session.restore_on_startup ist 1 bei „Dort weitermachen, wo ich aufgehört habe“. Fehlt der
 # Wert, gilt der Standard „Neuer Tab“ (5). Die gleichnamigen Prüfsummen unter protection.macs
-# sind Zeichenketten und passen deshalb nicht auf das Muster.
+# sind Zeichenketten und passen deshalb nicht auf das Muster. Profile ohne die Erweiterung
+# zählen nicht: Ihre Einstellungen unter extensions.settings stehen je nach Browser in
+# Preferences oder Secure Preferences, unter der festen ID aus dem Schlüssel in manifest.json.
+EXT_ID=jchklfejnmfphkbcpnhdejmeoncejjbe
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
 RESTORE_RE='"restore_on_startup":([0-9]+)'
 NOT_RESTORING=()
@@ -221,22 +225,28 @@ for entry in "net.imput.helium:Helium" "google-chrome:Google Chrome" "chromium:C
   dir="$CONFIG/${entry%%:*}"
   for prefs in "$dir/Default/Preferences" "$dir"/Profile\ */Preferences; do
     [ -f "$prefs" ] || continue
-    [[ "$(<"$prefs")" =~ $RESTORE_RE && "${BASH_REMATCH[1]}" = 1 ]] && continue
     profile="${prefs%/Preferences}"
+    content="$(<"$prefs")"
+    secure=""
+    [ ! -f "$profile/Secure Preferences" ] || secure="$(<"$profile/Secure Preferences")"
+    [[ "$content$secure" == *"\"$EXT_ID\":{"* ]] || continue
+    [[ "$content" =~ $RESTORE_RE && "${BASH_REMATCH[1]}" = 1 ]] && continue
     NOT_RESTORING+=("${entry#*:}: ${profile/#"$HOME"/\~}")
   done
 done
 if [ ${#NOT_RESTORING[@]} -gt 0 ]; then
+  printf '\n'
+  t "Achtung: In diesen Profilen ist die Erweiterung installiert, sie starten aber nicht mit" \
+    "Warning: these profiles have the extension installed but do not start with"
   # Die deutschen Anführungszeichen sind gewollter Text, keine verirrten Shell-Quotes
   # shellcheck disable=SC1111
-  t "Hinweis: Diese Profile starten nicht mit „Dort weitermachen, wo ich aufgehört habe“:" \
-    "Note: these profiles do not start with \"Continue where you left off\":"
+  t "„Dort weitermachen, wo ich aufgehört habe“:" "\"Continue where you left off\":"
   printf '  %s\n' "${NOT_RESTORING[@]}"
-  t "Dann stellt der Browser die Ablage-Fenster beim Start nicht wieder her, und ihre Tabs laden" \
-    "The browser then does not restore the stash windows on startup, and their tabs reload"
-  t "neu und verlieren ihren Verlauf. Nutzt du die Erweiterung in einem dieser Profile, dort unter" \
-    "and lose their history. If you use the extension in one of these profiles, choose that"
-  t "Einstellungen → Beim Start die Option wählen." "option there under Settings → On startup."
+  t "Nach einem Neustart des Browsers laden die Tabs der Ablagen dort neu und verlieren ihren Verlauf." \
+    "After a browser restart, the tabs of the stashes reload there and lose their history."
+  t "Abhilfe: im Browser unter Einstellungen → Beim Start diese Option wählen." \
+    "Fix: choose that option in the browser under Settings → On startup."
+  printf '\n'
 fi
 # Die Version des KWin-Skripts ist dieselbe wie die der Erweiterung (test/static.test.js)
 [ ${#KEYS[@]} -lt 2 ] || t "Eingetragene Schlüssel: $(join_keys)" "Keys set up: $(join_keys)"
