@@ -16,17 +16,11 @@ Helium hat das nicht eingebaut, also habe ich es gebaut.
 
 ## So funktioniert's
 
-Jedes normale Fenster zeigt genau einen Workspace. Die Tabs der gerade nicht gezeigten Workspaces liegen in versteckten **Ablage-Fenstern**, eins pro Workspace. Beim Wechseln werden die Tabs zwischen den Fenstern verschoben, nicht geschlossen. Deshalb bleiben sie geladen.
-
-Drei Teile arbeiten zusammen:
-
-- **Die Erweiterung** (Ordner `extension/`) verschiebt die Tabs und legt die Ablage-Fenster an. Der erste, angeheftete Tab jeder Ablage ist eine Seite der Erweiterung. Sie setzt den Fenstertitel auf `HWS-Ablage <Schlüssel> · <Workspace-Name>`.
-- **Der Schlüssel** entsteht beim ersten Start der Erweiterung und liegt in ihrem Speicher im Helium-Profil. `install.sh` trägt ihn in die KWin-Einstellungen (`kwinrc`) ein.
-- **Das KWin-Skript** (Ordner `kwin/`) sucht Browserfenster, in deren Titel `HWS-Ablage` mit diesem Schlüssel steht. Es nimmt sie aus Taskleiste, Alt+Tab, Übersicht und Pager und hält sie minimiert. Eine Webseite kann sich deshalb nicht als Ablage ausgeben, denn sie kennt den Schlüssel nicht.
+Jedes normale Fenster zeigt genau einen Workspace. Die Tabs der anderen Workspaces liegen in versteckten **Ablage-Fenstern**, eins pro Workspace. Beim Wechseln werden die Tabs zwischen den Fenstern verschoben, nicht geschlossen, deshalb bleiben sie geladen. Das KWin-Skript versteckt die Ablage-Fenster vor Taskleiste und Alt+Tab. Mehr unter [So funktioniert's](./docs/how-it-works.de.md).
 
 ### Grenzen
 
-- Tabs in Ablagen bleiben geladen. Sie brauchen weiter Arbeitsspeicher, und Videos oder Musik laufen im Hintergrund weiter. Mit **Ablagen stummschalten** in der Workspace-Liste sind sie dabei wenigstens stumm. Mit **Ablagen entladen nach** werden sie nach einer gewählten Zeit entladen (siehe unten).
+- Tabs in Ablagen bleiben geladen. Sie brauchen weiter Arbeitsspeicher, und Videos oder Musik laufen im Hintergrund weiter. Mit **Ablagen stummschalten** in der Workspace-Liste sind sie dabei wenigstens stumm. Mit **Ablagen entladen nach** werden sie nach einer gewählten Zeit entladen (siehe [Ablagen entladen](./docs/usage.de.md#ablagen-entladen)).
 - Angeheftete Tabs gehören zu allen Workspaces und bleiben immer im Hauptfenster.
 - Mehrere Fenster können denselben Workspace zeigen, etwa nach <kbd>Strg</kbd>+<kbd>N</kbd>.
 - Inkognito-Fenster werden nicht berücksichtigt.
@@ -34,40 +28,13 @@ Drei Teile arbeiten zusammen:
 
 ## Voraussetzungen
 
-- [Helium](https://github.com/imputnet/helium-linux) unter Linux. Getestet mit Helium 0.21.
+- [Helium](https://github.com/imputnet/helium-linux) unter Linux. Getestet mit Helium 0.21. Google Chrome und Chromium ab Version 102 gehen auch, andere Browser wie Brave müssen erst in die Liste des KWin-Skripts, siehe [Google Chrome, Chromium und andere Browser](./docs/how-it-works.de.md#google-chrome-und-chromium).
 - KDE Plasma 6 mit KWin 6, unter Wayland oder X11. Andere Desktops verstecken die Ablage-Fenster nicht.
 - Für `install.sh`: `bash`, `sed`, `tr` und `git` sowie `kpackagetool6`, `kreadconfig6`, `kwriteconfig6` und `qdbus6`. Bei Arch heißen die Pakete `coreutils`, `kpackage`, `kconfig` und `qt6-tools`. Statt `qdbus6` nimmt `install.sh` auch `qdbus-qt6` (so bei Fedora) oder `qdbus`. Fehlt etwas, nennt `install.sh` die Programme und bricht ab, bevor es etwas ändert.
 - Eine laufende Plasma-Sitzung. `install.sh` lädt das Skript über den D-Bus dieser Sitzung direkt in KWin. Am sichersten in einem Terminal innerhalb der Sitzung starten.
-- In Helium unter *Einstellungen → Beim Start* die Option **„Dort weitermachen, wo ich aufgehört habe“**. Mit einer anderen Starteinstellung stellt Helium die Ablage-Fenster beim Start nicht wieder her. Die Erweiterung baut die Workspaces dann aus ihrer Sicherung neu auf, die Tabs laden dabei aber neu und verlieren ihren Verlauf (siehe [Was erhalten bleibt](#was-erhalten-bleibt)). `install.sh` nennt am Ende die Profile von Helium, Google Chrome und Chromium, in denen die Erweiterung installiert ist, die Option aber fehlt, und ändert dort nichts.
-
-### Google Chrome und Chromium
-
-Die Erweiterung läuft auch in Google Chrome und Chromium. Sie wird dort genauso unter `chrome://extensions` installiert, und die Starteinstellung oben gilt dort ebenso. Sie braucht Version 102 oder neuer, ältere Versionen lehnen die Installation ab. Dabei sind zwei Teile zu unterscheiden:
-
-- **Erweiterung:** Workspaces anlegen, umbenennen, wechseln und löschen, Tabs verschieben, angeheftete Tabs und die Tastenkürzel. Das funktioniert wie in Helium. Getestet mit Google Chrome 157.0.8103.78 und Chromium 160.0.8158.0.
-- **Desktop-Integration:** Das KWin-Skript versteckt nur Ablage-Fenster von Browsern, die es an ihrer Fensterklasse (X11) bzw. App-ID (Wayland) erkennt: `helium`, `google-chrome`, `chromium` und `chromium-browser`. Getestet mit Google Chrome 157.0.8103.78 und Chromium 157.0.8103.38 unter KWin 6.8.2, als native Wayland-Fenster und als X11-Fenster über XWayland. Andere Browser wie Brave, Vivaldi oder Edge erkennt es erst, wenn sie in der Liste stehen, siehe unten. Bis dahin bleiben ihre Ablage-Fenster als minimierte Fenster sichtbar.
-
-### Andere Browser
-
-`install.sh --browsers` legt fest, welche Fensterklassen (X11) bzw. App-IDs (Wayland) das KWin-Skript erkennt, kommagetrennt und ohne Rücksicht auf Groß-/Kleinschreibung. Die Liste ersetzt die Standardliste `helium,google-chrome,chromium,chromium-browser`, muss also jeden genutzten Browser nennen:
-
-```bash
-./install.sh --browsers helium,brave-browser
-```
-
-Die Einstellung bleibt bei späteren Aufrufen von `install.sh` ohne `--browsers` erhalten. `--browsers ''` stellt die Standardliste wieder her.
-
-Die Fensterklasse eines Browsers zeigt dieser Befehl in einem Terminal in der Plasma-Sitzung, danach ein Fenster des Browsers anklicken:
-
-```bash
-qdbus6 org.kde.KWin /KWin org.kde.KWin.queryWindowInfo | grep resourceClass
-```
-
-Alternativ in den Systemeinstellungen unter **Fensterverwaltung → Fensterregeln**: **Neu hinzufügen …**, dann **Fenstereigenschaften ermitteln** und ein Fenster des Browsers anklicken. **Fensterklasse (Programm)** zeigt denselben Wert. Flatpak-Fassungen können eine andere Klasse melden als das Systempaket.
+- In Helium unter *Einstellungen → Beim Start* die Option **„Dort weitermachen, wo ich aufgehört habe“**. Mit einer anderen Starteinstellung stellt Helium die Ablage-Fenster beim Start nicht wieder her. Die Erweiterung baut die Workspaces dann aus ihrer Sicherung neu auf, die Tabs laden dabei aber neu und verlieren ihren Verlauf (siehe [Was erhalten bleibt](./docs/usage.de.md#was-erhalten-bleibt)). `install.sh` nennt am Ende die Profile von Helium, Google Chrome und Chromium, in denen die Erweiterung installiert ist, die Option aber fehlt, und ändert dort nichts.
 
 ## Installation
-
-### Erstinstallation
 
 1. Repository klonen:
 
@@ -96,7 +63,7 @@ Helium lädt die Erweiterung bei jedem Start aus genau diesem Ordner. Wird er ve
 
 Es gibt keine automatischen Updates. Helium lädt die Erweiterung direkt aus dem Repository-Ordner, eine neue Version kommt also erst an, wenn du sie selbst holst.
 
-Wer von Version 0.2.23 oder älter aktualisiert, braucht vorher einen Export: siehe [Umstieg auf die feste Erweiterungs-ID](#einmalig-umstieg-auf-die-feste-erweiterungs-id-ab-version-030).
+Wer von Version 0.2.23 oder älter aktualisiert, braucht vorher einen Export: siehe [Umstieg auf die feste Erweiterungs-ID](./docs/updating.de.md#einmalig-umstieg-auf-die-feste-erweiterungs-id-ab-version-030).
 
 1. Neuen Stand holen und das KWin-Skript aktualisieren:
 
@@ -108,31 +75,7 @@ Wer von Version 0.2.23 oder älter aktualisiert, braucht vorher einen Export: si
    Das führt `git pull --ff-only` aus und richtet das KWin-Skript ohne Rückfrage neu ein. Schlüssel und Browserliste bleiben.
 2. In `chrome://extensions` bei „Workspaces“ auf **Neu laden** (Kreispfeil) klicken. Ein Neustart von Helium reicht nicht, danach kann noch die alte Hintergrundlogik laufen. `install.sh` nennt am Ende die neue Version, das Popup zeigt sie unten rechts.
 
-Beim Neuladen schließt Chromium alle Seiten der Erweiterung, auch die Ablage-Markierungen. Die Ablage-Fenster tauchen dann kurz in der Taskleiste auf, bis die Erweiterung sie nach ein bis zwei Sekunden wieder markiert. Die Tabs bleiben dabei, wo sie sind.
-
-Die Erweiterung zum Aktualisieren nicht entfernen und neu hinzufügen. Beim Entfernen löscht Helium alle Workspaces und die Sicherung. Nur ein Export bleibt dann übrig, von Hand oder automatisch (siehe [Benutzung](#benutzung)).
-
-#### Einmalig: Umstieg auf die feste Erweiterungs-ID (ab Version 0.3.0)
-
-Bis Version 0.2.23 hing die ID der Erweiterung vom Pfad ihres Ordners ab. Seit 0.3.0 legt das Feld `key` in `manifest.json` sie fest. Beim ersten Neuladen danach bekommt sie deshalb einmalig die neue ID `jchklfejnmfphkbcpnhdejmeoncejjbe`, und Helium behandelt sie wie eine neu installierte Erweiterung mit leerem Speicher: Workspaces, Sicherung, Einstellungen und Schlüssel fehlen, und Chromium schließt die Ablage-Seiten. Die Tabs bleiben in ihren Fenstern, die alten Ablagen sind danach normale minimierte Fenster. So kommt alles zurück:
-
-1. **Vor dem Update exportieren:** In der Workspace-Liste **Exportieren / Importieren** öffnen und den Export speichern. Fehlt er, geht auch die neueste Datei der automatischen Sicherung aus `Downloads/helium-workspaces/`, die mit dem jüngsten Änderungsdatum.
-2. **Aktualisieren** wie oben beschrieben: `./install.sh --update`, dann in `chrome://extensions` auf **Neu laden**. Die Workspace-Liste zeigt danach nur „Standard“. Helium bis nach dem Import nicht neu starten, sonst stellt es die alten Ablagen als normale Fenster wieder her, und sie bleiben auch danach sichtbar.
-3. **Importieren mit Ersetzen:** **Exportieren / Importieren** öffnen, die Datei aus Schritt 1 wählen, **Ersetzen** wählen und **Importieren** zweimal anklicken. Fenster, deren Tabs alle zu einem Workspace der Datei gehören, übernimmt die Erweiterung samt Tabs und Verlauf: Das sichtbare Fenster zeigt wieder seinen Workspace, die minimierten werden wieder Ablagen. Was darin fehlt, kommt aus der Datei dazu.
-4. **Neuen Schlüssel eintragen:** Im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. Bis dahin stehen die Ablage-Fenster in der Taskleiste. `install.sh` nennt danach den alten und den neuen Schlüssel, den alten trägt `./install.sh --remove <alter Schlüssel>` aus.
-5. **Einstellungen prüfen:** **Ablagen stummschalten**, **Ablagen entladen nach** und **Automatisch sichern** übernimmt der Import aus einer Datei von Version 0.2.22 oder neuer, sonst neu setzen. Selbst festgelegte Tastenkürzel unter `chrome://extensions/shortcuts` neu festlegen. Automatische Sicherungen mit Datum im Namen in `Downloads/helium-workspaces/`, von Versionen vor 0.3.5, räumt die Erweiterung nicht mehr auf, sie lassen sich von Hand löschen.
-
-In `chrome://extensions` steht danach zusätzlich ein ausgeschalteter Eintrag „Workspaces“ mit der alten ID. Er stört nicht, Helium lädt beim Start nur die Erweiterung mit der neuen ID.
-
-Einmalig beim Update von einer Version, in der der Schlüssel noch in `extension/token.js` stand: Nach dem Neuladen legt die Erweiterung einen neuen Schlüssel an, und die Ablage-Fenster sind sichtbar. Nach Schritt 2 deshalb im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. `install.sh` löscht dabei die alte `extension/token.js`.
-
-### Der Schlüssel
-
-Die Erweiterung erzeugt beim ersten Start einen zufälligen Schlüssel und speichert ihn in ihrem Speicher im Helium-Profil. Webseiten können ihn dort nicht lesen. Er steht aber im Titel der Ablage-Tabs, und den kann jede andere installierte Erweiterung mit der Berechtigung `tabs` lesen. Der Schlüssel schützt also vor Webseiten, nicht vor anderen Erweiterungen. Das Popup zeigt ihn unter **Schlüssel für install.sh**, und `install.sh` trägt ihn in `kwinrc` ein. Jedes Gerät und jedes Browserprofil hat so seinen eigenen Schlüssel. Steht der Schlüssel aus dem Popup nicht in `kwinrc`, bleiben die Ablage-Fenster sichtbar.
-
-Mehrere Browser oder Profile mit der Erweiterung, etwa Helium und Chromium oder zwei Helium-Profile, haben je einen eigenen Schlüssel. Für jeden `install.sh` mit dem Schlüssel aus dem jeweiligen Popup ausführen. Ein neuer Schlüssel kommt zu den eingetragenen dazu, `install.sh` nennt dann alle. Einen Schlüssel, der nicht mehr gebraucht wird, etwa nach dem Entfernen der Erweiterung aus einem Profil, trägt `./install.sh --remove <Schlüssel>` wieder aus. Die Ablagen mit diesem Schlüssel kommen dann zurück in die Taskleiste.
-
-Workspaces auf ein anderes Gerät bringt der Export (siehe unten). Er enthält den Schlüssel nicht.
+Die Erweiterung zum Aktualisieren nicht entfernen und neu hinzufügen. Beim Entfernen löscht Helium alle Workspaces und die Sicherung. Nur ein Export bleibt dann übrig, von Hand oder automatisch (siehe [Exportieren und importieren](./docs/usage.de.md#exportieren-und-importieren)).
 
 ## Benutzung
 
@@ -159,149 +102,16 @@ Workspaces auf ein anderes Gerät bringt der Export (siehe unten). Er enthält d
 | Nicht gezeigte Workspaces immer stumm | in der Liste **Ablagen stummschalten** anhaken. Beim Zurückholen bekommen die Tabs ihren Ton wieder, von Hand stummgeschaltete bleiben stumm. |
 | Tabs nicht gezeigter Workspaces entladen | in der Liste → **Ablagen entladen nach** |
 
-Gut zu wissen:
+Rückgängig, Entladen, Export und Import, automatische Sicherung und was einen Neustart übersteht: [Benutzung im Detail](./docs/usage.de.md).
 
-- Die Liste lässt sich komplett per Tastatur bedienen: <kbd>Tab</kbd> zum Springen, <kbd>↑</kbd> / <kbd>↓</kbd> wählt einen Workspace, <kbd>Enter</kbd> wechselt dorthin, <kbd>1</kbd>–<kbd>9</kbd> wechselt direkt, <kbd>Esc</kbd> schließt den Editor. Umsortieren geht im Editor mit ↑ / ↓.
-- Angeheftete Tabs gehören zu allen Workspaces und bleiben immer im Fenster.
-- Tab-Gruppen bleiben beim Wechseln erhalten.
-- Wählst du einen Tab aus einer Ablage, etwa über die Tab-Suche, zeigt das zuletzt benutzte Hauptfenster dessen Workspace mit dem gewählten Tab.
-- Mehrere Fenster dürfen denselben Workspace zeigen, etwa nach <kbd>Strg</kbd>+<kbd>N</kbd>. Ein Klick in der Liste auf einen Workspace, den ein anderes Fenster zeigt, holt dieses Fenster nach vorn.
-- **Ablagen entladen nach** (Standard: nie) entlädt die Tabs in einer Ablage, sobald sie so lange dort liegen. Die Zeit läuft ab dem Wegwechseln vom Workspace. Entladene Tabs geben ihren Arbeitsspeicher frei und behalten Adresse, Titel, Gruppe und Zurück-Verlauf. Beim Zurückwechseln laden sie neu; laufende Videos, Scrollposition und ungespeicherte Eingaben sind dann weg. Tabs, deren Ton zu hören ist oder in dieser Zeit zu hören war, bleiben geladen, etwa ein Videocall, in dem gerade niemand spricht; stummgeschaltete werden mit entladen.
-- Einen gelöschten Workspace holt **Rückgängig** oben in der Liste bis zum nächsten Browserstart samt Tabs zurück. Seine Tabs öffnen sich dann beim Wechseln dorthin neu aus der Sicherung. Dasselbe gilt für die Workspaces, die **Ersetzen** beim Import entfernt.
-- Wird das letzte Fenster per X geschlossen oder darin der letzte Tab, schließt die Erweiterung auch die Ablagen, und der Browser beendet sich. Beim nächsten Start baut sie die Workspaces aus ihrer Sicherung wieder auf. Die Seiten laden dann neu und haben keinen Zurück-Verlauf (siehe [Was erhalten bleibt](#was-erhalten-bleibt)). Mit „Dort weitermachen, wo ich aufgehört habe“ holt Helium das zuletzt geschlossene Fenster samt Verlauf zurück. Die Erweiterung schließt deshalb die Ablage des vor dem aktuellen gezeigten Workspace zuletzt, sonst die mit den meisten Tabs. Wird Helium über das Menü beendet, kommen die Fenster samt Verlauf zurück.
-- Der Export ist eine JSON-Datei mit allen Workspaces samt Reihenfolge, Farben, Emoji, Tabs, Tab-Gruppen und angehefteten Tabs sowie den Einstellungen **Ablagen stummschalten**, **Ablagen entladen nach** und **Automatisch sichern**, etwa für ein anderes Gerät oder ein neues Profil. Beim Import wird die Datei erst geprüft und zusammengefasst, die Zusammenfassung nennt die Einstellungen, die sich ändern. Beide Arten des Imports übernehmen sie. **Zusammenführen** ergänzt nur, was fehlt: Ein Workspace mit derselben ID oder demselben Namen bekommt die Tabs dazu, die er noch nicht hat. **Ersetzen** löscht die bisherigen Workspaces samt Tabs und fragt deshalb nach. Ein Fenster, dessen Tabs alle zu einem Workspace der Datei gehören und mehr als die Hälfte von dessen Tabs ausmachen, bleibt dabei offen und zeigt diesen Workspace, minimiert wird es zu dessen Ablage. Seine Tabs behalten so ihren Verlauf.
-- Unter **Exportieren / Importieren → Automatisch sichern** legt die Erweiterung auf Wunsch täglich oder wöchentlich einen Export in `Downloads/helium-workspaces/` ab und behält die letzten 10: Sie schreibt reihum `helium-workspaces-auto-1.json` bis `helium-workspaces-auto-10.json` und überschreibt dabei die älteste, auch wenn der Download-Verlauf geleert wurde. Das Datum steht in der Datei und im Änderungsdatum. Standard ist **nie**. Diese Dateien überstehen das Entfernen der Erweiterung und ein kaputtes Profil, zurück kommen die Workspaces dann per Import mit **Ersetzen**. Ist in Helium „Vor dem Download nach dem Speicherort fragen“ eingeschaltet, fragt Helium auch bei jeder automatischen Sicherung. Scheitert eine, zeigt das Popup einen Hinweis mit **Jetzt sichern**. Solange die automatische Sicherung aus ist und es mindestens zwei Workspaces gibt, weist das Popup einmal darauf hin, mit ✕ verschwindet der Hinweis für immer.
-- Export und automatische Sicherung enthalten die vollständigen Adressen und Titel aller Tabs im Klartext, also auch Zugangstoken sowie Freigabe- oder Passwort-Reset-Links darin. Wer den Downloads-Ordner synchronisiert oder eine Datei weitergibt, gibt sie mit.
+## Mehr
 
-## Was erhalten bleibt
-
-Die Erweiterung speichert dauerhaft im Profil:
-
-- die Workspaces mit Name, Farbe, Emoji und Reihenfolge sowie den zuletzt benutzten Workspace,
-- eine Sicherung aller Tabs mit Adresse, Titel und Tab-Gruppe sowie der angehefteten Tabs,
-- die drei letzten Stände davon (Workspaces und Sicherung) von vor einem Browserstart. Ordnet ein Start Tabs falsch zu und überschreibt so die Sicherung, holt **Exportieren / Importieren → Importieren** einen davon wie eine Datei zurück, vorgewählt mit **Ersetzen**.
-
-Nur innerhalb der laufenden Browsersitzung gibt es:
-
-- welches Fenster welchen Workspace zeigt und welcher Tab in jedem Workspace zuletzt aktiv war,
-- den Zustand der geladenen Seiten: laufende Videos, Scrollposition, Formulareingaben und der Zurück-Verlauf jedes Tabs, solange er nicht neu angelegt wird.
-
-Nach einem Neustart mit „Dort weitermachen, wo ich aufgehört habe“ stellt Helium alle Fenster samt Ablagen selbst wieder her, mit Verlauf. Die Erweiterung ordnet die Fenster in den ersten 20 Sekunden anhand ihrer Adressen wieder den Workspaces zu. Die Seiten laden dabei wie nach jedem Browser-Neustart neu.
-
-Aus der Sicherung neu aufgebaut wird ein Workspace, wenn sein Fenster fehlt: nach einem Start mit einer anderen Starteinstellung, nach dem Schließen des letzten Fensters per X oder seines letzten Tabs oder beim Import. Dann kommen nur Adresse, Titel, Gruppe und angeheftete Tabs zurück. Die Seiten laden neu, haben keinen Zurück-Verlauf, und ungespeicherte Eingaben sind weg. Damit nicht alle Seiten auf einmal laden, legt die Erweiterung die Tabs in Schüben an: Höchstens sechs laden gleichzeitig, der nächste kommt, sobald einer fertig ist, spätestens nach 15 Sekunden. Damit nicht alle Seiten geladen bleiben, entlädt sie jeden so angelegten Tab, sobald er fertig geladen hat, außer dem aktiven. Er lädt neu, wenn du ihn anklickst. Logins bleiben, weil Cookies zum Profil gehören.
-
-Helium (bzw. Chromium) verliert beim Neustart gelegentlich einen Tab, wenn er genau beim Neuschreiben der Sitzungsdatei zwischen zwei Fenstern verschoben wurde. Die Erweiterung erkennt das beim Start und legt fehlende Tabs an derselben Stelle neu an. Solche Tabs laden dann neu und haben keinen Zurück-Verlauf mehr.
-
-## Probleme beheben
-
-### Ablage-Fenster sind in Taskleiste oder Alt+Tab zu sehen
-
-Ein sichtbares Ablage-Fenster hat einen Titel wie `HWS-Ablage 3f9c… · Uni` und als ersten Tab die Seite „Workspace-Ablage“. Nicht schließen, sonst sind die Tabs dieses Workspace zu. Der Reihe nach prüfen:
-
-1. Läuft das KWin-Skript?
-
-   ```bash
-   qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces
-   ```
-
-   Steht dort nicht `true`, `./install.sh` erneut ausführen. Es installiert, aktiviert und lädt das Skript.
-2. Stimmen die Schlüssel überein?
-
-   ```bash
-   kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token
-   ```
-
-   In der Ausgabe muss der Schlüssel stehen, den das Popup unter **Schlüssel für install.sh** zeigt (bei mehreren Browsern oder Profilen kommagetrennt), und der Fenstertitel muss ihn nach `HWS-Ablage` zeigen. Steht im Titel kein Schlüssel (`HWS-Ablage · Uni`), die Erweiterung in `chrome://extensions` neu laden.
-3. Zum Reparieren im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. Das Skript lädt das KWin-Skript neu, nach ein bis zwei Sekunden verschwinden die Ablagen aus der Taskleiste.
-
-### `install.sh` bricht ab
-
-- **`Es fehlen Programme, die install.sh braucht`**: Die darunter genannten Programme aus den [Voraussetzungen](#voraussetzungen) installieren. `install.sh` hat noch nichts geändert.
-- **`Ungültiger Schlüssel`**: Es wurde kein oder ein unvollständiger Schlüssel eingegeben. Im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den kopierten Befehl ausführen. Der Schlüssel besteht aus 24 Zeichen `0`–`9` und `a`–`f`.
-- **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** oder **`KWin-Skript wurde nicht geladen`**: `install.sh` erreicht KWin nicht, etwa über SSH oder in einer Textkonsole. Das Skript ist dann schon installiert, aber nicht geladen. In einem Terminal in der Plasma-Sitzung erneut starten.
-
-### Tabs fehlen nach einem Neustart
-
-Zeigt die Workspace-Liste „… Tabs nicht wiederhergestellt“, konnte Helium diese Tabs nicht neu anlegen. **Erneut versuchen** wechselt in den Workspace und legt sie noch einmal an. Fehlen Tabs ohne diesen Hinweis, kurz warten. Die Zuordnung nach dem Start dauert bis zu 20 Sekunden.
-
-### Die Erweiterung ist deaktiviert oder reagiert nicht
-
-Ist die Erweiterung in `chrome://extensions` ausgeschaltet, war meist der Entwicklermodus aus. Die Ablage-Fenster stehen dann in der Taskleiste. Den Entwicklermodus wieder einschalten, dann ist die Erweiterung wieder aktiv und markiert die Ablagen neu.
-
-Sonst bei „Workspaces“ auf **Fehler** oder auf **Service Worker** klicken. Meldungen der Erweiterung beginnen mit `[workspaces]`. Oft hilft **Neu laden**, die Tabs bleiben dabei erhalten.
-
-## Deinstallieren
-
-Ohne die Erweiterung verlieren die Ablage-Fenster ihre Markierung, ihre Tabs bleiben aber in den Fenstern. Damit keine Tabs unsichtbar weiterlaufen:
-
-1. **Sichern.** In der Workspace-Liste **Exportieren / Importieren** öffnen und den Export speichern.
-2. **Alle Workspaces einmal anzeigen.** Einmal durch alle Workspaces wechseln, damit jeder als Fenster existiert. Workspaces, die nur in der Sicherung stehen (zum Beispiel nach einem Start mit neuer Tab-Seite), werden dabei angelegt. Hinweise „Tabs nicht wiederhergestellt“ mit **Erneut versuchen** erledigen.
-3. **KWin-Skript entfernen.**
-
-   ```bash
-   ./install.sh --uninstall
-   ```
-
-   Das holt die Ablage-Fenster zurück in Taskleiste und Alt+Tab, entlädt dann das Skript, entfernt es und löscht seine Einträge aus `kwinrc`. Wie beim Installieren in einem Terminal in der Plasma-Sitzung ausführen. Erreicht es KWin nicht, bricht es ab, ohne etwas zu entfernen.
-4. **Erweiterung entfernen.** In `chrome://extensions` bei „Workspaces“ auf **Entfernen** klicken. Das löscht die Workspaces und die Sicherung aus dem Profil. Danach kann der Repository-Ordner gelöscht werden.
-
-Die Ablage-Fenster bleiben minimiert, bis man sie anklickt. Jedes enthält die Tabs eines Workspace. Die Tabs nach Wunsch zusammenführen oder schließen. Übrig gebliebene Tabs mit der Adresse `chrome-extension://…/stash.html#…` sind leer und können zu. Bleibt doch ein Fenster unsichtbar, Helium beenden und neu starten.
-
-## Einige Hinweise
+- [Probleme beheben](./docs/troubleshooting.de.md): Ablage-Fenster in der Taskleiste, `install.sh` bricht ab, fehlende Tabs
+- [Aktualisieren und deinstallieren](./docs/updating.de.md): Umstieg auf die feste Erweiterungs-ID und alles entfernen, ohne dass Tabs unsichtbar weiterlaufen
+- [So funktioniert's](./docs/how-it-works.de.md): Ablage-Fenster, der Schlüssel, Google Chrome, Chromium und andere Browser
+- [Mitmachen](./CONTRIBUTING.de.md): Tests, Versionen und der Aufbau des Codes
 
 Das ist ein privates Bastelprojekt. Rechne mit Fehlern.
-
-## Testen
-
-```bash
-node --test test/*.test.js
-```
-
-Braucht nur Node.js ab Version 22, keinen Browser und kein KWin. Die Tests laden `background.js` samt der Dateien, die es lädt, unverändert in eine Nachbildung der Chrome-APIs und spielen damit Wechsel mit Gruppen und angehefteten Tabs, mehrere Fenster, Neustarts mit und ohne Sitzungswiederherstellung, das Neuladen der Erweiterung, gezielt scheiternde API-Aufrufe, schnell aufeinanderfolgende Änderungen sowie Export und Import samt Zusammenführen und Ersetzen durch. Dazu kommen Syntax, Manifest und KWin-Metadaten, außerdem läuft das KWin-Skript gegen eine Nachbildung der KWin-API und zeigt, welche Fenster es versteckt. `install.sh` läuft gegen Nachbildungen der KDE-Befehle: die Installation samt dem Hinweis auf die Starteinstellung, die Prüfung auf fehlende Programme, mehrere Schlüssel, `--help`, `--remove`, `--uninstall` und `--update`, das dabei mit echtem `git` aus einem Test-Repository holt. Die Meldungen von `install.sh` werden auf Deutsch und Englisch geprüft. Dieselben Prüfungen laufen in der CI bei jedem Pull Request.
-
-ESLint prüft, dass jeder Name, den die Erweiterung und das KWin-Skript benutzen, definiert ist, auch in Zweigen, die kein Test nimmt. Skripte, die sich einen globalen Gültigkeitsbereich teilen (der Service Worker mit allem, was `background.js` lädt, jede Seite mit ihren `<script>`-Tags), werden zusammen geprüft, siehe [`eslint.config.js`](./eslint.config.js). Die CI führt das aus, lokal braucht `npx` dafür Netzzugang:
-
-```bash
-npx eslint@10.14.0 extension kwin
-```
-
-Ändert sich etwas in `extension/`, muss die Version in [`manifest.json`](./extension/manifest.json) höher sein als auf `main`, sonst schlägt `static.test.js` fehl. Die Version steht unten rechts im Popup, so sieht man nach einem Update, ob der neue Stand läuft. Das KWin-Skript trägt in [`metadata.json`](./kwin/metadata.json) dieselbe Version, auch das prüft `static.test.js`, und `install.sh` nennt sie am Ende. Verglichen wird mit `origin/main`, mit `VERSION_BASE` lässt sich eine andere Ref angeben. Fehlt die Ref, wird die Prüfung übersprungen.
-
-Landet eine höhere Version auf `main`, setzt [`tag.yml`](./.github/workflows/tag.yml) auf diesen Commit das Tag `v<Version>`, zum Beispiel `v0.2.0`, und legt dazu ein [Release](https://github.com/Jerry0205dotde/helium-workspaces/releases) an, das die PRs seit der vorigen Version auflistet.
-
-Mit einem Chromium-Browser laufen die wichtigsten Abläufe zusätzlich in einem echten Browser:
-
-```bash
-CHROME=/usr/bin/chromium node --test test/chromium.test.js
-```
-
-[`chromium.test.js`](./test/chromium.test.js) installiert die Erweiterung in ein frisches Profil und spielt durch: Wechsel mit Tab-Gruppe und angeheftetem Tab, ohne dass eine Seite neu lädt, Neuladen der Erweiterung, Beenden und Neustart mit „Dort weitermachen, wo ich aufgehört habe“ und mit „Neuer Tab“ sowie Schließen per X und Neustart. Ein zweiter Test spielt den Umstieg auf die feste Erweiterungs-ID durch: Installation ohne `key`, Export, Neuladen mit `key` und Import mit **Ersetzen**, ohne dass eine Seite neu lädt. Ohne `CHROME` werden die Tests übersprungen, ohne Bildschirm bleibt der Browser unsichtbar. In der CI laufen sie mit Chrome for Testing.
-
-Mit demselben `CHROME` laufen auch [`popup.test.js`](./test/popup.test.js) und [`transfer.test.js`](./test/transfer.test.js): Popup und Importseite in einem headless Chromium, bedient mit echten Maus- und Tastaturereignissen. Geprüft wird das Verlassen eines Feldes per Klick, <kbd>Tab</kbd>, <kbd>Enter</kbd> und <kbd>Esc</kbd>, Nachfragen und Doppelklicks. Die Nachrichten der Seiten gehen an die Nachbildung der Chrome-APIs, nicht an eine installierte Erweiterung.
-
-KWin prüfen die Tests nicht. Nach Änderungen daran kurz von Hand:
-
-1. Die Erweiterung unter `chrome://extensions` neu laden und `./install.sh` mit dem Schlüssel aus dem Popup ausführen.
-2. Zwei Workspaces einrichten und ein paar Mal hin und her wechseln: Kein Ablage-Fenster taucht in Taskleiste, <kbd>Alt</kbd>+<kbd>Tab</kbd> oder Übersicht auf.
-3. Die Erweiterung unter `chrome://extensions` neu laden: Nach etwa einer Sekunde sind die Ablage-Fenster wieder versteckt.
-4. Helium beenden und neu starten: Die Ablage-Fenster bleiben versteckt.
-
-## Aufbau
-
-- [`extension/`](./extension): die Erweiterung (Manifest V3)
-  - [`background.js`](./extension/background.js): der Service Worker, nimmt Ereignisse und Nachrichten entgegen und lädt die übrige Hintergrundlogik:
-    [`core.js`](./extension/core.js) (Grundlagen), [`switch.js`](./extension/switch.js) (Wechseln), [`backup.js`](./extension/backup.js) (Sicherung),
-    [`restore.js`](./extension/restore.js) (Wiederherstellen aus der Sicherung), [`reconcile.js`](./extension/reconcile.js) (Abgleich nach Neustart),
-    [`workspaces.js`](./extension/workspaces.js), [`export-import.js`](./extension/export-import.js), [`autobackup.js`](./extension/autobackup.js) (automatische Sicherung als Datei), [`unload.js`](./extension/unload.js) (Entladen),
-    [`sound.js`](./extension/sound.js) (Ton), [`icons.js`](./extension/icons.js) (Symbole) und [`menus.js`](./extension/menus.js) (Kontextmenü)
-  - [`popup.html`](./extension/popup.html) / [`popup.js`](./extension/popup.js): die Workspace-Liste
-  - [`transfer.html`](./extension/transfer.html) / [`transfer.js`](./extension/transfer.js): Export und Import, [`exchange.js`](./extension/exchange.js): das Dateiformat und seine Prüfung
-  - [`stash.html`](./extension/stash.html) / [`stash.js`](./extension/stash.js): die Seite, die ein Fenster als Ablage markiert
-  - [`label.js`](./extension/label.js): das Zeichen im Symbol eines Workspace
-- [`kwin/`](./kwin): KWin-Skript, das die Ablage-Fenster versteckt
-- [`docs/`](./docs): die Bilder dieser README
-- [`install.sh`](./install.sh): KWin-Skript einrichten und den Schlüssel eintragen, mit `--remove` einen Schlüssel austragen, mit `--update` aktualisieren, mit `--uninstall` wieder entfernen
-- [`test/`](./test): automatische Tests, [`fake-browser.js`](./test/fake-browser.js) bildet die Chrome-APIs nach, [`page.js`](./test/page.js) bedient Popup und Importseite in Chromium, [`chromium.js`](./test/chromium.js) steuert einen echten Chromium
 
 ## Lizenz
 
