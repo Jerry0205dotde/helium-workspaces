@@ -1,7 +1,8 @@
 name: Tag
 
 # Steigt die Version in extension/manifest.json, bekommt der Commit auf main das Tag
-# v<Version>. Gibt es das Tag schon, passiert nichts.
+# v<Version> samt GitHub-Release, dessen Notizen die PR-Titel seit dem vorigen Tag auflisten.
+# Gibt es das Tag schon, passiert nichts.
 on:
   push:
     branches: [main]
@@ -15,11 +16,13 @@ jobs:
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v5
-      - run: |
+      # gh release create legt Tag und Release in einem Schritt an, so bleibt kein Tag ohne Release zurück
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
           tag="v$(node -p "require('./extension/manifest.json').version")"
           if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
             echo "$tag gibt es schon"
           else
-            git tag "$tag"
-            git push origin "$tag"
+            gh release create "$tag" --target "$GITHUB_SHA" --generate-notes
           fi
