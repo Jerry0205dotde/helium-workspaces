@@ -224,32 +224,37 @@ test('Export und automatische Sicherung warnen vor den Adressen im Klartext (#19
 
 test('Automatische Sicherung: Auswahl sichert gleich und nennt die Datei, Fehler werden angezeigt', { skip }, async () => {
   const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  env.b.installHost();
   const p = await browser.open('transfer.html', env);
   const choose = async (v) => {
     await p.eval(`(() => { const s = document.getElementById('auto'); s.value = '${v}'; s.dispatchEvent(new Event('change')); })()`);
     await p.idle();
   };
   try {
-    assert.match(await p.text('#auto-text'), /Downloads\/helium-workspaces\/ .* die letzten 10\./);
+    // Vor der ersten Sicherung der Ordner, in den sie kommt
+    const dir = `~/.local/share/helium-workspaces/backups/${env.b.local.data.token}/`;
+    assert.ok((await p.text('#auto-text')).startsWith(`Legt regelmäßig einen Export in ${dir} ab und behält davon die letzten 10.`));
     assert.deepEqual(await p.eval('[...document.querySelectorAll("#auto option")].map((o) => o.textContent)'), ['nie', 'täglich', 'wöchentlich']);
     assert.equal(await p.eval('document.getElementById("auto").value'), '0');
     assert.equal(await p.text('#auto-info'), '');
 
     await choose('1');
     assert.deepEqual(p.sent.filter((m) => m.type === 'autoBackup'), [{ type: 'autoBackup', days: 1 }]);
-    const [file] = env.b.filesIn('helium-workspaces');
+    const [file] = env.b.backupFiles();
     assert.match(await p.text('#auto-info'), new RegExp(`^Zuletzt am .+: ${file.replace(/[.()]/g, '\\$&')}$`));
+    // Danach der tatsächliche Ordner
+    assert.ok((await p.text('#auto-text')).startsWith(`Legt regelmäßig einen Export in ${file.replace(/[^/]*$/, '')} ab`));
     assert.equal(await p.eval('document.getElementById("auto-error").hidden'), true);
 
-    // Ein abgebrochener Download erscheint als Fehler
-    env.b.downloadMode = 'interrupt';
+    // Kann der Host nicht schreiben, erscheint das als Fehler
+    env.b.hostMode = 'fail';
     await env.w.advance(25 * 3600000);
     await p.eval('location.reload()');
     await p.idle();
     await new Promise((r) => setTimeout(r, 300));
     await p.idle();
     assert.equal(await p.eval('document.getElementById("auto").value'), '1');
-    assert.match(await p.text('#auto-error'), /^Automatische Sicherung am .+ fehlgeschlagen.*FILE_NO_SPACE/);
+    assert.match(await p.text('#auto-error'), /^Automatische Sicherung am .+ fehlgeschlagen.*konnte nicht geschrieben werden/);
 
     await choose('0');
     assert.equal(env.b.alarms.has('autoBackup'), false);

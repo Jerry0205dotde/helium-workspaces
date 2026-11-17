@@ -46,19 +46,20 @@ async function ensureToken() {
   return token;
 }
 
-// install.sh meldet native-host.sh unter diesem Namen als Native-Messaging-Host an. Ihm schickt
-// die Erweiterung ihren Schlüssel, und er trägt ihn in kwinrc ein, falls er dort fehlt. Das
-// klappt einmal je Browsersitzung; bis dahin versucht sie es bei jedem Start des Service
+// install.sh meldet native-host.sh unter diesem Namen als Native-Messaging-Host an. Er schreibt
+// auch die automatischen Sicherungen (autobackup.js). Ihm schickt die Erweiterung ihren
+// Schlüssel, und er trägt ihn in kwinrc ein, falls er dort fehlt. Das klappt einmal je
+// Browsersitzung; bis dahin versucht sie es bei jedem Start des Service
 // Workers und jedem Öffnen des Popups. Ohne angemeldeten Host (install.sh noch nicht
 // ausgeführt, anderer Browser) bleibt der Weg über das Popup und install.sh <Schlüssel>.
-const KEY_HOST = 'helium_workspaces';
+const NATIVE_HOST = 'helium_workspaces';
 let delivering = null;
 function deliverKey(token) {
   delivering ??= (async () => {
     try {
       const { keyDelivered } = await chrome.storage.session.get('keyDelivered');
       if (keyDelivered === token) return;
-      const r = await chrome.runtime.sendNativeMessage(KEY_HOST, { key: token });
+      const r = await chrome.runtime.sendNativeMessage(NATIVE_HOST, { key: token });
       if (r?.ok) await chrome.storage.session.set({ keyDelivered: token });
       else console.warn('[workspaces] Schlüssel nicht eingetragen', r);
     } catch (e) {

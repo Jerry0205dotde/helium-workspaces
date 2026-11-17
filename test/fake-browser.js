@@ -25,9 +25,10 @@
 //   sobald er aktiv wird. Mit popupOpen = true bleibt er dabei entladen, wie in Helium,
 //   wenn das Popup den Wechsel auslöst (#217); tabs.reload lädt ihn.
 // - Wecker (chrome.alarms) klingeln nur, während ein Test mit advance() Zeit vergehen lässt.
-// - Downloads (chrome.downloads) landen in files unter DOWNLOADS, das einen Neustart und
-//   das Entfernen der Erweiterung übersteht. downloadMode: 'complete' (sofort fertig),
-//   'hold' (bis finishDownload, wie bei offenem Dialog zum Speicherort) oder 'interrupt'.
+// - Native Messaging (runtime.sendNativeMessage) geht an nativeHost. installHost() meldet
+//   einen Host wie native-host.sh an: Er nimmt Schlüssel an und schreibt automatische
+//   Sicherungen nach files unter BACKUPS, das einen Neustart und das Entfernen der
+//   Erweiterung übersteht. hostMode 'fail' lässt das Schreiben scheitern.
 // Ereignisse werden sofort zugestellt, noch bevor der auslösende API-Aufruf zurückkehrt.
 
 const fs = require('node:fs');
@@ -40,7 +41,7 @@ const NEWTAB = 'chrome://newtab/';
 const GROUP_COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
 
 const DE = i18n.messages('de');
-const DOWNLOADS = '/home/test/Downloads/';
+const BACKUPS = '/home/test/.local/share/helium-workspaces/backups/';
 
 const clone = (v) => (v === undefined ? undefined : structuredClone(v));
 
@@ -115,14 +116,12 @@ class Browser {
     this.worker = null;
     this.menus = [];
     this.alarms = new Map(); // Name → { name, scheduledTime, periodInMinutes }
-    this.files = new Map(); // Pfad → Inhalt, die Dateien im Download-Ordner
-    this.downloads = []; // Download-Verlauf
-    this.downloadMode = 'complete';
-    this.downloadSeq = 1;
+    this.files = new Map(); // Pfad → Inhalt, Dateien auf der Festplatte
+    this.hostMode = 'ok';
     this.holdLoads = false;
     this.heldLoads = [];
     this.popupOpen = false;
-    // Native-Messaging-Host für den Schlüssel (native-host.sh): null = nicht angemeldet, sonst
+    // Native-Messaging-Host (native-host.sh): null = nicht angemeldet, sonst
     // die Funktion, die eine Nachricht beantwortet. Was er bekommen hat, steht in nativeSent.
     this.nativeHost = null;
     this.nativeSent = [];
@@ -495,52 +494,23 @@ class Browser {
     return { w: null, tabs: [] };
   }
 
-  // ------------------------------------------------------------ Downloads
+  // ------------------------------------------------------------ Native Messaging
 
-  download({ url, filename, conflictAction = 'uniquify' }, owner) {
-    const m = /^data:[^;,]*;base64,(.*)$/s.exec(url);
-    if (!m) throw new Error('Nur data:-URLs mit base64 nachgebildet');
-    let file = DOWNLOADS + filename;
-    if (conflictAction === 'uniquify') {
-      for (let n = 1; this.files.has(file); n++) file = DOWNLOADS + filename.replace(/(\.[^.\/]*)?$/, ` (${n})$1`);
-    }
-    const item = {
-      id: this.downloadSeq++,
-      url,
-      filename: file,
-      state: 'in_progress',
-      startTime: new Date(this.now).toISOString(),
-      exists: true,
-      ...(owner ? { byExtensionId: new URL(this.origin).host } : {}),
-      content: Buffer.from(m[1], 'base64').toString('utf8'),
+  // Wie nach install.sh: native-host.sh ist angemeldet. Schlüssel nimmt er an, Sicherungen
+  // schreibt er je Profil in einen eigenen Ordner unter BACKUPS und nennt die Datei.
+  installHost() {
+    this.nativeHost = (msg) => {
+      if (msg.key) return { ok: true };
+      const file = `${BACKUPS}${msg.profile}/helium-workspaces-auto-${msg.backup}.json`;
+      if (this.hostMode === 'fail') return { ok: false, error: 'write', file };
+      this.files.set(file, Buffer.from(msg.data, 'base64').toString('utf8'));
+      return { ok: true, file };
     };
-    this.downloads.push(item);
-    if (this.downloadMode === 'complete') this.finishDownload(item.id);
-    if (this.downloadMode === 'interrupt') this.finishDownload(item.id, 'FILE_NO_SPACE');
-    return item.id;
   }
 
-  // Beendet einen Download, mit error als abgebrochen
-  finishDownload(id, error) {
-    const item = this.downloads.find((d) => d.id === id);
-    item.state = error ? 'interrupted' : 'complete';
-    if (error) item.error = error;
-    else this.files.set(item.filename, item.content);
-    this.fire('downloads.onChanged', { id, state: { previous: 'in_progress', current: item.state } });
-  }
-
-  searchDownloads({ id, filenameRegex, state, orderBy = [] } = {}) {
-    const re = filenameRegex && new RegExp(filenameRegex);
-    const list = this.downloads
-      .filter((d) => (id === undefined || d.id === id) && (!re || re.test(d.filename)) && (!state || d.state === state))
-      .map(({ content, ...d }) => ({ ...d, exists: d.state === 'complete' ? this.files.has(d.filename) : d.exists }));
-    if (orderBy[0] === '-startTime') list.sort((a, b) => b.startTime.localeCompare(a.startTime) || b.id - a.id);
-    return list;
-  }
-
-  // Dateien, die gerade im Download-Ordner unter dir liegen, nach Namen sortiert
-  filesIn(dir) {
-    return [...this.files.keys()].filter((f) => f.startsWith(DOWNLOADS + dir + '/')).sort();
+  // Die automatischen Sicherungen auf der Festplatte, nach Namen sortiert
+  backupFiles() {
+    return [...this.files.keys()].filter((f) => f.startsWith(BACKUPS)).sort();
   }
 
   // ------------------------------------------------------------ chrome.*
@@ -825,20 +795,6 @@ class Browser {
         get: api('alarms.get', (name) => b.alarms.get(name)),
         clear: api('alarms.clear', (name) => b.alarms.delete(name)),
         onAlarm: b.event('alarms.onAlarm'),
-      },
-      downloads: {
-        download: api('downloads.download', (o) => b.download(o, owner)),
-        search: api('downloads.search', (q) => b.searchDownloads(q)),
-        removeFile: api('downloads.removeFile', (id) => {
-          const d = b.downloads.find((x) => x.id === id);
-          if (d?.state !== 'complete') throw new Error('Download must be complete');
-          b.files.delete(d.filename);
-        }),
-        erase: api('downloads.erase', ({ id }) => {
-          b.downloads = b.downloads.filter((x) => x.id !== id);
-          return [id];
-        }),
-        onChanged: b.event('downloads.onChanged'),
       },
     };
   }
@@ -1168,4 +1124,4 @@ class Worker {
   }
 }
 
-module.exports = { Browser, NEWTAB, DOWNLOADS };
+module.exports = { Browser, NEWTAB, BACKUPS };

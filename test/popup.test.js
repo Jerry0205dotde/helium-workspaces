@@ -342,9 +342,10 @@ test('Hinweis auf die automatische Sicherung: Einrichten öffnet Exportieren / I
 
 test('Gescheiterte automatische Sicherung: Jetzt sichern legt die Datei an und nimmt den Hinweis weg (#160)', { skip }, async () => {
   const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
-  env.b.downloadMode = 'interrupt';
+  env.b.installHost();
+  env.b.hostMode = 'fail';
   await env.w.request({ type: 'autoBackup', days: 7 });
-  env.b.downloadMode = 'complete';
+  env.b.hostMode = 'ok';
   const page = await browser.open('popup.html', env);
   try {
     assert.equal(await shownBox(page, 'auto-error'), true);
@@ -352,7 +353,7 @@ test('Gescheiterte automatische Sicherung: Jetzt sichern legt die Datei an und n
     await page.click('[data-focus="backup-now"]');
     assert.ok(page.sent.some((m) => m.type === 'autoBackupNow'));
     assert.equal(await shownBox(page, 'auto-error'), false);
-    assert.equal(env.b.filesIn('helium-workspaces').length, 1);
+    assert.equal(env.b.backupFiles().length, 1);
   } finally {
     await page.close();
   }

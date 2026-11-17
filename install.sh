@@ -6,7 +6,8 @@
 # Enter ohne Eingabe lässt die Erweiterung ihn selbst eintragen (siehe unten).
 # Dazu meldet install.sh native-host.sh bei Helium, Google Chrome und Chromium als
 # Native-Messaging-Host an. Die Erweiterung schickt ihm bei jedem Start ihren Schlüssel, und er
-# trägt ihn hier ein, falls er noch fehlt.
+# trägt ihn hier ein, falls er noch fehlt. Derselbe Host schreibt die automatischen Sicherungen
+# nach ~/.local/share/helium-workspaces/backups/, sie bleiben auch nach --uninstall liegen.
 # Jeder Browser bzw. jedes Profil mit der Erweiterung hat einen eigenen Schlüssel. Ein neuer
 # Schlüssel kommt zu den eingetragenen dazu, ./install.sh --remove <Schlüssel> trägt einen aus.
 # --browsers legt kommagetrennt die Fensterklassen (X11) bzw. App-IDs (Wayland) der Browser
@@ -246,7 +247,7 @@ for entry in "${BROWSER_DIRS[@]}"; do
   [ -d "$CONFIG/${entry%%:*}" ] || continue
   manifest="$(host_manifest "$entry")"
   mkdir -p "${manifest%/*}"
-  printf '{\n  "name": "%s",\n  "description": "Workspaces: key for the KWin script",\n  "path": "%s",\n  "type": "stdio",\n  "allowed_origins": ["chrome-extension://%s/"]\n}\n' \
+  printf '{\n  "name": "%s",\n  "description": "Workspaces: key for the KWin script and automatic backups",\n  "path": "%s",\n  "type": "stdio",\n  "allowed_origins": ["chrome-extension://%s/"]\n}\n' \
     "$HOST_NAME" "$HOST_PATH" "$EXT_ID" > "$manifest"
 done
 

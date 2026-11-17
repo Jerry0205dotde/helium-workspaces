@@ -407,39 +407,6 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     await env.settled({ live: true });
   });
 
-  await step('Automatische Sicherung: zehn feste Dateien im Download-Ordner, reihum überschrieben (#192)', async () => {
-    const dir = path.join(env.profile, 'Downloads', 'helium-workspaces');
-    const slot = (n) => path.join(dir, `helium-workspaces-auto-${n}.json`);
-    const st = await b.sw('const r = await userAction(() => setAutoBackup(1)); await r?.done; return autoBackupState();');
-    assert.equal(st.last.state, 'complete');
-    assert.equal(st.last.file, slot(1));
-    const data = JSON.parse(fs.readFileSync(st.last.file, 'utf8'));
-    assert.deepEqual(data.workspaces.map((w) => w.name).sort(), ['A', 'B', 'C']);
-    assert.deepEqual(data.workspaces.flatMap((w) => w.tabs.map((x) => env.name(x.url))).sort(), Object.values(SPEC.workspaces).flat().map((e) => norm(e).name).sort());
-    // Den Download-Verlauf leeren: Aufräumen hängt nicht mehr an ihm
-    await b.sw('await chrome.downloads.erase({});');
-    // Elf weitere Sicherungen: 2 bis 10, dann werden 1 und 2 überschrieben
-    const backup = 'await chrome.storage.local.set({ autoBackupAt: 0 }); const r = await userAction(() => autoBackupIfDue(15000)); await r?.done; return autoBackupState();';
-    let last;
-    for (let i = 0; i < 11; i++) last = (await b.sw(backup)).last;
-    assert.equal(last.state, 'complete');
-    assert.equal(last.file, slot(2));
-    assert.deepEqual(fs.readdirSync(dir).sort(), Array.from({ length: 10 }, (_, i) => path.basename(slot(i + 1))).sort());
-    // 1 wurde nach 10 noch einmal geschrieben, 3 nicht mehr
-    assert.ok(fs.statSync(slot(1)).mtimeMs > fs.statSync(slot(10)).mtimeMs, 'Datei 1 wurde nicht überschrieben');
-    assert.ok(fs.statSync(slot(3)).mtimeMs < fs.statSync(slot(10)).mtimeMs);
-    // Im Verlauf bleibt je Datei nur der neueste Eintrag
-    const { files, ids, lastId } = await b.sw(`
-      const own = (await chrome.downloads.search({ orderBy: ['-startTime'] })).filter((d) => d.byExtensionId === chrome.runtime.id);
-      const { autoBackupId } = await chrome.storage.local.get('autoBackupId');
-      return { files: own.map((d) => d.filename), ids: own.map((d) => d.id), lastId: autoBackupId };`);
-    assert.equal(ids[0], lastId);
-    assert.deepEqual([...files].sort(), Array.from({ length: 10 }, (_, i) => slot(i + 1)).sort());
-    await b.sw('await userAction(() => setAutoBackup(0));');
-    assert.equal(await b.sw("return !!(await chrome.alarms.get('autoBackup'));"), false);
-    await env.settled({ live: true });
-  });
-
   await step('Neuladen der Erweiterung: Ablagen werden wiedererkannt, Wechseln geht weiter', async () => {
     const loads = new Map(hits);
     b.sw('chrome.runtime.reload();').catch(() => {});
@@ -596,7 +563,8 @@ test('Echter Chromium: Umstieg auf die feste Erweiterungs-ID per Export und Erse
 // install.sh mit nachgebildeten KDE-Befehlen, kwinrc ist eine Datei je Schlüssel. Chromium
 // nutzt das Profil unter $XDG_CONFIG_HOME/chromium wie sein Standardprofil, install.sh meldet
 // den Host also genau dort an, wo Chromium ihn sucht. ext: Ordner der Erweiterung.
-function hostEnv(t, ext = EXT) {
+// extra: weitere Umgebungsvariablen für Browser und install.sh, etwa XDG_DATA_HOME
+function hostEnv(t, ext = EXT, extra = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-host-'));
   const ROOT = path.join(__dirname, '..');
   const repo = path.join(dir, 'repo');
@@ -613,7 +581,7 @@ function hostEnv(t, ext = EXT) {
   fake('kwriteconfig6', `if [ "$7" = --delete ]; then rm -f "${kwinrc}/$6"; else printf '%s\\n' "$7" > "${kwinrc}/$6"; fi`);
   fake('kpackagetool6', 'exit 0');
   fake('qdbus6', 'echo true');
-  const env = { ...process.env, PATH: `${kde}:${process.env.PATH}`, XDG_CONFIG_HOME: path.join(dir, 'config'), LANG: 'de_DE.UTF-8' };
+  const env = { ...process.env, PATH: `${kde}:${process.env.PATH}`, XDG_CONFIG_HOME: path.join(dir, 'config'), LANG: 'de_DE.UTF-8', ...extra };
   for (const k of ['LANGUAGE', 'LC_ALL', 'LC_MESSAGES']) delete env[k];
   const b = new Chromium(bin, path.join(dir, 'config', 'chromium'), ext);
   b.env = env;
@@ -696,4 +664,54 @@ test('Echter Chromium: Nach dem Update auf die Fassung mit nativeMessaging träg
   assert.equal(await h.token(), token, 'Schlüssel hat sich beim Neuladen geändert');
   assert.equal(h.installs(), 2);
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});
+
+// Wie in #215: zwei Profile, derselbe Datenordner. Jedes schreibt über native-host.sh in einen
+// eigenen Ordner außerhalb von Downloads (#221), und keines überschreibt die Dateien des anderen.
+test('Echter Chromium: automatische Sicherung über native-host.sh, je Profil ein eigener Ordner (#215)', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 180000 }, async (t) => {
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-data-'));
+  t.after(() => fs.rmSync(data, { recursive: true, force: true }));
+  const backups = path.join(data, 'helium-workspaces', 'backups');
+  const backup = 'await chrome.storage.local.set({ autoBackupAt: 0 }); const r = await userAction(() => setAutoBackup(1)); await r?.done; return autoBackupState();';
+  const profiles = [];
+  for (const names of [['A1', 'A2', 'A3'], ['B1']]) {
+    const h = hostEnv(t, EXT, { XDG_DATA_HOME: data });
+    await h.b.launch();
+    const token = await h.token();
+    h.install();
+    await h.b.sw(`const { workspaces } = await getConfig();
+      await userAction(() => updateWs(workspaces[0].id, { name: args[0][0] }));
+      for (const name of args[0].slice(1)) await userAction(() => createWs(name));`, names);
+    profiles.push({ ...h, token, names, dir: path.join(backups, token) });
+  }
+  const slot = (p, n) => path.join(p.dir, `helium-workspaces-auto-${n}.json`);
+  const names = (file) => JSON.parse(fs.readFileSync(file, 'utf8')).workspaces.map((w) => w.name).sort();
+
+  // Beide erreichen Platz 1 und 2, B jeweils nach A
+  for (let n = 1; n <= 2; n++) {
+    for (const p of profiles) {
+      const st = await p.b.sw(backup);
+      assert.equal(st.error, null, p.names[0]);
+      assert.equal(st.last.file, slot(p, n));
+      assert.equal(st.dir, p.dir + '/');
+    }
+  }
+  for (const p of profiles) {
+    for (let n = 1; n <= 2; n++) assert.deepEqual(names(slot(p, n)), p.names, `Datei ${n} von ${p.names[0]}`);
+    // Nur für den Benutzer lesbar, und nichts in Downloads
+    assert.equal(fs.statSync(p.dir).mode & 0o777, 0o700);
+    assert.equal(fs.statSync(slot(p, 1)).mode & 0o777, 0o600);
+    assert.equal(fs.existsSync(path.join(p.b.profile, 'Downloads')), false);
+  }
+
+  // A sichert zehn weitere Male: Es bleiben zehn Dateien, die Platz 1 und 2 wurden überschrieben
+  const [a, b] = profiles;
+  let last;
+  for (let i = 0; i < 10; i++) last = (await a.b.sw(backup)).last;
+  assert.equal(last.file, slot(a, 2));
+  assert.deepEqual(fs.readdirSync(a.dir).sort(), Array.from({ length: 10 }, (_, i) => `helium-workspaces-auto-${i + 1}.json`).sort());
+  assert.ok(fs.statSync(slot(a, 1)).mtimeMs > fs.statSync(slot(a, 10)).mtimeMs, 'Datei 1 wurde nicht überschrieben');
+  assert.deepEqual(fs.readdirSync(b.dir).sort(), ['helium-workspaces-auto-1.json', 'helium-workspaces-auto-2.json']);
+  assert.deepEqual(names(slot(b, 1)), ['B1']);
+  for (const p of profiles) assert.deepEqual(p.b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
