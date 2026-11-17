@@ -151,14 +151,16 @@ class Chromium {
   }
 
   // Verbindet sich mit dem Service Worker der Erweiterung, nach dem Neuladen mit dem
-  // neuen, sobald die Verbindung zum alten getrennt ist
+  // neuen, sobald die Verbindung zum alten getrennt ist. Der alte kann noch kurz in der
+  // Liste stehen, nachdem die Verbindung getrennt ist, und hat dieselbe Adresse.
   async attachWorker() {
+    const old = this.worker?.targetId;
     const target = await waitFor(async () => {
       const { targetInfos } = await this.send('Target.getTargets');
-      if (this.worker && !this.worker.detached && targetInfos.some((x) => x.targetId === this.worker.targetId)) {
+      if (this.worker && !this.worker.detached && targetInfos.some((x) => x.targetId === old)) {
         throw new Error('alter Service Worker läuft noch');
       }
-      const t = targetInfos.find((x) => x.type === 'service_worker' && x.url === `chrome-extension://${this.extId}/background.js`);
+      const t = targetInfos.find((x) => x.type === 'service_worker' && x.targetId !== old && x.url === `chrome-extension://${this.extId}/background.js`);
       if (!t) throw new Error('Service Worker der Erweiterung nicht gefunden');
       return t;
     });
