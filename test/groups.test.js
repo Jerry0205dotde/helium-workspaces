@@ -8,6 +8,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { setup, check, ok } = require('./harness');
 
+const stashOf = (env, name) => env.b.windows.find((x) => env.b.stashOf(x) === env.ids[name]);
+
 const SPEC = {
   pinned: ['p1'],
   workspaces: {
@@ -44,6 +46,18 @@ test('Workspace löschen und zurückholen: seine Gruppe bleibt nicht als gespeic
   assert.deepEqual(closed(b), []);
   await ok(w.request({ type: 'undoDelete' }));
   await cycle(env, ['B', 'A']);
+  check(env, ALL);
+  assert.deepEqual(closed(b), []);
+});
+
+test('Ablage lässt sich beim Löschen nicht schließen: ihre Gruppe ist wieder da, auch in der Sicherung (#218)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, ids } = env;
+  const stashB = stashOf(env, 'B').id;
+  b.fail('windows.remove', { when: (id) => id === stashB, message: 'Fenster gescheitert (Test)' });
+  const reply = await w.request({ type: 'delete', wsId: ids.B });
+  assert.equal(reply.ok, false);
+  await w.settle();
   check(env, ALL);
   assert.deepEqual(closed(b), []);
 });

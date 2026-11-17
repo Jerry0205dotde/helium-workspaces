@@ -540,8 +540,8 @@ async function onWindowRemoved(winId) {
     // aufgehoben (#218). Die zuletzt geschlossene behält sie: Hebt man sie auf, verliert
     // Chromium sie beim Wiederherstellen je nach Zeitpunkt mit.
     for (const w of order) {
-      if (w !== order.at(-1)) await ungroupAll(w);
-      await chrome.windows.remove(w.id).catch(() => {});
+      const regroup = w === order.at(-1) ? async () => {} : await ungroupAll(w);
+      await chrome.windows.remove(w.id).catch(() => regroup());
     }
     return;
   }
