@@ -46,7 +46,7 @@ function which(name) {
 // das Ergebnis steht in checked, qdbus: unter welchem Namen es qdbus gibt (null: gar nicht),
 // missing: Programme, die fehlen. Mit einem der beiden sieht install.sh nur die nachgebildeten
 // Befehle und die echten aus SYSTEM_TOOLS, damit echte KDE-Programme den Test nicht stören.
-function run(args, { installed = true, updateError = '', dbus = true, token = '', setup, check, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' }, qdbus = 'qdbus6', missing = [] } = {}) {
+function run(args, { installed = true, updateError = '', dbus = true, token = '', tokenLater, setup, check, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' }, qdbus = 'qdbus6', missing = [] } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-install-'));
   const home = path.join(dir, 'home');
   for (const [p, content] of Object.entries(profiles)) {
@@ -66,7 +66,10 @@ function run(args, { installed = true, updateError = '', dbus = true, token = ''
   const update = updateError ? `echo "${updateError}" >&2; exit 4` : `exit ${installed ? 0 : 1}`;
   fake('kpackagetool6', `case "$2" in -s) exit ${installed ? 0 : 3} ;; -u) ${update} ;; esac; exit 0`);
   fake('kwriteconfig6', 'exit 0');
-  fake('kreadconfig6', `[ "$6" = token ] && echo "${token}"; exit 0`);
+  // tokenLater: was kreadconfig6 ab dem zweiten Lesen liefert, wie nach einem Eintrag von native-host.sh
+  const reads = path.join(dir, 'reads');
+  const later = tokenLater === undefined ? '' : `[ -f "${reads}" ] && { echo "${tokenLater}"; exit 0; }; touch "${reads}"; `;
+  fake('kreadconfig6', `[ "$6" = token ] && { ${later}echo "${token}"; }; exit 0`);
   // install.sh --uninstall wartet, bis KWin das neu geladene Skript ausgeführt hat
   fake('sleep', 'exit 0');
   try {
@@ -91,6 +94,10 @@ function run(args, { installed = true, updateError = '', dbus = true, token = ''
 }
 
 const uninstall = (opts) => run(['--uninstall'], opts);
+
+// Native-Messaging-Host: install.sh meldet native-host.sh bei jedem vorhandenen Browser an
+const HOSTS = ['net.imput.helium', 'google-chrome', 'chromium'].map((b) => `${b}/NativeMessagingHosts/helium_workspaces.json`);
+const hostsIn = (dir) => Object.fromEntries(HOSTS.map((h) => [h, path.join(dir, 'home', '.config', h)]).filter(([, f]) => fs.existsSync(f)).map(([h, f]) => [h, fs.readFileSync(f, 'utf8')]));
 
 function git(cwd, ...args) {
   const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, ...GIT_ENV } });
@@ -149,6 +156,22 @@ test('--uninstall lädt das Skript ohne Schlüssel neu, damit es die Ablagen zur
     'kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers --delete',
   ]);
   assert.match(r.stdout, /KWin-Skript entfernt\./);
+});
+
+test('--uninstall meldet native-host.sh bei allen Browsern ab', () => {
+  const r = uninstall({
+    setup: (dir) => {
+      for (const h of HOSTS) {
+        fs.mkdirSync(path.dirname(path.join(dir, 'home', '.config', h)), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'home', '.config', h), '{}');
+      }
+      fs.writeFileSync(path.join(dir, 'home', '.config', 'chromium', 'NativeMessagingHosts', 'fremd.json'), '{}');
+      return INSTALL;
+    },
+    check: (dir) => [hostsIn(dir), fs.readdirSync(path.join(dir, 'home', '.config', 'chromium', 'NativeMessagingHosts'))],
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.checked, [{}, ['fremd.json']]);
 });
 
 test('--uninstall läuft auch, wenn das Paket schon fehlt', () => {
@@ -397,7 +420,9 @@ test('Erstinstallation: installiert das Paket, trägt den Schlüssel ein und lä
 test('Erneute Installation: Enter an der Frage behält den eingetragenen Schlüssel', () => {
   const r = run([], { token: TOKEN, input: '\n' });
   assert.equal(r.status, 0, r.stderr);
+  // Nach der Frage noch einmal gelesen, falls native-host.sh inzwischen einen Schlüssel eingetragen hat
   assert.deepEqual(r.calls, [
+    READ_TOKEN,
     READ_TOKEN,
     SHOW,
     `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
@@ -431,6 +456,12 @@ test('Ein schon eingetragener Schlüssel steht danach nicht doppelt in kwinrc (#
     assert.equal(r.status, 0, r.stderr);
     assert.equal(written(r), `${TOKEN},${OTHER}`, token);
   }
+});
+
+test('Enter an der Frage behält einen Schlüssel, den native-host.sh währenddessen einträgt', () => {
+  const r = run([], { token: TOKEN, tokenLater: `${TOKEN},${OTHER}`, input: '\n' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(written(r), `${TOKEN},${OTHER}`);
 });
 
 test('Enter an der Frage und --update behalten alle eingetragenen Schlüssel (#155)', () => {
@@ -490,12 +521,50 @@ test('--remove ändert nichts bei einem fremden oder ungültigen Schlüssel, ohn
   }
 });
 
-test('Enter ohne eingetragenen Schlüssel bricht ab, bevor etwas installiert ist', () => {
-  const r = run([], { input: '\n', setup: copy, check: tokenFile });
-  assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /Ungültiger Schlüssel/);
-  assert.deepEqual(r.calls, [READ_TOKEN]);
-  assert.equal(r.checked, true, 'extension/token.js schon entfernt');
+test('Enter ohne eingetragenen Schlüssel installiert ohne Schlüssel, die Erweiterung trägt ihn dann ein', () => {
+  const r = run([], { input: '\n', installed: false });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.calls, [READ_TOKEN, READ_TOKEN, SHOW, `kpackagetool6 --type=KWin/Script -i ${ROOT}/kwin`, ...ENABLE_AND_RELOAD]);
+  assert.equal(r.stdout, `Noch kein Schlüssel eingetragen. Die Erweiterung trägt ihn selbst ein, sobald du ihr Popup öffnest.\n` +
+    `Sonst im Popup unter "Schlüssel für install.sh" auf Kopieren klicken und den Befehl hier ausführen.\n${DONE_DE}`);
+});
+
+test('install.sh meldet native-host.sh bei den Browsern an, die es auf dem Gerät gibt', () => {
+  const r = run([TOKEN], {
+    profiles: { 'net.imput.helium/Default': prefs(1), 'chromium/Profile 1': prefs(1) },
+    check: hostsIn,
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, DONE_DE);
+  assert.deepEqual(Object.keys(r.checked), [HOSTS[0], HOSTS[2]]);
+  for (const text of Object.values(r.checked)) {
+    assert.deepEqual(JSON.parse(text), {
+      name: 'helium_workspaces',
+      description: 'Workspaces: key for the KWin script',
+      path: path.join(ROOT, 'native-host.sh'),
+      type: 'stdio',
+      allowed_origins: [`chrome-extension://${EXT_ID}/`],
+    });
+  }
+  // Die Erweiterung ruft den Host unter diesem Namen, er liegt ausführbar daneben
+  assert.match(fs.readFileSync(path.join(ROOT, 'extension', 'core.js'), 'utf8'), /KEY_HOST = 'helium_workspaces'/);
+  fs.accessSync(path.join(ROOT, 'native-host.sh'), fs.constants.X_OK);
+});
+
+test('Anführungszeichen und Backslash im Pfad des Repositorys bleiben gültiges JSON', () => {
+  const r = run([TOKEN], {
+    profiles: { 'net.imput.helium/Default': prefs(1) },
+    setup: (dir) => {
+      const repo = path.join(dir, 'mein "repo" \\ x');
+      fs.mkdirSync(repo);
+      fs.copyFileSync(INSTALL, path.join(repo, 'install.sh'));
+      fs.cpSync(path.join(ROOT, 'kwin'), path.join(repo, 'kwin'), { recursive: true });
+      return path.join(repo, 'install.sh');
+    },
+    check: (dir) => [JSON.parse(hostsIn(dir)[HOSTS[0]]).path, path.join(dir, 'mein "repo" \\ x', 'native-host.sh')],
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.checked[0], r.checked[1]);
 });
 
 test('Ein ungültiger Schlüssel als Argument ändert nichts, auch nicht token.js', () => {

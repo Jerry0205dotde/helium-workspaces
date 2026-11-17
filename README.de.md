@@ -46,16 +46,15 @@ Jedes normale Fenster zeigt genau einen Workspace. Die Tabs der anderen Workspac
 2. In Helium `chrome://extensions` öffnen und oben rechts den **Entwicklermodus** einschalten.
 3. **Entpackte Erweiterung laden** wählen und den Ordner `extension/` aus dem Repository auswählen.
 4. Den Workspace-Button in der Symbolleiste anheften.
-5. Den Workspace-Button anklicken, unten **Schlüssel für install.sh** aufklappen und auf **Kopieren** klicken. Das kopiert den fertigen Befehl samt Schlüssel:
+5. In einem Terminal im Repository-Ordner das KWin-Skript einrichten und die Frage nach dem Schlüssel mit <kbd>Enter</kbd> beantworten:
 
    ```bash
-   ./install.sh <Schlüssel>
+   ./install.sh
    ```
 
-   Ihn in einem Terminal im Repository-Ordner einfügen und ausführen. Er richtet das KWin-Skript ein.
-
-   Am Ende steht `Fertig, KWin-Skript <Version> installiert.`. Das KWin-Skript ist dann installiert, aktiviert, geladen und kennt den Schlüssel. `install.sh` antwortet auf Deutsch, wenn die Sprache der Sitzung Deutsch ist (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES` oder `LANG`), sonst auf Englisch. `./install.sh --help` zeigt alle Optionen.
-6. Zum Prüfen einen zweiten Workspace anlegen und hin- und herwechseln. In der Taskleiste darf kein zusätzliches Browserfenster auftauchen.
+   Am Ende steht `Fertig, KWin-Skript <Version> installiert.`. Das KWin-Skript ist dann installiert, aktiviert und geladen. `install.sh` antwortet auf Deutsch, wenn die Sprache der Sitzung Deutsch ist (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES` oder `LANG`), sonst auf Englisch. `./install.sh --help` zeigt alle Optionen.
+6. Den Workspace-Button anklicken. Dabei schickt die Erweiterung ihren Schlüssel an `native-host.sh`, das ihn in `kwinrc` einträgt (siehe [Der Schlüssel](./docs/how-it-works.de.md#der-schlüssel)). Abschreiben oder Kopieren ist nicht nötig. Für einen Browser, den `install.sh` nicht kennt, etwa Brave, unten **Schlüssel für install.sh** aufklappen, auf **Kopieren** klicken und den kopierten Befehl `./install.sh <Schlüssel>` im Repository-Ordner ausführen.
+7. Zum Prüfen einen zweiten Workspace anlegen und hin- und herwechseln. In der Taskleiste darf kein zusätzliches Browserfenster auftauchen.
 
 Helium lädt die Erweiterung bei jedem Start aus genau diesem Ordner. Wird er verschoben oder an anderer Stelle neu geklont, in `chrome://extensions` mit **Entpackte Erweiterung laden** den neuen Ordner `extension/` wählen. Workspaces, Sicherung und Schlüssel bleiben dabei erhalten, denn das Feld `key` in [`manifest.json`](./extension/manifest.json) gibt der Erweiterung unabhängig vom Ordner immer die ID `jchklfejnmfphkbcpnhdejmeoncejjbe`. Den Entwicklermodus eingeschaltet lassen. Ohne ihn deaktiviert Helium entpackte Erweiterungen.
 
@@ -72,7 +71,7 @@ Wer von Version 0.2.23 oder älter aktualisiert, braucht vorher einen Export: si
    ./install.sh --update
    ```
 
-   Das führt `git pull --ff-only` aus und richtet das KWin-Skript ohne Rückfrage neu ein. Schlüssel und Browserliste bleiben.
+   Das führt `git pull --ff-only` aus und richtet das KWin-Skript ohne Rückfrage neu ein. Schlüssel und Browserliste bleiben. Beim Update auf 0.3.13 oder neuer meldet es dabei auch `native-host.sh` an, das danach neue Schlüssel selbst einträgt.
 2. In `chrome://extensions` bei „Workspaces“ auf **Neu laden** (Kreispfeil) klicken. Ein Neustart von Helium reicht nicht, danach kann noch die alte Hintergrundlogik laufen. `install.sh` nennt am Ende die neue Version, das Popup zeigt sie unten rechts.
 
 Die Erweiterung zum Aktualisieren nicht entfernen und neu hinzufügen. Beim Entfernen löscht Helium alle Workspaces und die Sicherung. Nur ein Export bleibt dann übrig, von Hand oder automatisch (siehe [Exportieren und importieren](./docs/usage.de.md#exportieren-und-importieren)).

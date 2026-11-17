@@ -62,6 +62,8 @@ class Chromium {
     this.profile = profile;
     this.ext = ext;
     this.extId = extIdOf(ext);
+    // Umgebung des Browsers, die auch ein Native-Messaging-Host bekommt
+    this.env = process.env;
   }
 
   // Startet den Browser mit dem Profil. Beim ersten Start wird die Erweiterung wie über
@@ -90,7 +92,7 @@ class Chromium {
     // Ohne Bildschirm unsichtbar, aber sonst wie ein normaler Browser (anders als
     // --headless beendet er sich z. B., wenn das letzte Fenster geschlossen wird)
     if (!process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) args.push('--ozone-platform=headless');
-    const proc = spawn(this.bin, args, { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
+    const proc = spawn(this.bin, args, { env: this.env, stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
     this.proc = proc;
     this.log = '';
     proc.stderr.on('data', (d) => (this.log = (this.log + d).slice(-200000)));
@@ -149,14 +151,16 @@ class Chromium {
   }
 
   // Verbindet sich mit dem Service Worker der Erweiterung, nach dem Neuladen mit dem
-  // neuen, sobald die Verbindung zum alten getrennt ist
+  // neuen, sobald die Verbindung zum alten getrennt ist. Der alte kann noch kurz in der
+  // Liste stehen, nachdem die Verbindung getrennt ist, und hat dieselbe Adresse.
   async attachWorker() {
+    const old = this.worker?.targetId;
     const target = await waitFor(async () => {
       const { targetInfos } = await this.send('Target.getTargets');
-      if (this.worker && !this.worker.detached && targetInfos.some((x) => x.targetId === this.worker.targetId)) {
+      if (this.worker && !this.worker.detached && targetInfos.some((x) => x.targetId === old)) {
         throw new Error('alter Service Worker läuft noch');
       }
-      const t = targetInfos.find((x) => x.type === 'service_worker' && x.url === `chrome-extension://${this.extId}/background.js`);
+      const t = targetInfos.find((x) => x.type === 'service_worker' && x.targetId !== old && x.url === `chrome-extension://${this.extId}/background.js`);
       if (!t) throw new Error('Service Worker der Erweiterung nicht gefunden');
       return t;
     });

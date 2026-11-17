@@ -197,8 +197,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     switch (msg.type) {
       case 'state':
         return stateFor(msg.windowId);
-      case 'token':
-        return serial(ensureToken);
+      case 'token': {
+        const token = await serial(ensureToken);
+        deliverKey(token);
+        return token;
+      }
       case 'switch':
         return userAction(() => switchTo(msg.windowId, msg.wsId));
       case 'show':
@@ -285,8 +288,9 @@ chrome.runtime.onStartup.addListener(() =>
     await buildMenus();
   }),
 );
-// Bei jedem Start, damit auch eine ältere Installation ohne Neuladen ihren Schlüssel bekommt
-serial(ensureToken);
+// Bei jedem Start, damit auch eine ältere Installation ohne Neuladen ihren Schlüssel bekommt.
+// Dann gleich an native-host.sh, außerhalb der Reihe: Bis install.sh fertig ist, vergehen Sekunden.
+serial(ensureToken).then(deliverKey);
 serial(scheduleUnload);
 serial(scheduleAutoBackup);
 scheduleReconcile();

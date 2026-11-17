@@ -46,16 +46,15 @@ Every normal window shows exactly one workspace. The tabs of the other workspace
 2. Open `chrome://extensions` in Helium and turn on **Developer mode** in the top right.
 3. Choose **Load unpacked** and select the folder `extension/` from the repository.
 4. Pin the workspace button to the toolbar.
-5. Click the workspace button, expand **Key for install.sh** at the bottom and click **Copy**. This copies the complete command including the key:
+5. In a terminal in the repository folder, set up the KWin script and answer the question for the key with <kbd>Enter</kbd>:
 
    ```bash
-   ./install.sh <key>
+   ./install.sh
    ```
 
-   Paste it into a terminal in the repository folder and run it. It sets up the KWin script.
-
-   The last line of output is `Done, KWin script <version> installed.`. The KWin script is then installed, enabled and loaded, and it knows the key. `install.sh` answers in German if the session language is German (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES` or `LANG`), otherwise in English. `./install.sh --help` shows all options (in German).
-6. To check, create a second workspace and switch back and forth. No additional browser window may appear in the taskbar.
+   The last line of output is `Done, KWin script <version> installed.`. The KWin script is then installed, enabled and loaded. `install.sh` answers in German if the session language is German (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES` or `LANG`), otherwise in English. `./install.sh --help` shows all options (in German).
+6. Click the workspace button. The extension then sends its key to `native-host.sh`, which writes it to `kwinrc` (see [The key](./docs/how-it-works.md#the-key)). There is nothing to copy. For a browser that `install.sh` does not know, such as Brave, expand **Key for install.sh** at the bottom, click **Copy** and run the copied command `./install.sh <key>` in the repository folder.
+7. To check, create a second workspace and switch back and forth. No additional browser window may appear in the taskbar.
 
 Helium loads the extension from exactly this folder on every start. If it is moved or cloned again somewhere else, choose the new `extension/` folder with **Load unpacked** in `chrome://extensions`. Workspaces, backup and key are kept, because the `key` field in [`manifest.json`](./extension/manifest.json) always gives the extension the ID `jchklfejnmfphkbcpnhdejmeoncejjbe`, regardless of the folder. Leave developer mode turned on. Without it Helium disables unpacked extensions.
 
@@ -72,7 +71,7 @@ When updating from version 0.2.23 or older, you need an export first: see [switc
    ./install.sh --update
    ```
 
-   This runs `git pull --ff-only` and sets up the KWin script again without asking. The key and the browser list are kept.
+   This runs `git pull --ff-only` and sets up the KWin script again without asking. The key and the browser list are kept. When updating to 0.3.13 or later it also registers `native-host.sh`, which from then on writes new keys by itself.
 2. In `chrome://extensions`, click **Reload** (the circular arrow) on "Workspaces". Restarting Helium is not enough, the old background logic can still be running afterwards. At the end `install.sh` names the new version, the popup shows it in the bottom right.
 
 Do not remove and re-add the extension to update it. When it is removed, Helium deletes all workspaces and the backup. Only an export is left then, manual or automatic (see [Export and import](./docs/usage.md#export-and-import)).
