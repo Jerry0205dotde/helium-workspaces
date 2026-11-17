@@ -258,6 +258,35 @@ async function whenIdle(fn, tries = 15) {
 // So meldet der Browser ein Fenster, das es nicht mehr gibt
 const GONE = /no window with id/i;
 
+// Hebt die Gruppen im Fenster w auf, bevor die Erweiterung es schließt und seine Tabs später
+// aus der Sicherung neu anlegt. Chromium behält die Gruppe eines geschlossenen Fensters als
+// gespeicherte Gruppe (Menü → Tabgruppen), eine aufgehobene löscht es. Sonst stünde jede
+// Gruppe nach dem Neuanlegen ein weiteres Mal in der Liste (#218). Gibt eine Funktion
+// zurück, die die Gruppen wieder anlegt, falls sich das Fenster nicht schließen lässt.
+async function ungroupAll(w) {
+  const tabs = w.tabs.filter((t) => t.groupId >= 0);
+  const none = async () => {};
+  if (!tabs.length) return none;
+  try {
+    const groups = await chrome.tabGroups.query({ windowId: w.id });
+    await whenIdle(() => chrome.tabs.ungroup(tabs.map((t) => t.id)));
+    return async () => {
+      for (const g of groups) {
+        const tabIds = tabs.filter((t) => t.groupId === g.id).map((t) => t.id);
+        try {
+          const gid = await whenIdle(() => chrome.tabs.group({ tabIds, createProperties: { windowId: w.id } }));
+          await whenIdle(() => chrome.tabGroups.update(gid, { title: g.title, color: g.color, collapsed: g.collapsed }));
+        } catch (err) {
+          console.warn('[workspaces] Gruppe wieder anlegen', g.title, err);
+        }
+      }
+    };
+  } catch (err) {
+    console.warn('[workspaces] Gruppen vor dem Schließen', err);
+    return none;
+  }
+}
+
 const groupProps = (e) => ({ title: e.gt || '', color: e.gc || 'grey', collapsed: !!e.gx });
 
 // Legt einen Tab im Hintergrund an, solange der Browser wegen Ziehens ablehnt erneut
