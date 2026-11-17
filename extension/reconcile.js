@@ -536,7 +536,13 @@ async function onWindowRemoved(winId) {
     // Ablage des davor gezeigten Workspace schließen, sonst die mit den meisten Tabs.
     const rank = (w) => stashTabsOf(w).length * (stash.get(prev) === w ? 1e9 : 1);
     const order = [...stash.values()].sort((a, b) => rank(a) - rank(b));
-    for (const w of order) await chrome.windows.remove(w.id).catch(() => {});
+    // Die übrigen Ablagen kommen beim Wechseln aus der Sicherung, ihre Gruppen werden
+    // aufgehoben (#218). Die zuletzt geschlossene behält sie: Hebt man sie auf, verliert
+    // Chromium sie beim Wiederherstellen je nach Zeitpunkt mit.
+    for (const w of order) {
+      if (w !== order.at(-1)) await ungroupAll(w);
+      await chrome.windows.remove(w.id).catch(() => {});
+    }
     return;
   }
   // Ein Fenster von mehreren wurde geschlossen: seine Tabs sind bewusst weg.

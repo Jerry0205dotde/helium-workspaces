@@ -9,6 +9,9 @@
 // - Ein Fenster ohne Tabs wird geschlossen, eine Gruppe ohne Tabs verschwindet.
 // - Ein einzeln in ein anderes Fenster verschobener Tab verlässt seine Gruppe,
 //   tabGroups.move nimmt die ganze Gruppe samt ID mit.
+// - Verschwindet eine Gruppe, weil ihre Tabs geschlossen werden, bleibt sie als gespeicherte
+//   Gruppe in closedGroups (Menü → Tabgruppen), auch über einen Neustart. Mit tabs.ungroup
+//   aufgehobene Gruppen behält Chromium nicht.
 // - Ein Tab, der zwischen zwei Tabs derselben Gruppe landet, tritt ihr bei.
 // - Markiert (highlighted) ist der aktive Tab und, was tabs.highlight dazunimmt.
 //   Aktivieren eines anderen Tabs oder Verschieben hebt die Markierung auf.
@@ -103,6 +106,7 @@ class Browser {
     this.next = { win: 1, tab: 1, group: 1 };
     this.windows = []; // { id, state, focused, tabs: [{ id, url, title, pinned, active, groupId }] }
     this.groups = new Map(); // id → { id, windowId, title, color, collapsed }
+    this.closedGroups = []; // gespeicherte Gruppen, deren Tabs geschlossen wurden: { title, color }
     this.local = new StorageArea(this, 'local');
     this.session = new StorageArea(this, 'session');
     // Größe von storage.session: 10 MB, vor Chrome 112 1 MB. sessionBytesInUse = false
@@ -281,11 +285,13 @@ class Browser {
     this.dropEmptyGroup(old);
   }
 
-  dropEmptyGroup(gid) {
+  // closed: Die letzten Tabs der Gruppe wurden geschlossen, Chromium behält sie gespeichert
+  dropEmptyGroup(gid, closed = false) {
     if (gid < 0 || !this.groups.has(gid)) return;
     if (this.windows.some((w) => w.tabs.some((t) => t.groupId === gid))) return;
     const g = this.groups.get(gid);
     this.groups.delete(gid);
+    if (closed) this.closedGroups.push({ title: g.title, color: g.color });
     this.fire('tabGroups.onRemoved', this.groupInfo(g));
   }
 
@@ -429,7 +435,7 @@ class Browser {
     if (closing) this.lastClosed = this.snap(w);
     this.detach(t, w);
     this.fire('tabs.onRemoved', t.id, { windowId: w.id, isWindowClosing: closing });
-    this.dropEmptyGroup(t.groupId);
+    this.dropEmptyGroup(t.groupId, true);
     this.closeIfEmpty(w);
   }
 
@@ -439,7 +445,7 @@ class Browser {
     for (const t of [...w.tabs]) this.fire('tabs.onRemoved', t.id, { windowId: w.id, isWindowClosing: true });
     const gids = new Set(w.tabs.map((t) => t.groupId));
     w.tabs = [];
-    for (const g of gids) this.dropEmptyGroup(g);
+    for (const g of gids) this.dropEmptyGroup(g, true);
     this.closeIfEmpty(w);
   }
 
@@ -453,7 +459,7 @@ class Browser {
       const t = w.tabs.pop();
       t.active = false;
       this.fire('tabs.onRemoved', t.id, { windowId: w.id, isWindowClosing: true });
-      this.dropEmptyGroup(t.groupId);
+      this.dropEmptyGroup(t.groupId, true);
       await between();
     }
     this.closeIfEmpty(w);
@@ -693,6 +699,13 @@ class Browser {
             if (w !== to) b.closeIfEmpty(w);
           }
           return g.id;
+        }),
+        // Die Tabs bleiben an ihrer Stelle
+        ungroup: api('tabs.ungroup', (ids) => {
+          for (const id of [].concat(ids)) {
+            const { t, w } = b.findTab(id);
+            b.setGroup(t, w, -1);
+          }
         }),
         onCreated: b.event('tabs.onCreated'),
         onRemoved: b.event('tabs.onRemoved'),

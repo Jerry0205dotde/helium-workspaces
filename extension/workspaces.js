@@ -56,6 +56,7 @@ async function deleteWs(id, batch = []) {
     const stash = stashTabsOf(w).map((t) => serTab(t, groups));
     backup[id] = { stash, shown: [], ...(failed?.length ? { failed } : {}), ...(later?.length ? { later: relink(later, stash) } : {}) };
     await chrome.storage.local.set({ backup });
+    await ungroupAll(w);
     // Nur ein schon geschlossenes Fenster gilt als Erfolg. Bliebe die Ablage offen, holte
     // der nächste Abgleich sie als Workspace „Wiederhergestellt“ zurück.
     await whenIdle(() => chrome.windows.remove(w.id)).catch((err) => {
