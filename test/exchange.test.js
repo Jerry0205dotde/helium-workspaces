@@ -630,6 +630,15 @@ test('Ersetzen stellt Titel, Farbe und Einklappen der Gruppen in einem übernomm
   check(now, { A, B: ['b1'], pinned: [] });
 });
 
+test('Ersetzen: Lässt sich eine Gruppe nicht abfragen, bekommt sie die Angaben der Datei trotzdem (#230)', async () => {
+  const A = ['a1', { url: 'a2', group: 'Lernen', color: 'blue' }, { url: 'a3', group: 'Lernen', color: 'blue' }];
+  const { now } = await replaceAfter({ workspaces: { A, B: ['b1'] } }, async (b) => {
+    await b.chrome.tabGroups.update(b.tabsByUrl(url('a2'))[0].groupId, { title: 'Original' });
+    b.fail('tabGroups.get', { times: Infinity });
+  });
+  check(now, { A, B: ['b1'], pinned: [] });
+});
+
 test('Ersetzen stellt die Gruppenzugehörigkeit in einem übernommenen Fenster her (#230)', async () => {
   const A = [{ url: 'a1', group: 'Lernen', color: 'blue' }, { url: 'a2', group: 'Lernen', color: 'blue' }, 'a3', { url: 'a4', group: 'Lesen', color: 'red', collapsed: true }];
   const { now } = await replaceAfter({ workspaces: { A, B: ['b1'] } }, async (b) => {
@@ -666,6 +675,27 @@ test('Ersetzen ordnet gleiche Adressen in verschiedenen Gruppen wieder richtig z
   });
   // Jeder der beiden gleichen Tabs bleibt in seiner Gruppe, samt Verlauf
   assert.deepEqual(Object.fromEntries(now.b.tabsByUrl(url('a1')).map((t) => [now.b.groups.get(t.groupId).title, t.id])), ids);
+});
+
+test('Ersetzen ordnet gleiche Adressen auch in gleich benannten Gruppen über ihre übrigen Tabs zu (#230)', async () => {
+  // Zwei Gruppen „G“, rot: a1 mit a2 und a1 mit a3
+  const ids = {};
+  const sibling = (b, t) => b.windows.flatMap((w) => w.tabs).find((x) => x.groupId === t.groupId && x.id !== t.id).url;
+  const env = await setup({ workspaces: { A: ['a1', 'a2', 'a3', 'a1'], B: ['b1'] } });
+  const { b } = env;
+  const [first, second] = b.tabsByUrl(url('a1'));
+  for (const tabIds of [[first.id, b.tabsByUrl(url('a2'))[0].id], [b.tabsByUrl(url('a3'))[0].id, second.id]]) {
+    await b.chrome.tabGroups.update(await b.chrome.tabs.group({ tabIds }), { title: 'G', color: 'red' });
+  }
+  await env.w.settle();
+  const file = await request(env, { type: 'export' });
+  await b.chrome.tabGroups.move((await b.chrome.tabs.get(second.id)).groupId, { windowId: env.win, index: 0 });
+  await env.w.settle();
+  for (const t of b.tabsByUrl(url('a1'))) ids[sibling(b, t)] = t.id;
+  await importFile(env, file, 'replace', true);
+  const now = envOf(b);
+  assert.deepEqual(layoutOf(await request(now, { type: 'export' })), layoutOf(file));
+  assert.deepEqual(Object.fromEntries(b.tabsByUrl(url('a1')).map((t) => [sibling(b, t), t.id])), ids, 'a1 hat die Gruppe gewechselt');
 });
 
 test('Ersetzen: Ein teilweise übernommenes Fenster bekommt die fehlenden Tabs in ihre Gruppe (#230)', async () => {
