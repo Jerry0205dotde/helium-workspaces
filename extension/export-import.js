@@ -166,10 +166,85 @@ function planAdopt(data, mains) {
 // Tabs, die beim Ersetzen in übernommenen Fenstern offen bleiben (zählt wie collectAll)
 const keptIn = (adopt) => [...adopt.values()].reduce((n, w) => n + movableTabsOf(w).filter(urlOf).length, 0);
 
+// Ordnet die Einträge der Datei den offenen Tabs zu: zuerst in gleicher Reihenfolge (align),
+// den Rest nach URL. Ergebnis: für jeden Eintrag der Tab oder null.
+function matchTabs(entries, tabs) {
+  const match = align(
+    entries.map((e) => e.url),
+    tabs.map(urlOf),
+  );
+  const used = new Set(match.filter((j) => j >= 0));
+  return match.map((j, i) => {
+    if (j < 0) j = tabs.findIndex((t, k) => !used.has(k) && urlOf(t) === entries[i].url);
+    if (j < 0) return null;
+    used.add(j);
+    return tabs[j];
+  });
+}
+
+// Liegen die Tabs (tabs[k] zu entries[k]) schon in der Reihenfolge und den Gruppen der
+// Datei? Titel, Farbe und Einklappen dürfen abweichen. all: alle Tabs des Fensters.
+function sameLayout(entries, tabs, all) {
+  const key = new Map(); // Gruppe der Datei → Gruppe im Fenster
+  const seen = new Set();
+  for (const [k, t] of tabs.entries()) {
+    const e = entries[k];
+    if ((k && t.index < tabs[k - 1].index) || !e.g !== t.groupId < 0) return false;
+    if (!e.g) continue;
+    if (!key.has(e.g)) {
+      if (seen.has(t.groupId)) return false;
+      key.set(e.g, t.groupId);
+      seen.add(t.groupId);
+    }
+    if (key.get(e.g) !== t.groupId) return false;
+  }
+  return all.every((t) => !seen.has(t.groupId) || tabs.includes(t));
+}
+
+// Bringt die offenen Tabs eines übernommenen Fensters in Reihenfolge und Gruppen der Datei,
+// ohne einen Tab neu anzulegen (#230, #231). Stimmen sie schon, bekommen nur die Gruppen
+// Titel, Farbe und Einklappen aus der Datei. Sonst werden die Gruppen aufgehoben (Chromium
+// behält sie dann nicht als gespeicherte Gruppen, #218), die Tabs der Reihe nach hinter die
+// angehefteten gestellt und je Gruppe der Datei neu zusammengefasst. Gibt die Einträge
+// zurück, für die kein Tab offen ist.
+async function arrangeAdopted(entries, windowId) {
+  const all = (await chrome.tabs.query({ windowId })).filter((t) => !t.pinned);
+  const match = matchTabs(entries, all);
+  const pairs = entries.map((e, i) => ({ e, t: match[i] })).filter((p) => p.t);
+  const es = pairs.map((p) => p.e);
+  const ts = pairs.map((p) => p.t);
+  try {
+    if (sameLayout(es, ts, all)) {
+      const groups = new Map((await chrome.tabGroups.query({ windowId })).map((g) => [g.id, g]));
+      const done = new Set();
+      for (const { e, t } of pairs) {
+        if (!e.g || done.has(t.groupId)) continue;
+        done.add(t.groupId);
+        const want = groupProps(e);
+        const g = groups.get(t.groupId);
+        if (g && Object.keys(want).some((k) => g[k] !== want[k])) await whenIdle(() => chrome.tabGroups.update(t.groupId, want));
+      }
+    } else {
+      const grouped = all.filter((t) => t.groupId >= 0).map((t) => t.id);
+      if (grouped.length) await whenIdle(() => chrome.tabs.ungroup(grouped));
+      if (ts.length) await whenIdle(() => chrome.tabs.move(ts.map((t) => t.id), { index: all[0]?.index ?? 0 }));
+      const byKey = new Map();
+      for (const { e, t } of pairs) if (e.g) byKey.set(e.g, [...(byKey.get(e.g) || []), { e, t }]);
+      for (const members of byKey.values()) {
+        await groupEntry(members.map((m) => m.t.id), windowId, members[0].e).catch((err) => console.warn('[workspaces] Gruppe nicht wiederherstellbar', err));
+      }
+    }
+  } catch (err) {
+    console.warn('[workspaces] übernommenes Fenster nicht angeordnet', err);
+  }
+  return entries.filter((e, i) => !match[i]);
+}
+
 // Macht die übernommenen Fenster zu Fenstern der neuen Workspaces (ids wie data.workspaces).
 // Ein minimiertes Fenster wird wieder zur Ablage, etwa eine alte Ablage nach dem Umstieg;
-// ein sichtbares zeigt den Workspace. Fehlende Tabs aus der Datei kommen dazu, die über
-// LOAD_AT_ONCE hinaus zurückgestellten nach und nach (#184).
+// ein sichtbares zeigt den Workspace. Die offenen Tabs bekommen Reihenfolge und Gruppen der
+// Datei (arrangeAdopted). Fehlende Tabs kommen hinten dazu, gruppierte in ihre Gruppe, die
+// über LOAD_AT_ONCE hinaus zurückgestellten nach und nach (#184).
 async function adoptWindows(data, ids, adopt, stamp) {
   const s = await sess();
   let failed = 0;
@@ -185,7 +260,7 @@ async function adoptWindows(data, ids, adopt, stamp) {
       s.windowWs[win.id] = id;
       await saveSess(s);
     }
-    const add = missingIn(imp.tabs, movableTabsOf(win).map((t) => ({ url: urlOf(t) })));
+    const add = await moving(() => arrangeAdopted(imp.tabs, win.id));
     if (!add.length) continue;
     const r = await moving(() => recreate(importEntries(add, stamp, { from: imp.tabs, join: true }), win.id, false, true));
     await keepFailed(id, r.failed);
