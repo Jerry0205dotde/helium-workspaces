@@ -167,15 +167,19 @@ function planAdopt(data, mains) {
 const keptIn = (adopt) => [...adopt.values()].reduce((n, w) => n + movableTabsOf(w).filter(urlOf).length, 0);
 
 // Ordnet jeder Gruppe der Datei die Gruppe im Fenster zu, die die meisten ihrer Adressen
-// enthält, jede höchstens einmal. Ergebnis: Gruppenschlüssel der Datei → Gruppen-ID.
-function matchGroups(entries, tabs) {
+// enthält, bei Gleichstand die mit gleichem Titel und gleicher Farbe (groups: ID → Gruppe),
+// jede höchstens einmal. Ergebnis: Gruppenschlüssel der Datei → Gruppen-ID.
+function matchGroups(entries, tabs, groups) {
   const want = new Map();
   const have = new Map();
   for (const e of entries) if (e.g) want.set(e.g, [...(want.get(e.g) || []), e]);
   for (const t of tabs) if (t.groupId >= 0) have.set(t.groupId, [...(have.get(t.groupId) || []), { url: urlOf(t) }]);
   const pairs = [];
-  for (const [g, list] of want) for (const [id, live] of have) pairs.push({ g, id, hits: list.length - missingIn(list, live).length });
-  pairs.sort((a, b) => b.hits - a.hits);
+  const same = (e, g) => !!g && g.title === groupProps(e).title && g.color === groupProps(e).color;
+  for (const [g, list] of want) {
+    for (const [id, live] of have) pairs.push({ g, id, hits: list.length - missingIn(list, live).length, same: same(list[0], groups.get(id)) });
+  }
+  pairs.sort((a, b) => b.hits - a.hits || b.same - a.same);
   const out = new Map();
   const taken = new Set();
   for (const p of pairs) {
@@ -189,10 +193,10 @@ function matchGroups(entries, tabs) {
 // Ordnet die Einträge der Datei den offenen Tabs zu, jeden Tab höchstens einmal: zuerst nach
 // URL in der zugeordneten Gruppe (matchGroups, ohne Gruppe ebenso), damit gleiche Adressen in
 // verschiedenen Gruppen ihren Tab behalten, dann nur nach URL. Ergebnis: je Eintrag der Tab oder null.
-function matchTabs(entries, tabs) {
-  const groups = matchGroups(entries, tabs);
+function matchTabs(entries, tabs, groups) {
+  const to = matchGroups(entries, tabs, groups);
   const passes = [
-    [(e) => JSON.stringify([e.url, e.g ? groups.get(e.g) ?? null : -1]), (t) => JSON.stringify([urlOf(t), t.groupId])],
+    [(e) => JSON.stringify([e.url, e.g ? to.get(e.g) ?? null : -1]), (t) => JSON.stringify([urlOf(t), t.groupId])],
     [(e) => e.url, urlOf],
   ];
   const match = entries.map(() => null);
@@ -239,13 +243,14 @@ function sameLayout(entries, tabs, all) {
 // ohne einen Tab neu anzulegen (#230, #231). Stimmen sie schon, bekommen nur die Gruppen
 // Titel, Farbe und Einklappen aus der Datei. Sonst werden die Gruppen aufgehoben (Chromium
 // behält sie dann nicht als gespeicherte Gruppen, #218), die Tabs der Reihe nach hinter die
-// angehefteten gestellt und je Gruppe der Datei neu zusammengefasst. win ist der Stand aus
-// scan, wie für planAdopt; eine seither vorn angeheftete Ablage-Seite verschiebt nur die
-// Positionen. Gibt die Einträge zurück, für die kein Tab offen ist.
+// angehefteten gestellt und je Gruppe der Datei neu zusammengefasst. Es gilt der aktuelle
+// Stand des Fensters, scheitert die Abfrage, der aus scan (win). Gibt die Einträge zurück,
+// für die kein Tab offen ist.
 async function arrangeAdopted(entries, win) {
   const windowId = win.id;
-  const all = movableTabsOf(win);
-  const match = matchTabs(entries, all);
+  const all = movableTabsOf({ tabs: (await chrome.tabs.query({ windowId }).catch(() => null)) || win.tabs });
+  const groups = new Map((await chrome.tabGroups.query({ windowId }).catch(() => [])).map((g) => [g.id, g]));
+  const match = matchTabs(entries, all, groups);
   const pairs = entries.map((e, i) => ({ e, t: match[i] })).filter((p) => p.t);
   const warn = (err) => console.warn('[workspaces] übernommenes Fenster nicht angeordnet', err);
   if (sameLayout(pairs.map((p) => p.e), pairs.map((p) => p.t), all)) {
@@ -254,7 +259,7 @@ async function arrangeAdopted(entries, win) {
       if (!e.g || done.has(t.groupId)) continue;
       done.add(t.groupId);
       const want = groupProps(e);
-      const g = await chrome.tabGroups.get(t.groupId).catch(() => null);
+      const g = groups.get(t.groupId);
       if (!g || Object.keys(want).some((k) => g[k] !== want[k])) await whenIdle(() => chrome.tabGroups.update(t.groupId, want)).catch(warn);
     }
   } else {
