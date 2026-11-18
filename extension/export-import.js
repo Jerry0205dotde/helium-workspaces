@@ -167,15 +167,18 @@ function planAdopt(data, mains) {
 const keptIn = (adopt) => [...adopt.values()].reduce((n, w) => n + movableTabsOf(w).filter(urlOf).length, 0);
 
 // Ordnet jeder Gruppe der Datei die Gruppe im Fenster zu, die die meisten ihrer Adressen
-// enthält, bei Gleichstand die mit gleichem Titel und gleicher Farbe (groups: ID → Gruppe),
-// jede höchstens einmal. Ergebnis: Gruppenschlüssel der Datei → Gruppen-ID.
+// enthält, bei Gleichstand die mit gleichem Titel und gleicher Farbe, dann gleichem Einklappen
+// (groups: ID → Gruppe), jede höchstens einmal. Ergebnis: Gruppenschlüssel der Datei → Gruppen-ID.
 function matchGroups(entries, tabs, groups) {
   const want = new Map();
   const have = new Map();
   for (const e of entries) if (e.g) want.set(e.g, [...(want.get(e.g) || []), e]);
   for (const t of tabs) if (t.groupId >= 0) have.set(t.groupId, [...(have.get(t.groupId) || []), { url: urlOf(t) }]);
   const pairs = [];
-  const same = (e, g) => !!g && g.title === groupProps(e).title && g.color === groupProps(e).color;
+  const same = (e, g) => {
+    const p = groupProps(e);
+    return g ? (g.title === p.title && g.color === p.color ? 2 : 0) + (g.collapsed === p.collapsed ? 1 : 0) : 0;
+  };
   for (const [g, list] of want) {
     for (const [id, live] of have) pairs.push({ g, id, hits: list.length - missingIn(list, live).length, same: same(list[0], groups.get(id)) });
   }
