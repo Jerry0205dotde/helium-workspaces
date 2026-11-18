@@ -166,20 +166,34 @@ function planAdopt(data, mains) {
 // Tabs, die beim Ersetzen in übernommenen Fenstern offen bleiben (zählt wie collectAll)
 const keptIn = (adopt) => [...adopt.values()].reduce((n, w) => n + movableTabsOf(w).filter(urlOf).length, 0);
 
-// Ordnet die Einträge der Datei den offenen Tabs zu: zuerst in gleicher Reihenfolge (align),
-// den Rest nach URL. Ergebnis: für jeden Eintrag der Tab oder null.
-function matchTabs(entries, tabs) {
-  const match = align(
-    entries.map((e) => e.url),
-    tabs.map(urlOf),
-  );
-  const used = new Set(match.filter((j) => j >= 0));
-  return match.map((j, i) => {
-    if (j < 0) j = tabs.findIndex((t, k) => !used.has(k) && urlOf(t) === entries[i].url);
-    if (j < 0) return null;
-    used.add(j);
-    return tabs[j];
-  });
+// Ordnet die Einträge der Datei den offenen Tabs zu, jeden Tab höchstens einmal: zuerst nach
+// URL samt Titel und Farbe der Gruppe (bzw. beide ohne Gruppe), damit gleiche Adressen in
+// verschiedenen Gruppen ihren Tab behalten, dann nur nach URL. Ergebnis: je Eintrag der Tab oder null.
+function matchTabs(entries, tabs, groups) {
+  const inGroup = (url, g) => JSON.stringify([url, g ? g.title : null, g ? g.color : null]);
+  const passes = [
+    [(e) => inGroup(e.url, e.g && groupProps(e)), (t) => inGroup(urlOf(t), groups.get(t.groupId))],
+    [(e) => e.url, urlOf],
+  ];
+  const match = entries.map(() => null);
+  const used = new Set();
+  for (const [keyOf, tabKey] of passes) {
+    const free = new Map();
+    for (const t of tabs) {
+      if (used.has(t)) continue;
+      const k = tabKey(t);
+      if (!free.has(k)) free.set(k, []);
+      free.get(k).push(t);
+    }
+    entries.forEach((e, i) => {
+      const t = !match[i] && free.get(keyOf(e))?.shift();
+      if (t) {
+        match[i] = t;
+        used.add(t);
+      }
+    });
+  }
+  return match;
 }
 
 // Liegen die Tabs (tabs[k] zu entries[k]) schon in der Reihenfolge und den Gruppen der
@@ -209,33 +223,31 @@ function sameLayout(entries, tabs, all) {
 // zurück, für die kein Tab offen ist.
 async function arrangeAdopted(entries, windowId) {
   const all = (await chrome.tabs.query({ windowId })).filter((t) => !t.pinned);
-  const match = matchTabs(entries, all);
+  const groups = new Map((await chrome.tabGroups.query({ windowId })).map((g) => [g.id, g]));
+  const match = matchTabs(entries, all, groups);
   const pairs = entries.map((e, i) => ({ e, t: match[i] })).filter((p) => p.t);
-  const es = pairs.map((p) => p.e);
-  const ts = pairs.map((p) => p.t);
-  try {
-    if (sameLayout(es, ts, all)) {
-      const groups = new Map((await chrome.tabGroups.query({ windowId })).map((g) => [g.id, g]));
-      const done = new Set();
-      for (const { e, t } of pairs) {
-        if (!e.g || done.has(t.groupId)) continue;
-        done.add(t.groupId);
-        const want = groupProps(e);
-        const g = groups.get(t.groupId);
-        if (g && Object.keys(want).some((k) => g[k] !== want[k])) await whenIdle(() => chrome.tabGroups.update(t.groupId, want));
-      }
-    } else {
+  const warn = (err) => console.warn('[workspaces] übernommenes Fenster nicht angeordnet', err);
+  if (sameLayout(pairs.map((p) => p.e), pairs.map((p) => p.t), all)) {
+    const done = new Set();
+    for (const { e, t } of pairs) {
+      if (!e.g || done.has(t.groupId)) continue;
+      done.add(t.groupId);
+      const want = groupProps(e);
+      const g = groups.get(t.groupId);
+      if (g && Object.keys(want).some((k) => g[k] !== want[k])) await whenIdle(() => chrome.tabGroups.update(t.groupId, want)).catch(warn);
+    }
+  } else {
+    // Scheitert das Umsortieren, entstehen die Gruppen der Datei trotzdem
+    try {
       const grouped = all.filter((t) => t.groupId >= 0).map((t) => t.id);
       if (grouped.length) await whenIdle(() => chrome.tabs.ungroup(grouped));
-      if (ts.length) await whenIdle(() => chrome.tabs.move(ts.map((t) => t.id), { index: all[0]?.index ?? 0 }));
-      const byKey = new Map();
-      for (const { e, t } of pairs) if (e.g) byKey.set(e.g, [...(byKey.get(e.g) || []), { e, t }]);
-      for (const members of byKey.values()) {
-        await groupEntry(members.map((m) => m.t.id), windowId, members[0].e).catch((err) => console.warn('[workspaces] Gruppe nicht wiederherstellbar', err));
-      }
+      if (pairs.length) await whenIdle(() => chrome.tabs.move(pairs.map((p) => p.t.id), { index: all[0]?.index ?? 0 }));
+    } catch (err) {
+      warn(err);
     }
-  } catch (err) {
-    console.warn('[workspaces] übernommenes Fenster nicht angeordnet', err);
+    const byKey = new Map();
+    for (const p of pairs) if (p.e.g) byKey.set(p.e.g, [...(byKey.get(p.e.g) || []), p]);
+    for (const members of byKey.values()) await groupEntry(members.map((m) => m.t.id), windowId, members[0].e).catch(warn);
   }
   return entries.filter((e, i) => !match[i]);
 }

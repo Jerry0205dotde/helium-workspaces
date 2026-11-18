@@ -640,12 +640,32 @@ test('Ersetzen stellt die Gruppenzugehörigkeit in einem übernommenen Fenster h
   check(now, { A, B: ['b1'], pinned: [] });
 });
 
+test('Ersetzen: Scheitert das Umsortieren im übernommenen Fenster, entstehen die Gruppen der Datei trotzdem (#230)', async () => {
+  const A = [{ url: 'a1', group: 'Lernen', color: 'blue' }, { url: 'a2', group: 'Lernen', color: 'blue' }, 'a3'];
+  const env = await setup({ workspaces: { A, B: ['b1'] } });
+  const { b } = env;
+  const file = await request(env, { type: 'export' });
+  await b.chrome.tabs.ungroup(b.tabsByUrl(url('a2'))[0].id);
+  await env.w.settle();
+  const before = tabsOf(b, env.win).map((t) => t.id).sort();
+  b.fail('tabs.move', { when: (ids) => Array.isArray(ids) });
+  const res = await importFile(env, file, 'replace', true);
+  const now = envOf(b);
+  assert.deepEqual([res.kept, res.failed], [3, 0]);
+  assert.deepEqual(tabsOf(b, now.win).map((t) => t.id).sort(), before);
+  check(now, { A, B: ['b1'], pinned: [] });
+});
+
 test('Ersetzen ordnet gleiche Adressen in verschiedenen Gruppen wieder richtig zu (#230)', async () => {
   const spec = { workspaces: { A: [{ url: 'a1', group: 'X', color: 'red' }, { url: 'a2', group: 'X', color: 'red' }, { url: 'a1', group: 'Y', color: 'blue' }], B: ['b1'] } };
-  await replaceAfter(spec, async (b, win) => {
+  let ids;
+  const { now } = await replaceAfter(spec, async (b, win) => {
     const y = b.tabsByUrl(url('a1')).find((t) => b.groups.get(t.groupId).title === 'Y');
     await b.chrome.tabGroups.move(y.groupId, { windowId: win, index: 0 });
+    ids = Object.fromEntries(b.tabsByUrl(url('a1')).map((t) => [b.groups.get(t.groupId).title, t.id]));
   });
+  // Jeder der beiden gleichen Tabs bleibt in seiner Gruppe, samt Verlauf
+  assert.deepEqual(Object.fromEntries(now.b.tabsByUrl(url('a1')).map((t) => [now.b.groups.get(t.groupId).title, t.id])), ids);
 });
 
 test('Ersetzen: Ein teilweise übernommenes Fenster bekommt die fehlenden Tabs in ihre Gruppe (#230)', async () => {
