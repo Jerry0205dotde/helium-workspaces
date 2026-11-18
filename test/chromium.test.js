@@ -560,6 +560,48 @@ test('Echter Chromium: Umstieg auf die feste Erweiterungs-ID per Export und Erse
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
 
+// Ersetzen mit dem eigenen Export, nachdem im gezeigten A umsortiert, eine Gruppe umbenannt,
+// umgefärbt, eingeklappt und ein Tab aus ihr gelöst wurde: Das Fenster wird übernommen und
+// bekommt Reihenfolge und Gruppen der Datei zurück, ohne dass eine Seite neu lädt (#230, #231).
+test('Echter Chromium: Ersetzen stellt Reihenfolge und Gruppen eines übernommenen Fensters her', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 180000 }, async (t) => {
+  const { server, hits, base } = await startServer();
+  const env = new Env(bin, base);
+  const b = env.browser;
+  t.after(async () => {
+    await b.kill();
+    server.close();
+    fs.rmSync(env.profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  });
+  await env.launch('last');
+  await build(env, await env.state());
+  const file = JSON.stringify(await b.action('() => exportAll()'));
+  const { main } = await env.settled();
+  const ids = () => main.tabs.filter((x) => !x.pinned).map((x) => x.id);
+  await b.sw(
+    `const [windowId, base] = args;
+     const tabs = await chrome.tabs.query({ windowId });
+     const at = (n) => tabs.find((x) => x.url === base + n);
+     await chrome.tabGroups.update(at('a2').groupId, { title: 'Original', color: 'red', collapsed: true });
+     await chrome.tabs.ungroup(at('a3').id);
+     await chrome.tabs.move(at('a4').id, { index: 1 });`,
+    main.id,
+    base,
+  );
+  const changed = (await env.state()).windows.find((w) => w.id === main.id);
+  assert.notDeepEqual(changed.tabs.map((x) => `${x.url} ${x.groupId}`), main.tabs.map((x) => `${x.url} ${x.groupId}`), 'Testfehler: nichts geändert');
+  const loads = new Map(hits);
+
+  const res = await b.action('(text) => importExchange(text, "replace", true)', file);
+  assert.deepEqual([res.kept, res.failed], [4, 0]);
+  for (const w of (await env.state()).workspaces) env.ids[w.name] = w.id;
+  const r = await env.settled();
+  assert.equal(r.shows, 'A');
+  assert.equal(r.main.id, main.id);
+  assert.deepEqual(r.main.tabs.filter((x) => !x.pinned).map((x) => x.id), ids(), 'Tabs wurden geschlossen oder neu angelegt');
+  assert.deepEqual(new Map(hits), loads, 'eine Seite wurde neu geladen');
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});
+
 // install.sh mit nachgebildeten KDE-Befehlen, kwinrc ist eine Datei je Schlüssel. Chromium
 // nutzt das Profil unter $XDG_CONFIG_HOME/chromium wie sein Standardprofil, install.sh meldet
 // den Host also genau dort an, wo Chromium ihn sucht. ext: Ordner der Erweiterung.

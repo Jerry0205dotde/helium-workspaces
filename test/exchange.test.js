@@ -593,6 +593,199 @@ test('Ersetzen: Ein übernommenes Fenster bekommt auch die zurückgestellten feh
   assert.deepEqual(again.workspaces[0].tabs.map((t) => t.url), A.map(url));
 });
 
+// Ersetzen übernimmt ein Fenster samt Tabs, die seit dem Export umsortiert oder anders
+// gruppiert wurden: Danach gelten Reihenfolge und Gruppen der Datei, die Tabs bleiben (#230, #231)
+const tabsOf = (b, windowId) => b.windows.find((w) => w.id === windowId).tabs.filter((t) => !t.pinned);
+const layoutOf = (file) => file.workspaces.map(({ name, groups, tabs }) => ({ name, groups, tabs }));
+
+async function replaceAfter(spec, change) {
+  const env = await setup(spec);
+  const { b } = env;
+  const file = await request(env, { type: 'export' });
+  await change(b, env.win);
+  await env.w.settle();
+  const before = tabsOf(b, env.win).map((t) => t.id).sort();
+  const res = await importFile(env, file, 'replace', true);
+  const now = envOf(b);
+  assert.equal(shows(now, now.win), 'A');
+  assert.deepEqual(tabsOf(b, now.win).map((t) => t.id).sort(), before, 'Tabs wurden geschlossen oder neu angelegt');
+  assert.deepEqual(layoutOf(await request(now, { type: 'export' })), layoutOf(file), 'erneuter Export weicht von der Datei ab');
+  return { now, res };
+}
+
+test('Ersetzen stellt die Reihenfolge der Datei in einem übernommenen Fenster her (#231)', async () => {
+  const { now, res } = await replaceAfter({ workspaces: { A: ['a1', 'a2', 'a3'], B: ['b1'] } }, async (b, win) => {
+    await b.chrome.tabs.move(b.tabsByUrl(url('a3'))[0].id, { index: 0 });
+  });
+  assert.deepEqual([res.kept, res.failed], [3, 0]);
+  assert.deepEqual(tabsOf(now.b, now.win).map((t) => t.url), ['a1', 'a2', 'a3'].map(url));
+  check(now, { A: ['a1', 'a2', 'a3'], B: ['b1'], pinned: [] });
+});
+
+test('Ersetzen stellt Titel, Farbe und Einklappen der Gruppen in einem übernommenen Fenster her (#230)', async () => {
+  const A = ['a1', { url: 'a2', group: 'Lernen', color: 'blue' }, { url: 'a3', group: 'Lernen', color: 'blue' }];
+  const { now } = await replaceAfter({ workspaces: { A, B: ['b1'] } }, async (b) => {
+    await b.chrome.tabGroups.update(b.tabsByUrl(url('a2'))[0].groupId, { title: 'Original', color: 'red', collapsed: true });
+  });
+  check(now, { A, B: ['b1'], pinned: [] });
+});
+
+test('Ersetzen: Lassen sich Tabs und Gruppen nicht abfragen, bekommen die Gruppen die Angaben der Datei trotzdem (#230)', async () => {
+  const A = ['a1', { url: 'a2', group: 'Lernen', color: 'blue' }, { url: 'a3', group: 'Lernen', color: 'blue' }];
+  const { now } = await replaceAfter({ workspaces: { A, B: ['b1'] } }, async (b) => {
+    await b.chrome.tabGroups.update(b.tabsByUrl(url('a2'))[0].groupId, { title: 'Original' });
+    b.fail('tabs.query', { when: (q) => q?.windowId !== undefined });
+    b.fail('tabGroups.query', { when: (q) => q?.windowId !== undefined });
+  });
+  check(now, { A, B: ['b1'], pinned: [] });
+});
+
+test('Ersetzen stellt die Gruppenzugehörigkeit in einem übernommenen Fenster her (#230)', async () => {
+  const A = [{ url: 'a1', group: 'Lernen', color: 'blue' }, { url: 'a2', group: 'Lernen', color: 'blue' }, 'a3', { url: 'a4', group: 'Lesen', color: 'red', collapsed: true }];
+  const { now } = await replaceAfter({ workspaces: { A, B: ['b1'] } }, async (b) => {
+    const id = (n) => b.tabsByUrl(url(n))[0].id;
+    await b.chrome.tabs.ungroup([id('a2'), id('a4')]);
+    await b.chrome.tabs.group({ tabIds: [id('a3')], groupId: b.tabsByUrl(url('a1'))[0].groupId });
+  });
+  check(now, { A, B: ['b1'], pinned: [] });
+});
+
+test('Ersetzen: Scheitert das Umsortieren im übernommenen Fenster, entstehen die Gruppen der Datei trotzdem (#230)', async () => {
+  const A = [{ url: 'a1', group: 'Lernen', color: 'blue' }, { url: 'a2', group: 'Lernen', color: 'blue' }, 'a3'];
+  const env = await setup({ workspaces: { A, B: ['b1'] } });
+  const { b } = env;
+  const file = await request(env, { type: 'export' });
+  await b.chrome.tabs.ungroup(b.tabsByUrl(url('a2'))[0].id);
+  await env.w.settle();
+  const before = tabsOf(b, env.win).map((t) => t.id).sort();
+  b.fail('tabs.move', { when: (ids) => Array.isArray(ids) });
+  const res = await importFile(env, file, 'replace', true);
+  const now = envOf(b);
+  assert.deepEqual([res.kept, res.failed], [3, 0]);
+  assert.deepEqual(tabsOf(b, now.win).map((t) => t.id).sort(), before);
+  check(now, { A, B: ['b1'], pinned: [] });
+});
+
+test('Ersetzen ordnet gleiche Adressen in verschiedenen Gruppen wieder richtig zu (#230)', async () => {
+  const spec = { workspaces: { A: [{ url: 'a1', group: 'X', color: 'red' }, { url: 'a2', group: 'X', color: 'red' }, { url: 'a1', group: 'Y', color: 'blue' }], B: ['b1'] } };
+  let ids;
+  const { now } = await replaceAfter(spec, async (b, win) => {
+    const y = b.tabsByUrl(url('a1')).find((t) => b.groups.get(t.groupId).title === 'Y');
+    await b.chrome.tabGroups.move(y.groupId, { windowId: win, index: 0 });
+    ids = Object.fromEntries(b.tabsByUrl(url('a1')).map((t) => [b.groups.get(t.groupId).title, t.id]));
+  });
+  // Jeder der beiden gleichen Tabs bleibt in seiner Gruppe, samt Verlauf
+  assert.deepEqual(Object.fromEntries(now.b.tabsByUrl(url('a1')).map((t) => [now.b.groups.get(t.groupId).title, t.id])), ids);
+});
+
+test('Ersetzen ordnet gleiche Adressen auch in gleich benannten Gruppen über ihre übrigen Tabs zu (#230)', async () => {
+  // Zwei Gruppen „G“, rot: a1 mit a2 und a1 mit a3
+  const ids = {};
+  const sibling = (b, t) => b.windows.flatMap((w) => w.tabs).find((x) => x.groupId === t.groupId && x.id !== t.id).url;
+  const env = await setup({ workspaces: { A: ['a1', 'a2', 'a3', 'a1'], B: ['b1'] } });
+  const { b } = env;
+  const [first, second] = b.tabsByUrl(url('a1'));
+  for (const tabIds of [[first.id, b.tabsByUrl(url('a2'))[0].id], [b.tabsByUrl(url('a3'))[0].id, second.id]]) {
+    await b.chrome.tabGroups.update(await b.chrome.tabs.group({ tabIds }), { title: 'G', color: 'red' });
+  }
+  await env.w.settle();
+  const file = await request(env, { type: 'export' });
+  await b.chrome.tabGroups.move((await b.chrome.tabs.get(second.id)).groupId, { windowId: env.win, index: 0 });
+  await env.w.settle();
+  for (const t of b.tabsByUrl(url('a1'))) ids[sibling(b, t)] = t.id;
+  await importFile(env, file, 'replace', true);
+  const now = envOf(b);
+  assert.deepEqual(layoutOf(await request(now, { type: 'export' })), layoutOf(file));
+  assert.deepEqual(Object.fromEntries(b.tabsByUrl(url('a1')).map((t) => [sibling(b, t), t.id])), ids, 'a1 hat die Gruppe gewechselt');
+});
+
+test('Ersetzen ordnet gleiche Adressen in zwei Gruppen mit je einem Tab nach Titel und Farbe zu (#230)', async () => {
+  const spec = { workspaces: { A: [{ url: 'a1', group: 'X', color: 'red' }, { url: 'a1', group: 'Y', color: 'blue' }, 'a2'], B: ['b1'] } };
+  let ids;
+  const byTitle = (b) => Object.fromEntries(b.tabsByUrl(url('a1')).map((t) => [b.groups.get(t.groupId).title, t.id]));
+  const { now } = await replaceAfter(spec, async (b, win) => {
+    const y = b.tabsByUrl(url('a1')).find((t) => b.groups.get(t.groupId).title === 'Y');
+    await b.chrome.tabGroups.move(y.groupId, { windowId: win, index: 0 });
+    ids = byTitle(b);
+  });
+  assert.deepEqual(byTitle(now.b), ids, 'a1 hat die Gruppe gewechselt');
+});
+
+test('Ersetzen ordnet gleiche Adressen in gleich benannten Ein-Tab-Gruppen nach dem Einklappen zu (#230)', async () => {
+  const env = await setup({ workspaces: { A: ['a1', 'a1', 'a2'], B: ['b1'] } });
+  const { b } = env;
+  const [open, shut] = b.tabsByUrl(url('a1'));
+  for (const [t, collapsed] of [[open, false], [shut, true]]) {
+    await b.chrome.tabGroups.update(await b.chrome.tabs.group({ tabIds: [t.id] }), { title: 'G', color: 'red', collapsed });
+  }
+  await env.w.settle();
+  const file = await request(env, { type: 'export' });
+  await b.chrome.tabGroups.move((await b.chrome.tabs.get(shut.id)).groupId, { windowId: env.win, index: 0 });
+  await env.w.settle();
+  const byState = () => Object.fromEntries(b.tabsByUrl(url('a1')).map((t) => [b.groups.get(t.groupId).collapsed, t.id]));
+  const ids = byState();
+  await importFile(env, file, 'replace', true);
+  assert.deepEqual(layoutOf(await request(envOf(b), { type: 'export' })), layoutOf(file));
+  assert.deepEqual(byState(), ids, 'a1 hat die Gruppe gewechselt');
+});
+
+test('Ersetzen ordnet gleiche Adressen in umgefärbten Ein-Tab-Gruppen nach dem Titel zu, nicht nach dem Einklappen (#230)', async () => {
+  const env = await setup({ workspaces: { A: ['a1', 'a1', 'a2'], B: ['b1'] } });
+  const { b } = env;
+  const [x, y] = b.tabsByUrl(url('a1'));
+  for (const [t, title, color, collapsed] of [[x, 'X', 'red', false], [y, 'Y', 'blue', true]]) {
+    await b.chrome.tabGroups.update(await b.chrome.tabs.group({ tabIds: [t.id] }), { title, color, collapsed });
+  }
+  await env.w.settle();
+  const file = await request(env, { type: 'export' });
+  for (const [t, color] of [[x, 'green'], [y, 'yellow']]) {
+    await b.chrome.tabGroups.update((await b.chrome.tabs.get(t.id)).groupId, { color, collapsed: true });
+  }
+  await env.w.settle();
+  await importFile(env, file, 'replace', true);
+  assert.deepEqual(layoutOf(await request(envOf(b), { type: 'export' })), layoutOf(file));
+  const byTitle = Object.fromEntries(b.tabsByUrl(url('a1')).map((t) => [b.groups.get(t.groupId).title, t.id]));
+  assert.deepEqual(byTitle, { X: x.id, Y: y.id }, 'a1 hat die Gruppe gewechselt');
+});
+
+// Verschiebt der Nutzer während des Imports einen Tab, gilt der aktuelle Stand, nicht der vom Scan
+test('Ersetzen ordnet nach dem aktuellen Stand des übernommenen Fensters (#231)', async () => {
+  const env = await setup({ workspaces: { A: ['a1', 'a2', 'a3'], B: ['b1'] } });
+  const { b } = env;
+  const file = await request(env, { type: 'export' });
+  b.during(
+    'tabs.query',
+    () => {
+      const w = b.findWin(env.win);
+      b.moveTab(w.tabs.find((t) => t.url === url('a3')), w, w, 0);
+    },
+    { when: (q) => q?.windowId === env.win },
+  );
+  await importFile(env, file, 'replace', true);
+  const now = envOf(b);
+  assert.deepEqual(tabsOf(b, now.win).map((t) => t.url), ['a1', 'a2', 'a3'].map(url));
+  check(now, { A: ['a1', 'a2', 'a3'], B: ['b1'], pinned: [] });
+});
+
+test('Ersetzen: Ein teilweise übernommenes Fenster bekommt die fehlenden Tabs in ihre Gruppe (#230)', async () => {
+  const env = await setup({ workspaces: { A: ['a1', { url: 'a2', group: 'Lernen', color: 'blue' }, 'a5'], B: ['b1'] } });
+  const { b } = env;
+  const file = await request(env, { type: 'export' });
+  // Mehr als die Hälfte ist offen, das Fenster wird übernommen
+  file.workspaces[0].tabs.splice(2, 0, tab('a3', file.workspaces[0].groups[0].id));
+  file.workspaces[0].tabs.push(tab('a4'));
+  await b.chrome.tabGroups.update(b.tabsByUrl(url('a2'))[0].groupId, { color: 'red' });
+  await env.w.settle();
+  const kept = tabsOf(b, env.win).map((t) => t.id);
+  const res = await importFile(env, file, 'replace', true);
+  const now = envOf(b);
+  assert.deepEqual([res.kept, res.failed], [3, 0]);
+  assert.deepEqual(tabsOf(b, now.win).filter((t) => kept.includes(t.id)).map((t) => t.id), kept);
+  // Der gruppierte fehlende Tab tritt seiner Gruppe bei, der übrige kommt hinten dazu
+  assert.deepEqual(tabsOf(b, now.win).map((t) => t.url), ['a1', 'a2', 'a3', 'a5', 'a4'].map(url));
+  check(now, { A: ['a1', { url: 'a2', group: 'Lernen', color: 'blue' }, { url: 'a3', group: 'Lernen', color: 'blue' }, 'a5', 'a4'], B: ['b1'], pinned: [] });
+});
+
 // Fenster 1 hat p1 einmal angeheftet, ein zweites Hauptfenster mit C zweimal
 async function pinnedTwiceInSecondWindow() {
   const env = await setup(SPEC);
