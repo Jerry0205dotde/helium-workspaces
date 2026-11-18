@@ -729,6 +729,25 @@ test('Ersetzen ordnet gleiche Adressen in gleich benannten Ein-Tab-Gruppen nach 
   assert.deepEqual(byState(), ids, 'a1 hat die Gruppe gewechselt');
 });
 
+test('Ersetzen ordnet gleiche Adressen in umgefärbten Ein-Tab-Gruppen nach dem Titel zu, nicht nach dem Einklappen (#230)', async () => {
+  const env = await setup({ workspaces: { A: ['a1', 'a1', 'a2'], B: ['b1'] } });
+  const { b } = env;
+  const [x, y] = b.tabsByUrl(url('a1'));
+  for (const [t, title, color, collapsed] of [[x, 'X', 'red', false], [y, 'Y', 'blue', true]]) {
+    await b.chrome.tabGroups.update(await b.chrome.tabs.group({ tabIds: [t.id] }), { title, color, collapsed });
+  }
+  await env.w.settle();
+  const file = await request(env, { type: 'export' });
+  for (const [t, color] of [[x, 'green'], [y, 'yellow']]) {
+    await b.chrome.tabGroups.update((await b.chrome.tabs.get(t.id)).groupId, { color, collapsed: true });
+  }
+  await env.w.settle();
+  await importFile(env, file, 'replace', true);
+  assert.deepEqual(layoutOf(await request(envOf(b), { type: 'export' })), layoutOf(file));
+  const byTitle = Object.fromEntries(b.tabsByUrl(url('a1')).map((t) => [b.groups.get(t.groupId).title, t.id]));
+  assert.deepEqual(byTitle, { X: x.id, Y: y.id }, 'a1 hat die Gruppe gewechselt');
+});
+
 // Verschiebt der Nutzer während des Imports einen Tab, gilt der aktuelle Stand, nicht der vom Scan
 test('Ersetzen ordnet nach dem aktuellen Stand des übernommenen Fensters (#231)', async () => {
   const env = await setup({ workspaces: { A: ['a1', 'a2', 'a3'], B: ['b1'] } });
