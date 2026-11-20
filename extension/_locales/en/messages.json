@@ -419,6 +419,9 @@
   "exportFailed": {
     "message": "Export failed: $1"
   },
+  "exportNotImportable": {
+    "message": "This file cannot be imported again as it is."
+  },
   "fileValid": {
     "message": "The file is valid: $1."
   },
@@ -628,6 +631,15 @@
   },
   "exTooManyTabs": {
     "message": "The file contains too many tabs."
+  },
+  "limitWorkspaces": {
+    "message": "At most $1 workspaces are allowed ($2 exceed the limit)."
+  },
+  "limitTabs": {
+    "message": "At most $1 tabs including pinned tabs are allowed ($2 exceed the limit)."
+  },
+  "limitSize": {
+    "message": "Export files may be at most $1 MiB."
   },
   "exBadColor": {
     "message": "“$1” is not a color of the form #rrggbb."

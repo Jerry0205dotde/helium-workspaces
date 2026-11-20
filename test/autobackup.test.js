@@ -275,3 +275,32 @@ test('Hinweis auf die automatische Sicherung: ab zwei Workspaces, solange sie au
   await env.b.startWorker('startup').settle();
   assert.equal(await hint(env), false);
 });
+
+test('Überschreitet der Bestand eine Importgrenze, meldet die automatische Sicherung einen Fehler statt unimportierbar zu schreiben (#232)', async () => {
+  const env = await hosted();
+  const { b, w } = env;
+  await enable(w, 1);
+  assert.deepEqual(files(b), [slotOf(b, 1)]);
+  const good = b.files.get(slotOf(b, 1));
+
+  // Bestand wächst über 20 000 Tabs hinaus (z. B. durch normal geöffnete Tabs)
+  b.local.data.backup[env.ids.B].stash = Array.from({ length: 20001 }, (_, i) => ({ url: `https://t-${i}.example/`, title: '' }));
+  // Ablage von B schließen, damit collectAll die Sicherung liest
+  const stashB = b.windows.find((x) => b.stashOf(x) === env.ids.B);
+  if (stashB) b.windows.splice(b.windows.indexOf(stashB), 1);
+
+  await w.advance(DAY + HOUR);
+  assert.deepEqual(files(b), [slotOf(b, 1)], 'bestehende Sicherung darf nicht durch unimportierbare ersetzt oder ergänzt werden');
+  assert.equal(b.files.get(slotOf(b, 1)), good);
+  assert.match((await autoState(w)).error.message, /Höchstens 20000 Tabs/);
+  assert.match((await popupError(env)).message, /Höchstens 20000 Tabs/);
+
+  // Wieder unter der Grenze: Jetzt sichern schreibt Platz 2 und löscht den Fehler
+  b.local.data.backup[env.ids.B].stash = [{ url: 'https://b1.example/', title: '' }];
+  await ok(w.request({ type: 'autoBackupNow' }));
+  assert.deepEqual(files(b), [slotOf(b, 1), slotOf(b, 2)]);
+  assert.equal((await autoState(w)).error, null);
+  assert.equal(await popupError(env), null);
+  const checkImport = await w.request({ type: 'importPreview', text: b.files.get(slotOf(b, 2)) });
+  assert.equal(checkImport.ok, true);
+});

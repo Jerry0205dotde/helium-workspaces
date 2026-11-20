@@ -803,3 +803,43 @@ test('Echter Chromium: automatische Sicherung über native-host.sh, je Profil ei
   assert.deepEqual(names(slot(b, 1)), ['B1']);
   for (const p of profiles) assert.deepEqual(p.b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
+
+test('Echter Chromium: 500 Workspaces zusammenführen und 501. anlegen werden abgelehnt, Export bleibt importierbar (#232)', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 120000 }, async (t) => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-limit-'));
+  const b = new Chromium(bin, profile, EXT);
+  t.after(async () => {
+    await b.quit().catch(() => {});
+    fs.rmSync(profile, { recursive: true, force: true });
+  });
+  await b.launch();
+  const file500 = JSON.stringify({
+    format: 'helium-workspaces',
+    version: 1,
+    workspaces: Array.from({ length: 500 }, (_, i) => ({ id: `large${i}`, name: `Workspace ${i}`, color: '#123456', tabs: [] })),
+  });
+  const res = await b.sw(`
+    const text = args[0];
+    const preview = await userAction(() => previewImport(text));
+    let mergeErr = null;
+    try { await userAction(() => importExchange(text, 'merge')); } catch (e) { mergeErr = String(e.message || e); }
+    const countAfterMerge = (await getConfig()).workspaces.length;
+    await userAction(() => importExchange(text, 'replace', true));
+    const countAfterReplace = (await getConfig()).workspaces.length;
+    let createErr = null;
+    try { await userAction(() => createWs('ZuViel')); } catch (e) { createErr = String(e.message || e); }
+    const countAfterCreate = (await getConfig()).workspaces.length;
+    const exported = await userAction(exportAll);
+    const rePreview = await userAction(() => previewImport(JSON.stringify(exported)));
+    return { previewMergeError: preview.mergeError, previewReplaceError: preview.replaceError, mergeErr, countAfterMerge, countAfterReplace, createErr, countAfterCreate, exportedCount: exported.workspaces.length, reReplaceError: rePreview.replaceError };
+  `, file500);
+  assert.match(res.previewMergeError, /500/);
+  assert.equal(res.previewReplaceError, null);
+  assert.match(res.mergeErr, /500/);
+  assert.equal(res.countAfterMerge, 1);
+  assert.equal(res.countAfterReplace, 500);
+  assert.match(res.createErr, /500/);
+  assert.equal(res.countAfterCreate, 500);
+  assert.equal(res.exportedCount, 500);
+  assert.equal(res.reReplaceError, null);
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});

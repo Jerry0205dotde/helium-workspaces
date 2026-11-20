@@ -1,7 +1,6 @@
 // Seite für Export und Import. Sie läuft in einem eigenen Popup-Fenster, das zu keinem
 // Workspace gehört, damit ein Wechsel oder Ersetzen sie nicht selbst wegräumt.
 const $ = (id) => document.getElementById(id);
-const MAX_SIZE = 50 * 1024 * 1024;
 
 let text = null; // Inhalt der gewählten Datei oder des früheren Stands
 let earlierAt = null; // Zeitpunkt des gewählten früheren Stands, sonst eine Datei
@@ -9,6 +8,7 @@ let preview = null;
 let busy = false;
 
 const tabs = (n) => plural(n, 'tabs');
+const modeEl = (v) => document.querySelector(`input[name=mode][value=${v}]`);
 
 localize();
 
@@ -18,6 +18,17 @@ function showError(text, err) {
   const detail = errorText(err);
   if (detail) box.append(el('p', 'detail', detail));
   box.hidden = false;
+}
+
+function syncModes() {
+  if (!preview) return;
+  const m = modeEl('merge');
+  const r = modeEl('replace');
+  m.disabled = !!preview.mergeError;
+  r.disabled = !!preview.replaceError;
+  if (m.checked && m.disabled && !r.disabled) r.checked = true;
+  if (r.checked && r.disabled && !m.disabled) m.checked = true;
+  $('import').disabled = (m.checked && m.disabled) || (r.checked && r.disabled);
 }
 
 async function run(statusText, fn) {
@@ -30,6 +41,7 @@ async function run(statusText, fn) {
   } finally {
     busy = false;
     for (const b of document.querySelectorAll('button, input, select')) b.disabled = false;
+    syncModes();
     $('status').textContent = '';
   }
 }
@@ -39,9 +51,12 @@ async function run(statusText, fn) {
 $('export').addEventListener('click', () =>
   run(tr('exporting'), async () => {
     $('export-result').textContent = '';
+    $('export-error').hidden = true;
+    $('export-error').replaceChildren();
     try {
       const data = await send({ type: 'export' });
-      const blob = new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' });
+      const json = formatExchange(data);
+      const blob = new Blob([json], { type: 'application/json' });
       const a = el('a');
       a.href = URL.createObjectURL(blob);
       a.download = `helium-workspaces-${data.exported.slice(0, 10)}.json`;
@@ -54,6 +69,12 @@ $('export').addEventListener('click', () =>
       $('export-result').textContent = data.pinned.length
         ? tr('exportDonePinned', wss, tabs(n), plural(data.pinned.length, 'pinnedTabsDative'))
         : tr('exportDone', wss, tabs(n));
+      const warn = exchangeLimitError(data, json);
+      if (warn) {
+        const box = $('export-error');
+        box.replaceChildren(el('p', 'msg', tr('exportNotImportable')), el('p', 'detail', warn));
+        box.hidden = false;
+      }
     } catch (e) {
       $('export-result').textContent = tr('exportFailed', errorText(e));
     }
@@ -101,6 +122,7 @@ function resetImport() {
   earlierAt = null;
   preview = null;
   for (const li of document.querySelectorAll('#earlier-list li')) li.classList.remove('chosen');
+  modeEl('merge').checked = true;
   $('preview').hidden = true;
   $('error').hidden = true;
   $('error').replaceChildren();
@@ -160,6 +182,7 @@ function render() {
   $('settings').textContent = changed.length ? tr('settingsPlan', changed.join(', ')) : tr('settingsSame');
 
   $('merge-list').replaceChildren(
+    ...(p.mergeError ? [el('li', 'warn', p.mergeError)] : []),
     ...p.workspaces.map((w) => {
       if (!w.target) return el('li', '', tr('mergeNew', w.name, tabs(w.tabs)));
       const name = w.target.name;
@@ -173,9 +196,8 @@ function render() {
 
   const failed = p.current.reduce((n, w) => n + w.failed, 0);
   const names = p.current.map((w) => tr('quoted', w.name)).join(', ');
-  const rep = [
-    el('li', 'warn', tr('replaceDelete', plural(p.current.length, 'workspaces'), names, tabs(closing()))),
-  ];
+  const rep = p.replaceError ? [el('li', 'warn', p.replaceError)] : [];
+  rep.push(el('li', 'warn', tr('replaceDelete', plural(p.current.length, 'workspaces'), names, tabs(closing()))));
   if (failed) rep.push(el('li', 'warn', tr('replaceDiscard', plural(failed, 'notRestoredTabs'))));
   rep.push(el('li', '', tr('replaceCreate', plural(p.workspaces.length, 'workspaces'))));
   if (p.keep) rep.push(el('li', '', tr('replaceKeep', tabs(p.keep))));
@@ -183,6 +205,7 @@ function render() {
   rep.push(el('li', '', tr('replaceUndo')));
   $('replace-list').replaceChildren(...rep);
 
+  syncModes();
   $('preview').hidden = false;
 }
 
@@ -193,7 +216,7 @@ $('file').addEventListener('change', () =>
     const file = $('file').files[0];
     if (!file) return;
     try {
-      if (file.size > MAX_SIZE) throw new Error(tr('fileTooLarge'));
+      if (file.size > EXCHANGE_LIMITS.bytes) throw new Error(tr('fileTooLarge'));
       text = await file.text();
       preview = await send({ type: 'importPreview', text });
       render();
@@ -261,10 +284,14 @@ $('import').addEventListener('click', (e) => {
         return;
       }
       render();
+      if (preview.replaceError) {
+        showError(tr('importFailed'), preview.replaceError);
+        return;
+      }
       b.dataset.confirm = '1';
       b.className = 'btn danger';
       b.textContent = closing() ? tr('confirmReplaceTabs', tabs(closing())) : tr('confirmReplace');
-    }).then(() => b.focus());
+    }).then(() => !b.disabled && b.focus());
     return;
   }
   run(tr('importing'), async () => {

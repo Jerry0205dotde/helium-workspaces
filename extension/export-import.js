@@ -37,7 +37,7 @@ async function collectAll() {
   const pinnedOpen = (mains.length ? pinnedOf(mains, groups) : backupPinned).filter((e) => e.url);
   const pinnedFirst = (mains.length ? pinnedOf(mains.slice(0, 1), groups) : backupPinned).filter((e) => e.url);
   const pinnedFailed = list.flatMap((x) => x.pinnedFailed).filter((e) => e.url);
-  return { cfg, mains, list, pinned: [...pinnedOpen, ...pinnedFailed], pinnedOpen, pinnedFirst, pinnedFailed };
+  return { cfg, mains, groups, list, pinned: [...pinnedOpen, ...pinnedFailed], pinnedOpen, pinnedFirst, pinnedFailed };
 }
 
 async function exportAll() {
@@ -311,19 +311,79 @@ async function adoptWindows(data, ids, adopt, stamp) {
   return failed;
 }
 
+// Berechnet den Stand, den exportAll() nach einem Import liefern würde, ohne etwas zu
+// ändern. Damit prüfen Vorschau und Import vorab alle Grenzen (Workspaces, Tabs, Größe).
+function projectImport(data, all, plan, mode, settings, extOrigin, adopt) {
+  const keep = (e) => e.url && !isOwnPage(e.url, extOrigin);
+  const taken = new Set(all.cfg.workspaces.map((w) => w.id));
+  const nextId = (imp) => {
+    let id = imp.id && !taken.has(imp.id) ? imp.id : '00000000';
+    if (id === '00000000') {
+      let n = 0;
+      while (taken.has(id)) id = String(++n).padStart(8, '0');
+    }
+    taken.add(id);
+    return id;
+  };
+  let list;
+  if (mode === 'replace') {
+    const shown = [...adopt].filter(([, w]) => w.state !== 'minimized').map(([i]) => i);
+    let target = data.workspaces.findIndex((_, i) => !shown.includes(i));
+    if (target < 0) target = 0;
+    const adopted = new Set(adopt.values());
+    const extraWins = all.mains.filter((w) => !adopted.has(w) && !(w.state === 'minimized' && w.tabs.every(isNewTab))).length;
+    list = data.workspaces.map((imp, i) => {
+      const entries = [...importEntries(imp.tabs, 'i0')];
+      const win = adopt.get(i);
+      if (win) {
+        const winTabs = movableTabsOf(win).map((t) => serTab(t, all.groups)).filter(keep);
+        entries.push(...tagGroups(missingIn(winTabs, imp.tabs), 'k'));
+      }
+      if (i === target && extraWins > 0) {
+        const blanks = shown.includes(target) || !imp.tabs.length ? extraWins : extraWins - 1;
+        for (let k = 0; k < blanks; k++) entries.push({ url: 'chrome://newtab/', title: '' });
+      }
+      return { ws: { id: nextId(imp), name: imp.name, color: imp.color, emoji: imp.emoji }, entries };
+    });
+  } else {
+    const byTarget = new Map(plan.merge.filter((m) => m.target).map((m) => [m.target.ws.id, m]));
+    list = all.list.map((x) => {
+      const m = byTarget.get(x.ws.id);
+      const entries = m?.add.length
+        ? [...x.entries, ...importEntries(m.add, 'i0', { from: m.imp.tabs, existing: x.entries })]
+        : x.entries;
+      return { ws: x.ws, entries };
+    });
+    for (const m of plan.merge) {
+      if (m.target) continue;
+      list.push({
+        ws: { id: nextId(m.imp), name: m.imp.name, color: m.imp.color, emoji: m.imp.emoji },
+        entries: importEntries(m.imp.tabs, 'i0'),
+      });
+    }
+  }
+  const basePinned = (mode === 'replace' ? all.pinnedOpen : all.pinned).filter(keep);
+  const pinned = [...basePinned, ...missingIn(data.pinned, basePinned)];
+  return buildExchange(list, pinned, extOrigin, { ...settings, ...data.settings });
+}
+
 // Prüft die Datei und beschreibt, was Zusammenführen bzw. Ersetzen ändern würde.
 async function previewImport(text) {
-  const data = parseExchange(text, chrome.runtime.getURL(''));
+  const extOrigin = chrome.runtime.getURL('');
+  const data = parseExchange(text, extOrigin);
   await resumeSwitch();
   const all = await collectAll();
   const plan = planImport(data, all);
+  const adopt = planAdopt(data, all.mains);
   const now = await getSettings();
   return {
     exported: data.exported,
     settings: Object.entries(data.settings).map(([key, value]) => ({ key, value, changed: now[key] !== value })),
-    keep: keptIn(planAdopt(data, all.mains)),
+    keep: keptIn(adopt),
     pinned: data.pinned.length,
     pinnedAdd: plan.pinnedAdd.length,
+    mergeError: exchangeLimitError(projectImport(data, all, plan, 'merge', now, extOrigin)),
+    replaceError: exchangeLimitError(projectImport(data, all, plan, 'replace', now, extOrigin, adopt)),
     workspaces: plan.merge.map(({ imp, target, by, add }) => ({
       name: imp.name,
       color: imp.color,
@@ -382,12 +442,16 @@ async function addPinned(list) {
 // und löscht danach die bisherigen samt ihren Tabs, deshalb nur mit Bestätigung.
 // Die Einstellungen aus der Datei gelten bei beiden Arten.
 async function importExchange(text, mode, confirmed) {
-  const data = parseExchange(text, chrome.runtime.getURL(''));
+  const extOrigin = chrome.runtime.getURL('');
+  const data = parseExchange(text, extOrigin);
   if (mode !== 'merge' && mode !== 'replace') throw new Error(tr('importModeUnknown'));
   if (mode === 'replace' && !confirmed) throw new Error(tr('importReplaceUnconfirmed'));
   await resumeSwitch();
   const all = await collectAll();
   const plan = planImport(data, all, mode);
+  const adopt = mode === 'replace' ? planAdopt(data, all.mains) : null;
+  const limitErr = exchangeLimitError(projectImport(data, all, plan, mode, await getSettings(), extOrigin, adopt));
+  if (limitErr) throw new Error(limitErr);
   const stamp = `i${Date.now().toString(36)}`;
   const cfg = await getConfig();
   const { backup } = await getBackup();
@@ -409,7 +473,6 @@ async function importExchange(text, mode, confirmed) {
 
   if (mode === 'replace') {
     const oldIds = cfg.workspaces.map((w) => w.id);
-    const adopt = planAdopt(data, all.mains);
     const ids = data.workspaces.map(addWs);
     await chrome.storage.local.set({ backup });
     await saveWorkspaces(cfg.workspaces);

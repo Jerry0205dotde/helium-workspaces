@@ -27,6 +27,8 @@ const ENV = {
 const ALLOW = {
   // localize() setzt die Texte einer Seite, der Service Worker ruft es nie auf
   worker: { 'i18n.js': ['document'] },
+  // parseSettings() prüft Einstellungen im Service Worker, transfer.html ruft es nie auf
+  page: { 'exchange.js': ['UNLOAD_CHOICES', 'AUTO_CHOICES'] },
 };
 
 const read = (f) => fs.readFileSync(f, 'utf8');

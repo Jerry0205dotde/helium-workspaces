@@ -358,3 +358,20 @@ test('Gescheiterte automatische Sicherung: Jetzt sichern legt die Datei an und n
     await page.close();
   }
 });
+
+test('Bei 500 Workspaces meldet ＋ Neuer Workspace die Grenze verständlich und legt keinen 501. an (#232)', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'] } });
+  env.b.local.data.workspaces = [
+    env.b.local.data.workspaces[0],
+    ...Array.from({ length: 499 }, (_, i) => ({ id: `w${i}`, name: `W${i}`, color: '#123456', emoji: '' })),
+  ];
+  const page = await browser.open('popup.html', env);
+  try {
+    await page.click('#add');
+    assert.equal(env.b.local.data.workspaces.length, 500);
+    assert.equal(await shownBox(page, 'error'), true);
+    assert.match(await page.text('#error'), /Workspace konnte nicht angelegt werden\..*Höchstens 500 Workspaces möglich \(501/);
+  } finally {
+    await page.close();
+  }
+});

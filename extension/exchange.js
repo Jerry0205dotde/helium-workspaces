@@ -26,7 +26,52 @@
 const EXCHANGE_FORMAT = 'helium-workspaces';
 const EXCHANGE_VERSION = 1;
 const GROUP_COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
-const EXCHANGE_LIMITS = { workspaces: 500, tabs: 20000, url: 2 * 1024 * 1024, text: 10000 };
+const EXCHANGE_LIMITS = { workspaces: 500, tabs: 20000, url: 2 * 1024 * 1024, text: 10000, bytes: 50 * 1024 * 1024 };
+
+const formatExchange = (data) => JSON.stringify(data, null, 2) + '\n';
+
+// UTF-8 braucht je UTF-16-Einheit mindestens 1 und höchstens 3 Bytes (Ersatzpaare: 2 → 4).
+// Erst im Grenzbereich wird tatsächlich kodiert.
+function exceedsBytes(text, max = EXCHANGE_LIMITS.bytes) {
+  if (text.length > max) return true;
+  if (text.length * 3 <= max) return false;
+  return new TextEncoder().encode(text).length > max;
+}
+
+// Kürzt Text auf EXCHANGE_LIMITS.text, ohne ein UTF-16-Ersatzpaar zu zerteilen.
+function clipText(s, max = EXCHANGE_LIMITS.text) {
+  if (s.length <= max) return s;
+  const end = s.charCodeAt(max - 1) >= 0xd800 && s.charCodeAt(max - 1) <= 0xdbff ? max - 1 : max;
+  return s.slice(0, end);
+}
+
+// Prüft, ob ein Export innerhalb aller Importgrenzen bleibt: Anzahl der Workspaces, gesamte
+// Tabs samt angehefteten und Größe der JSON-Datei. Ergibt die Begründung oder null.
+function exchangeLimitError(data, text) {
+  if (data.workspaces.length > EXCHANGE_LIMITS.workspaces) {
+    return tr('limitWorkspaces', EXCHANGE_LIMITS.workspaces, data.workspaces.length);
+  }
+  const tabs = data.pinned.length + data.workspaces.reduce((n, w) => n + w.tabs.length, 0);
+  if (tabs > EXCHANGE_LIMITS.tabs) {
+    return tr('limitTabs', EXCHANGE_LIMITS.tabs, tabs);
+  }
+  if (text === undefined) {
+    // Jedes Zeichen aus Adresse und Titel steht mindestens als ein Byte im JSON. Überschreitet
+    // schon diese Summe die Grenze, braucht JSON.stringify den langen Text gar nicht anzulegen.
+    let raw = 0;
+    for (const p of data.pinned) raw += p.url.length + p.title.length;
+    for (const w of data.workspaces) {
+      for (const t of w.tabs) raw += t.url.length + t.title.length;
+      for (const g of w.groups) raw += g.title.length;
+    }
+    if (raw > EXCHANGE_LIMITS.bytes) return tr('limitSize', EXCHANGE_LIMITS.bytes / (1024 * 1024));
+    text = formatExchange(data);
+  }
+  if (exceedsBytes(text)) {
+    return tr('limitSize', EXCHANGE_LIMITS.bytes / (1024 * 1024));
+  }
+  return null;
+}
 
 // Seiten dieser Erweiterung (Ablage, Popup, diese Seite) gehören nicht in den Austausch.
 // Verglichen wird der Host der geparsten Adresse, damit Schreibweisen wie ./stash.html
@@ -49,26 +94,26 @@ function buildExchange(list, pinned, extOrigin, settings) {
     version: EXCHANGE_VERSION,
     exported: new Date().toISOString(),
     settings,
-    pinned: pinned.filter(keep).map((e) => ({ url: e.url, title: e.title || '' })),
+    pinned: pinned.filter(keep).map((e) => ({ url: e.url, title: clipText(e.title || '') })),
     workspaces: list.map(({ ws, entries }) => {
       const groups = [];
       const ids = new Map();
       const tabs = entries
         .filter(keep)
         .map((e) => {
-          const t = { url: e.url, title: e.title || '' };
+          const t = { url: e.url, title: clipText(e.title || '') };
           if (e.g) {
             if (!ids.has(e.g)) {
               const id = String(groups.length + 1);
               ids.set(e.g, id);
               const color = GROUP_COLORS.includes(e.gc) ? e.gc : 'grey';
-              groups.push({ id, title: e.gt || '', color, collapsed: !!e.gx });
+              groups.push({ id, title: clipText(e.gt || ''), color, collapsed: !!e.gx });
             }
             t.group = ids.get(e.g);
           }
           return t;
         });
-      return { id: ws.id, name: wsName(ws.name), color: ws.color, emoji: ws.emoji || '', groups, tabs };
+      return { id: ws.id, name: wsName(ws.name), color: ws.color, emoji: clipText(firstChar(ws.emoji || '')), groups, tabs };
     }),
   };
 }
@@ -89,6 +134,8 @@ function parseSettings(s) {
 // name, color, emoji, groups, tabs }] }, Tabs im Sicherungsformat. Ihr Gruppenschlüssel g
 // ist "<Workspace-Nr.>:<Gruppen-ID>" und muss beim Übernehmen noch eindeutig gemacht werden.
 function parseExchange(text, extOrigin) {
+  if (typeof text !== 'string') throw new Error(tr('exNotJson'));
+  if (exceedsBytes(text)) throw new Error(tr('fileTooLarge'));
   let data;
   try {
     data = JSON.parse(text);

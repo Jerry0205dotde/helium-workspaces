@@ -71,9 +71,14 @@ const autoBackupNow = () => autoBackupIfDue(true);
 
 // Die Nachricht an native-host.sh: Nummer der Datei, Unterordner des Profils und der Export
 // in Base64, so braucht der Host keinen JSON-Parser. Das Datum steht in der Datei (exported).
+// Überschreitet der Bestand eine Importgrenze (z. B. durch normal geöffnete Tabs), scheitert
+// die Sicherung mit klarer Meldung, statt vorhandene Sicherungen mit einer unimportierbaren
+// Datei zu überschreiben.
 async function autoBackupMessage(slot) {
   const data = await exportAll();
-  const bytes = new TextEncoder().encode(JSON.stringify(data, null, 2) + '\n');
+  const err = exchangeLimitError(data);
+  if (err) throw new Error(err);
+  const bytes = new TextEncoder().encode(formatExchange(data));
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return { at: Date.parse(data.exported), msg: { backup: slot, profile: await ensureToken(), data: btoa(bin) } };

@@ -899,3 +899,165 @@ test('Ungültige Einstellungen werden übergangen, Dateien ohne Einstellungen ä
   assert.equal((await importFile(env, mixed, 'merge')).settings, 1);
   assert.deepEqual(settingsOf(env.b), { muteStash: undefined, unloadAfter: 15, autoBackup: 1 });
 });
+
+// ---------------------------------------------------------------- Importgrenzen (#232)
+
+const manyWs = (n, prefix = 'large') =>
+  Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i}`, name: `Workspace ${i}`, color: '#123456', tabs: [] }));
+const manyTabs = (n, prefix = 't') =>
+  Array.from({ length: n }, (_, i) => ({ url: `https://${prefix}-${i}.example/`, title: '' }));
+
+test('Zusammenführen lehnt mehr als 500 Workspaces vorab ab, Ersetzen bleibt möglich und wieder importierbar (#232)', async () => {
+  const env = await fresh();
+  const text = JSON.stringify(fileOf(manyWs(500)));
+
+  const preview = await request(env, { type: 'importPreview', text });
+  assert.match(preview.mergeError, /Höchstens 500 Workspaces möglich \(501/);
+  assert.equal(preview.replaceError, null);
+
+  await rejected(env, { type: 'import', text, mode: 'merge' }, /Höchstens 500 Workspaces möglich \(501/);
+  assert.equal(env.b.local.data.workspaces.length, 1);
+
+  // Ersetzen ergibt genau 500 Workspaces und bleibt wieder importierbar
+  const rep = await request(env, { type: 'import', text, mode: 'replace', confirmed: true });
+  assert.equal(rep.created, 500);
+  assert.equal(env.b.local.data.workspaces.length, 500);
+  const again = await request(env, { type: 'export' });
+  assert.equal(again.workspaces.length, 500);
+  const rePreview = await request(env, { type: 'importPreview', text: JSON.stringify(again) });
+  assert.equal(rePreview.mergeError, null);
+  assert.equal(rePreview.replaceError, null);
+
+  // Zusammenführen in bestehende Workspaces bei genau 500 Workspaces bleibt erlaubt
+  const patch = fileOf([{ id: 'large0', name: 'Workspace 0', color: '#123456', tabs: [tab('extra')] }]);
+  const merged = await importFile(env, patch, 'merge');
+  assert.deepEqual([merged.created, merged.merged, merged.added], [0, 1, 1]);
+  assert.equal(env.b.local.data.workspaces.length, 500);
+});
+
+test('Neuer Workspace und Rückgängig überschreiten die Grenze von 500 Workspaces nicht (#232)', async () => {
+  const env = await fresh();
+  await request(env, { type: 'import', text: JSON.stringify(fileOf(manyWs(499))), mode: 'replace', confirmed: true });
+  assert.equal(env.b.local.data.workspaces.length, 499);
+
+  // 500. Workspace klappt noch
+  const ws500 = await request(env, { type: 'create', name: 'Nr500' });
+  assert.equal(ws500.name, 'Nr500');
+  assert.equal(env.b.local.data.workspaces.length, 500);
+
+  // 501. Workspace scheitert vor jeder Änderung
+  await rejected(env, { type: 'create', name: 'ZuViel' }, /Höchstens 500 Workspaces möglich \(501/);
+  assert.equal(env.b.local.data.workspaces.length, 500);
+
+  // Löschen (499), neuen anlegen (500): Rückgängig würde 501 ergeben und wird abgelehnt
+  await ok(env.w.request({ type: 'delete', wsId: ws500.id }));
+  assert.equal(env.b.local.data.workspaces.length, 499);
+  await request(env, { type: 'create', name: 'Ersatz' });
+  assert.equal(env.b.local.data.workspaces.length, 500);
+  await rejected(env, { type: 'undoDelete' }, /Höchstens 500 Workspaces möglich \(501/);
+  assert.equal(env.b.local.data.workspaces.length, 500);
+  assert.equal(env.b.local.data.deleted.length, 1);
+
+  // Eigener Export bleibt wieder importierbar
+  const exported = await request(env, { type: 'export' });
+  assert.equal(exported.workspaces.length, 500);
+  assert.equal((await request(env, { type: 'importPreview', text: JSON.stringify(exported) })).replaceError, null);
+});
+
+test('Tab-Grenze von 20000 gilt samt angehefteten Tabs beim Zusammenführen und Ersetzen (#232)', async () => {
+  const env = await fresh();
+  // Ausgangsbestand: Standard (1 neuer Tab) + W1 (15000 Tabs) = 15001 Tabs
+  const first = fileOf([{ id: 'w1', name: 'W1', color: '#123456', tabs: manyTabs(15000, 'a') }]);
+  await importFile(env, first, 'merge');
+
+  // 5000 neue Tabs ergäben 20001 -> Zusammenführen wird vorab abgelehnt, Ersetzen klappt
+  const second = fileOf([{ id: 'w2', name: 'W2', color: '#123456', tabs: manyTabs(5000, 'b') }]);
+  const prev = await request(env, { type: 'importPreview', text: JSON.stringify(second) });
+  assert.match(prev.mergeError, /Höchstens 20000 Tabs.*20001/);
+  assert.equal(prev.replaceError, null);
+  await rejected(env, { type: 'import', text: JSON.stringify(second), mode: 'merge' }, /Höchstens 20000 Tabs.*20001/);
+
+  // Genau 4999 neue Tabs -> 20000 gesamt, klappt; danach 1 weiterer angehefteter Tab scheitert
+  const fit = fileOf([{ id: 'w2', name: 'W2', color: '#123456', tabs: manyTabs(4999, 'b') }]);
+  await importFile(env, fit, 'merge');
+  await rejected(env, { type: 'import', text: JSON.stringify(fileOf([{ id: 'w1', name: 'W1', color: '#123456', tabs: [] }], [tab('p1')])), mode: 'merge' }, /Höchstens 20000 Tabs.*20001/);
+
+  // Doppelte URLs fügen nichts hinzu und bleiben bei 20000 erlaubt
+  const dup = await importFile(env, fileOf([{ id: 'w1', name: 'W1', color: '#123456', tabs: manyTabs(5, 'a') }]), 'merge');
+  assert.equal(dup.added, 0);
+
+  // Ersetzen behält offene angeheftete Tabs: 2 angeheftete + 19999 in der Datei = 20001 -> abgelehnt
+  const env2 = await setup({ pinned: ['p1', 'p2'], workspaces: { A: ['a1'] } });
+  const big = JSON.stringify(fileOf([{ id: 'big', name: 'Big', color: '#123456', tabs: manyTabs(19999, 'x') }]));
+  const prev2 = await request(env2, { type: 'importPreview', text: big });
+  assert.match(prev2.replaceError, /Höchstens 20000 Tabs.*20001/);
+  await rejected(env2, { type: 'import', text: big, mode: 'replace', confirmed: true }, /Höchstens 20000 Tabs.*20001/);
+
+  // 2 angeheftete + 1 + 19997 in der Datei = 20000 -> erlaubt und wieder importierbar
+  const exact = JSON.stringify(fileOf([
+    { id: 'first', name: 'First', color: '#123456', tabs: [tab('f1')] },
+    { id: 'big', name: 'Big', color: '#123456', tabs: manyTabs(19997, 'x') },
+  ]));
+  await request(env2, { type: 'import', text: exact, mode: 'replace', confirmed: true });
+  const exp2 = await request(env2, { type: 'export' });
+  assert.equal(exp2.pinned.length + exp2.workspaces.reduce((n, w) => n + w.tabs.length, 0), 20000);
+  assert.equal((await request(env2, { type: 'importPreview', text: JSON.stringify(exp2) })).replaceError, null);
+
+  // Leerer erster Workspace beim Ersetzen öffnet eine neue Tab-Seite: 0 + 20000 + 1 = 20001 -> abgelehnt
+  const env3 = await fresh();
+  const emptyFirst = JSON.stringify(fileOf([
+    { id: 'e', name: 'Leer', color: '#123456', tabs: [] },
+    { id: 'f', name: 'Voll', color: '#123456', tabs: manyTabs(20000, 'z') },
+  ]));
+  await rejected(env3, { type: 'import', text: emptyFirst, mode: 'replace', confirmed: true }, /Höchstens 20000 Tabs.*20001/);
+});
+
+test('Größengrenze von 50 MiB wird bei Datei, Zusammenführen und neuem Workspace geprüft (#232)', async () => {
+  const env = await fresh();
+  const bigUrl = (n) => `https://example.com/${n}/${'a'.repeat(1800000)}`;
+
+  // Datei über 50 MiB wird schon vom Parser abgelehnt
+  const hugeFile = fileOf([{ id: 'h', name: 'Huge', color: '#123456', tabs: Array.from({ length: 30 }, (_, i) => ({ url: bigUrl(`h${i}`), title: '' })) }]);
+  await rejected(env, { type: 'importPreview', text: JSON.stringify(hugeFile) }, /Datei ist zu groß/);
+
+  // Zwei je ~28 MiB große Dateien: erste geht rein, Zusammenführen der zweiten überschreitet 50 MiB
+  const head = { id: 'h0', name: 'Head', color: '#123456', tabs: [tab('h0')] };
+  const partA = fileOf([head, { id: 'a', name: 'A', color: '#123456', tabs: Array.from({ length: 16 }, (_, i) => ({ url: bigUrl(`a${i}`), title: '' })) }]);
+  const partB = fileOf([{ id: 'b', name: 'B', color: '#123456', tabs: Array.from({ length: 16 }, (_, i) => ({ url: bigUrl(`b${i}`), title: '' })) }]);
+  await importFile(env, partA, 'replace', true);
+  const textB = JSON.stringify(partB);
+  const prev = await request(env, { type: 'importPreview', text: textB });
+  assert.match(prev.mergeError, /50 MiB/);
+  assert.equal(prev.replaceError, null);
+  await rejected(env, { type: 'import', text: textB, mode: 'merge' }, /50 MiB/);
+
+  // Bestand knapp unter 50 MiB: ein weiterer Workspace würde 50 MiB überschreiten und wird abgelehnt
+  const pad = Array.from({ length: 29 }, (_, i) => ({ url: bigUrl(`p${i}`), title: '' }));
+  const base = fileOf([head, { id: 'p', name: 'P', color: '#123456', tabs: pad }]);
+  await importFile(env, base, 'replace', true);
+  const curSize = Buffer.byteLength(JSON.stringify(await request(env, { type: 'export' }), null, 2) + '\n');
+  const rem = 50 * 1024 * 1024 - curSize;
+  assert.ok(rem > 200 && rem < 2000000, `Restgröße unerwartet: ${rem}`);
+  // Bis wenige Bytes vor die Grenze auffüllen
+  const filler = `https://example.com/fill/${'x'.repeat(rem - 120)}`;
+  const created = await env.b.chrome.tabs.create({ windowId: env.win, url: filler, active: false });
+  env.b.findTab(created.id).t.title = '';
+  await env.w.settle();
+  const near = Buffer.byteLength(JSON.stringify(await request(env, { type: 'export' }), null, 2) + '\n');
+  assert.ok(near <= 50 * 1024 * 1024 && 50 * 1024 * 1024 - near < 100, `sollte knapp unter 50 MiB liegen, ist ${near}`);
+  await rejected(env, { type: 'create', name: 'Ueberlauf' }, /50 MiB/);
+});
+
+test('Überlange Tab- und Gruppentitel werden beim Export gekürzt, der Export bleibt importierbar (#232)', async () => {
+  const env = await setup({ workspaces: { A: [{ url: 'a1', group: 'G', color: 'blue' }] } });
+  const longTitle = `${'t'.repeat(9999)}🎓rest`;
+  env.b.windows[0].tabs[0].title = longTitle;
+  const g = env.b.groups.get(env.b.windows[0].tabs[0].groupId);
+  g.title = longTitle;
+  const file = await request(env, { type: 'export' });
+  assert.equal(file.workspaces[0].tabs[0].title, 't'.repeat(9999));
+  assert.equal(file.workspaces[0].groups[0].title, 't'.repeat(9999));
+  const dst = await fresh();
+  await importFile(dst, file, 'replace', true);
+  assert.equal(dst.b.local.data.workspaces[0].name, 'A');
+});
