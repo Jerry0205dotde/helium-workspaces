@@ -348,6 +348,82 @@ test('Installation findet die Erweiterung auch in Secure Preferences', () => {
   assert.deepEqual(r.stdout.split('\n').filter((l) => l.startsWith('  ')), ['  Google Chrome: ~/.config/google-chrome/Default']);
 });
 
+// Wie nach dem Umstieg auf die feste ID (vor 0.3.0 per „Entpackte Erweiterung laden“
+// installiert): neben der Erweiterung ein Eintrag mit der alten ID und demselben Ordner, mit
+// Prüfsummen, angeheftetem Symbol und Tastenkürzel. Dazu eine fremde entpackte Erweiterung.
+const OLD_ID = 'jeldohdpfhofdjhhbcagheekejmgllgi';
+const OTHER_ID = 'abcdefghijklmnopabcdefghijklmnop';
+const stalePrefs = (extDir) =>
+  JSON.stringify({
+    extensions: {
+      settings: {
+        [EXT_ID]: { location: 4, path: extDir },
+        [OLD_ID]: { location: 4, path: extDir, creation_flags: 38 },
+        [OTHER_ID]: { location: 4, path: '/anderswo/extension' },
+      },
+      pinned_extensions: [OLD_ID, OTHER_ID, EXT_ID],
+      commands: {
+        'linux:Alt+W': { command_name: '_execute_action', extension: OLD_ID },
+        'linux:Alt+Shift+Up': { command_name: 'prev-workspace', extension: EXT_ID },
+      },
+    },
+    protection: {
+      macs: {
+        extensions: {
+          settings: { [EXT_ID]: 'A', [OLD_ID]: 'B', [OTHER_ID]: 'C' },
+          settings_encrypted_hash: { [EXT_ID]: 'a', [OLD_ID]: 'b', [OTHER_ID]: 'c' },
+        },
+        session: { restore_on_startup: '81940185F7F78D0317AB3741FA4A2839' },
+      },
+    },
+    session: { restore_on_startup: 1 },
+  });
+const hasPython = spawnSync('python3', ['--version']).status === 0;
+
+test('Installation entfernt den alten Eintrag der Erweiterung mit demselben Ordner', { skip: !hasPython && 'python3 fehlt' }, () => {
+  const r = run([TOKEN], { profiles: { 'net.imput.helium/Default': stalePrefs(path.join(ROOT, 'extension')) } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(
+    r.stdout,
+    '\nAlte Einträge der Erweiterung entfernt, sie hätten verhindert, dass der Browser sie beim Start lädt:\n' +
+      `  Helium: ~/.config/net.imput.helium/Default (${OLD_ID})\n\n${DONE_DE}`,
+  );
+  const p = JSON.parse(r.profiles['net.imput.helium/Default']);
+  assert.deepEqual(Object.keys(p.extensions.settings), [EXT_ID, OTHER_ID]);
+  assert.deepEqual(p.extensions.pinned_extensions, [OTHER_ID, EXT_ID]);
+  assert.deepEqual(Object.keys(p.extensions.commands), ['linux:Alt+Shift+Up']);
+  assert.deepEqual(p.protection.macs.extensions, { settings: { [EXT_ID]: 'A', [OTHER_ID]: 'C' }, settings_encrypted_hash: { [EXT_ID]: 'a', [OTHER_ID]: 'c' } });
+  assert.deepEqual(p.session, { restore_on_startup: 1 });
+});
+
+test('Läuft der Browser, bleibt der alte Eintrag und install.sh weist darauf hin', { skip: !hasPython && 'python3 fehlt' }, () => {
+  const before = stalePrefs(path.join(ROOT, 'extension'));
+  const r = run([TOKEN], {
+    profiles: { 'net.imput.helium/Default': before },
+    // Wie Chromium: SingletonLock zeigt auf <Rechner>-<PID> eines laufenden Prozesses
+    setup: (dir) => {
+      fs.symlinkSync(`${os.hostname()}-${process.pid}`, path.join(dir, 'home/.config/net.imput.helium/SingletonLock'));
+      return INSTALL;
+    },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^\nAchtung: In diesen Profilen steht noch ein alter Eintrag der Erweiterung \(alte ID, derselbe Ordner\):\n {2}Helium: ~\/\.config\/net\.imput\.helium\/Default\n/);
+  assert.match(r.stdout, /Abhilfe: den Browser beenden und \.\/install\.sh erneut ausführen \(Enter behält den Schlüssel\)\.\n\n/);
+  assert.ok(r.stdout.endsWith(DONE_DE), r.stdout);
+  assert.deepEqual(r.profiles['net.imput.helium/Default'], before);
+});
+
+test('Ohne alten Eintrag bleiben die Einstellungen unverändert', () => {
+  const ext = path.join(ROOT, 'extension');
+  const p = JSON.parse(stalePrefs(ext));
+  delete p.extensions.settings[OLD_ID];
+  const profiles = { 'net.imput.helium/Default': JSON.stringify(p) };
+  const r = run([TOKEN], { profiles });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, DONE_DE);
+  assert.deepEqual(r.profiles, profiles);
+});
+
 test('Installation gibt keinen Hinweis ohne Browserprofile', () => {
   const r = run([TOKEN]);
   assert.equal(r.status, 0, r.stderr);

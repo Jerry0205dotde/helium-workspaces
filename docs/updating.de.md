@@ -18,7 +18,7 @@ Bis Version 0.2.23 hing die ID der Erweiterung vom Pfad ihres Ordners ab. Seit 0
 4. **Neuen Schlüssel eintragen:** Im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den Befehl im Repository-Ordner ausführen. Bis dahin stehen die Ablage-Fenster in der Taskleiste. `install.sh` nennt danach den alten und den neuen Schlüssel, den alten trägt `./install.sh --remove <alter Schlüssel>` aus.
 5. **Einstellungen prüfen:** **Ablagen stummschalten**, **Ablagen entladen nach** und **Automatisch sichern** übernimmt der Import aus einer Datei von Version 0.2.22 oder neuer, sonst neu setzen. Selbst festgelegte Tastenkürzel unter `chrome://extensions/shortcuts` neu festlegen. Automatische Sicherungen mit Datum im Namen in `Downloads/helium-workspaces/`, von Versionen vor 0.3.5, räumt die Erweiterung nicht mehr auf, sie lassen sich von Hand löschen.
 
-In `chrome://extensions` steht danach zusätzlich ein ausgeschalteter Eintrag „Workspaces“ mit der alten ID. Er stört nicht, Helium lädt beim Start nur die Erweiterung mit der neuen ID.
+In den Einstellungen des Profils bleibt danach ein Eintrag mit der alten ID und demselben Ordner. Beim nächsten Start von Helium verhindert er, dass die Erweiterung lädt: Die Ablage-Seiten zeigen „… ist gesperrt“ mit `ERR_BLOCKED_BY_CLIENT`, das Symbol der Erweiterung fehlt. In `chrome://extensions` taucht der Eintrag nicht auf. Deshalb nach dem Import Helium beenden und `./install.sh` im Repository-Ordner ausführen (<kbd>Enter</kbd> behält den Schlüssel). Es entfernt den alten Eintrag, siehe [Probleme beheben](./troubleshooting.de.md#nach-einem-neustart-ist-die-erweiterung-weg-und-ablagen-zeigen-err_blocked_by_client).
 
 ## Einmalig: von einer Version mit `extension/token.js`
 
