@@ -1,10 +1,19 @@
 // Hintergrundlogik: Workspaces anlegen, ändern, sortieren und löschen
 
 async function createWs(name) {
-  const cfg = await getConfig();
+  await resumeSwitch();
+  const all = await collectAll();
+  const { cfg } = all;
+  const taken = new Set(cfg.workspaces.map((w) => w.id));
+  let id = newId();
+  while (taken.has(id)) id = newId();
   const used = new Set(cfg.workspaces.map((w) => w.color));
   const color = COLORS.find((c) => !used.has(c)) || COLORS[cfg.workspaces.length % COLORS.length];
-  const ws = { id: newId(), name: name || tr('workspaceN', cfg.workspaces.length + 1), color, emoji: '' };
+  const ws = { id, name: wsName(name || tr('workspaceN', cfg.workspaces.length + 1)), color, emoji: '' };
+  const err = exchangeLimitError(
+    buildExchange([...all.list, { ws, entries: [] }], all.pinned, chrome.runtime.getURL(''), await getSettings()),
+  );
+  if (err) throw new Error(err);
   cfg.workspaces.push(ws);
   await saveWorkspaces(cfg.workspaces);
   return ws;
@@ -80,13 +89,30 @@ async function deleteWs(id, batch = []) {
 async function undoDelete() {
   const { deleted } = await chrome.storage.local.get('deleted');
   if (!deleted?.length) return null;
-  const cfg = await getConfig();
+  await resumeSwitch();
+  const all = await collectAll();
+  const { cfg } = all;
   const { backup } = await getBackup();
+  const adding = [...deleted].reverse().filter((d) => !cfg.workspaces.some((w) => w.id === d.ws.id));
+  if (adding.length) {
+    const list = [...all.list];
+    const pinnedFailed = [];
+    for (const d of adding) {
+      const b = d.backup || {};
+      const failed = b.failed || [];
+      const entries = [...tagGroups(savedOf(b), 'a'), ...tagGroups(failed.filter((e) => !e.p), 'f')];
+      list.splice(Math.min(d.index, list.length), 0, { ws: d.ws, entries });
+      pinnedFailed.push(...failed.filter((e) => e.p && e.url));
+    }
+    const err = exchangeLimitError(
+      buildExchange(list, [...all.pinned, ...pinnedFailed], chrome.runtime.getURL(''), await getSettings()),
+    );
+    if (err) throw new Error(err);
+  }
   let first = null;
   // Rückwärts: Jeder Eintrag kennt seinen Platz in der Liste, wie sie vor ihm aussah.
   // Gibt es den Workspace noch (Löschen abgebrochen), bleibt er, wie er ist.
-  for (const d of [...deleted].reverse()) {
-    if (cfg.workspaces.some((w) => w.id === d.ws.id)) continue;
+  for (const d of adding) {
     cfg.workspaces.splice(Math.min(d.index, cfg.workspaces.length), 0, d.ws);
     backup[d.ws.id] = d.backup;
     first = d.ws.id;

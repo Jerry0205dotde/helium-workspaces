@@ -419,6 +419,9 @@
   "exportFailed": {
     "message": "Export fehlgeschlagen: $1"
   },
+  "exportNotImportable": {
+    "message": "Diese Datei lässt sich so nicht wieder importieren."
+  },
   "fileValid": {
     "message": "Die Datei ist gültig: $1."
   },
@@ -628,6 +631,15 @@
   },
   "exTooManyTabs": {
     "message": "Die Datei enthält zu viele Tabs."
+  },
+  "limitWorkspaces": {
+    "message": "Höchstens $1 Workspaces möglich ($2 überschreiten die Grenze)."
+  },
+  "limitTabs": {
+    "message": "Höchstens $1 Tabs einschließlich angehefteter Tabs möglich ($2 überschreiten die Grenze)."
+  },
+  "limitSize": {
+    "message": "Export-Dateien dürfen höchstens $1 MiB groß sein."
   },
   "exBadColor": {
     "message": "„$1“ ist keine Farbe der Form #rrggbb."

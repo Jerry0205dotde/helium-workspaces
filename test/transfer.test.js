@@ -263,3 +263,72 @@ test('Automatische Sicherung: Auswahl sichert gleich und nennt die Datei, Fehler
     await p.close();
   }
 });
+
+test('500 Workspaces in ein Profil mit Standard: Zusammenführen ist gesperrt und erklärt warum, Ersetzen bleibt wählbar (#232)', { skip }, async () => {
+  const env = await setup({ workspaces: { Standard: ['s1'] } });
+  const p = await browser.open('transfer.html', env);
+  try {
+    const big = path.join(dir, `ws500-${Date.now()}.json`);
+    const list = Array.from({ length: 500 }, (_, i) => ({ id: `large${i}`, name: `Workspace ${i}`, color: '#123456', emoji: '', tabs: [] }));
+    fs.writeFileSync(big, JSON.stringify(fileOf(list)));
+    await p.chooseFile('#file', big);
+    assert.equal(await p.eval('document.getElementById("preview").hidden'), false);
+    assert.equal(await p.eval('document.querySelector("input[value=merge]").disabled'), true);
+    assert.equal(await p.eval('document.querySelector("input[value=replace]").checked'), true);
+    assert.equal(await p.eval('document.getElementById("import").disabled'), false);
+    assert.match(await p.text('#merge-list'), /Höchstens 500 Workspaces möglich \(501/);
+
+    // Ersetzen nach Nachfrage klappt
+    await p.click('#import');
+    assert.equal(await p.text('#import'), '1 Tab schließen und ersetzen?');
+    await p.click('#import');
+    assert.equal(env.b.local.data.workspaces.length, 500);
+    assert.match(await p.text('#import-result'), /500 Workspaces angelegt/);
+  } finally {
+    await p.close();
+  }
+});
+
+test('Überschreiten beide Import-Arten die Tab-Grenze, bleibt Importieren gesperrt, bis eine passende Datei gewählt wird (#232)', { skip }, async () => {
+  const env = await setup({ pinned: ['p1', 'p2'], workspaces: { A: ['a1'] } });
+  const p = await browser.open('transfer.html', env);
+  try {
+    const big = path.join(dir, `tabs-${Date.now()}.json`);
+    const tabs = Array.from({ length: 19999 }, (_, i) => ({ url: `https://t-${i}.example/`, title: '' }));
+    fs.writeFileSync(big, JSON.stringify(fileOf([{ id: 'big', name: 'Big', color: '#123456', emoji: '', tabs }])));
+    await p.chooseFile('#file', big);
+    assert.equal(await p.eval('document.querySelector("input[value=merge]").disabled'), true);
+    assert.equal(await p.eval('document.querySelector("input[value=replace]").disabled'), true);
+    assert.equal(await p.eval('document.getElementById("import").disabled'), true);
+    assert.match(await p.text('#merge-list'), /Höchstens 20000 Tabs.*20002/);
+    assert.match(await p.text('#replace-list'), /Höchstens 20000 Tabs.*20001/);
+
+    const okFile = path.join(dir, `ok-${Date.now()}.json`);
+    fs.writeFileSync(okFile, JSON.stringify(fileOf([ws('Neu', 'n1')])));
+    await p.chooseFile('#file', okFile);
+    assert.equal(await p.eval('document.querySelector("input[value=merge]").disabled'), false);
+    assert.equal(await p.eval('document.querySelector("input[value=replace]").disabled'), false);
+    assert.equal(await p.eval('document.querySelector("input[value=merge]").checked'), true);
+    assert.equal(await p.eval('document.getElementById("import").disabled'), false);
+  } finally {
+    await p.close();
+  }
+});
+
+test('Überschreitet ein vorhandener Bestand die Grenzen, warnt der manuelle Export deutlich (#232)', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'] } });
+  env.b.local.data.workspaces = [
+    env.b.local.data.workspaces[0],
+    ...Array.from({ length: 500 }, (_, i) => ({ id: `w${i}`, name: `W${i}`, color: '#123456', emoji: '' })),
+  ];
+  const p = await browser.open('transfer.html', env);
+  try {
+    await p.cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' });
+    await p.click('#export');
+    assert.match(await p.text('#export-result'), /^501 Workspaces mit 1 Tab exportiert\.$/);
+    assert.equal(await p.eval('document.getElementById("export-error").hidden'), false);
+    assert.match(await p.text('#export-error'), /lässt sich so nicht wieder importieren.*Höchstens 500 Workspaces möglich \(501/);
+  } finally {
+    await p.close();
+  }
+});
