@@ -413,6 +413,37 @@ test('Läuft der Browser, bleibt der alte Eintrag und install.sh weist darauf hi
   assert.deepEqual(r.profiles['net.imput.helium/Default'], before);
 });
 
+test('Liegt das Repository hinter einem Symlink, findet install.sh den alten Eintrag trotzdem', { skip: !hasPython && 'python3 fehlt' }, () => {
+  // Chromium speichert den Ordner mit aufgelösten Symlinks, etwa /var/home statt /home
+  const r = run([TOKEN], {
+    profiles: { 'net.imput.helium/Default': stalePrefs(path.join(fs.realpathSync(ROOT), 'extension')) },
+    setup: (dir) => {
+      fs.symlinkSync(ROOT, path.join(dir, 'link'));
+      return path.join(dir, 'link', 'install.sh');
+    },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^\nAlte Einträge der Erweiterung entfernt/);
+  assert.deepEqual(Object.keys(JSON.parse(r.profiles['net.imput.helium/Default']).extensions.settings), [EXT_ID, OTHER_ID]);
+});
+
+test('Ohne die feste ID bleibt der Eintrag mit der alten ID, das Profil ist noch nicht umgestiegen', { skip: !hasPython && 'python3 fehlt' }, () => {
+  const p = JSON.parse(stalePrefs(path.join(ROOT, 'extension')));
+  delete p.extensions.settings[EXT_ID];
+  const before = JSON.stringify(p);
+  const r = run([TOKEN], {
+    profiles: { 'net.imput.helium/Default': before },
+    // Derselbe Eintrag auch in Secure Preferences, so steht der Ordner zweimal in den Dateien
+    setup: (dir) => {
+      fs.writeFileSync(path.join(dir, 'home/.config/net.imput.helium/Default/Secure Preferences'), JSON.stringify({ extensions: { settings: { [OLD_ID]: p.extensions.settings[OLD_ID] } } }));
+      return INSTALL;
+    },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, DONE_DE);
+  assert.deepEqual(r.profiles['net.imput.helium/Default'], before);
+});
+
 test('Ohne alten Eintrag bleiben die Einstellungen unverändert', () => {
   const ext = path.join(ROOT, 'extension');
   const p = JSON.parse(stalePrefs(ext));

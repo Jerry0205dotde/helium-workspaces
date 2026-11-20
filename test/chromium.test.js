@@ -749,7 +749,6 @@ test('Echter Chromium: install.sh entfernt den alten Eintrag, danach lädt der S
   const after = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.deepEqual(Object.keys(after.extensions.settings).filter((id) => after.extensions.settings[id].location === 4), [EXT_ID]);
 
-  b.worker = null;
   await b.launch();
   assert.equal(await h.token(), token, 'Speicher der Erweiterung ist nicht mehr da');
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
