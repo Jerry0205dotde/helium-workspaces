@@ -19,7 +19,10 @@
 # Rückfrage neu ein, Schlüssel und Browserliste bleiben.
 # Nach der Installation weist das Skript auf Profile von Helium, Google Chrome und Chromium hin,
 # in denen die Erweiterung installiert ist, die aber nicht mit „Dort weitermachen, wo ich
-# aufgehört habe“ starten. Es ändert dort nichts.
+# aufgehört habe“ starten. Es ändert dort nichts. Steht in einem Profil noch ein Eintrag der
+# Erweiterung mit ihrer alten ID (vor 0.3.0) und demselben Ordner, entfernt install.sh ihn mit
+# python3, sonst lädt der Browser die Erweiterung beim Start nicht. Läuft der Browser, weist
+# es nur darauf hin.
 # Bevor es etwas ändert, prüft das Skript, ob alle benötigten Programme da sind. Für qdbus6
 # nimmt es auch qdbus-qt6 (Fedora) oder qdbus. ./install.sh --help zeigt diesen Text.
 set -euo pipefail
@@ -250,6 +253,119 @@ for entry in "${BROWSER_DIRS[@]}"; do
   printf '{\n  "name": "%s",\n  "description": "Workspaces: key for the KWin script and automatic backups",\n  "path": "%s",\n  "type": "stdio",\n  "allowed_origins": ["chrome-extension://%s/"]\n}\n' \
     "$HOST_NAME" "$HOST_PATH" "$EXT_ID" > "$manifest"
 done
+
+# Alte Einträge der Erweiterung: Wer vor 0.3.0 (ohne key im Manifest) über „Entpackte Erweiterung
+# laden“ installiert hat, behält nach dem Umstieg auf die feste ID unter extensions.settings einen
+# Eintrag mit der alten ID und demselben Ordner. Beim nächsten Start lädt Chromium dann keinen
+# der beiden, die Ablage-Seiten zeigen ERR_BLOCKED_BY_CLIENT. chrome://extensions zeigt keinen
+# davon, Entfernen geht dort also nicht. Läuft der Browser, schreibt er seine Einstellungen beim
+# Beenden zurück, dann nur ein Hinweis. Sonst entfernt python3 die Einträge samt Prüfsummen,
+# angehefteten Symbolen und Tastenkürzeln, alles andere bleibt, wie es ist. Chromium speichert
+# den Ordner mit aufgelösten Symlinks.
+EXT_DIR="$(cd -P "$DIR" && pwd)/extension"
+EXT_DIR_JSON="${EXT_DIR//\\/\\\\}"
+EXT_DIR_JSON="\"path\":\"${EXT_DIR_JSON//\"/\\\"}\""
+STALE_REMOVED=()
+STALE_RUNNING=()
+STALE_MANUAL=()
+# Läuft auf diesem Gerät ein Browser mit diesem Ordner? SingletonLock zeigt auf <Rechner>-<PID>.
+browser_running() {
+  local lock pid
+  lock="$(readlink "$1/SingletonLock" 2>/dev/null)" || return 1
+  [ "${lock%-*}" = "$(uname -n)" ] || return 1
+  pid="${lock##*-}"
+  [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null
+}
+for entry in "${BROWSER_DIRS[@]}"; do
+  dir="$CONFIG/${entry%%:*}"
+  for prefs in "$dir/Default/Preferences" "$dir"/Profile\ */Preferences; do
+    [ -f "$prefs" ] || continue
+    profile="${prefs%/Preferences}"
+    content="$(<"$prefs")"
+    [ ! -f "$profile/Secure Preferences" ] || content+="$(<"$profile/Secure Preferences")"
+    # Ein Eintrag mit diesem Ordner ist normal, ab zwei ist einer davon alt
+    rest="${content#*"$EXT_DIR_JSON"}"
+    [[ "$rest" != "$content" && "$rest" == *"$EXT_DIR_JSON"* ]] || continue
+    name="${entry#*:}: ${profile/#"$HOME"/\~}"
+    if browser_running "$dir"; then STALE_RUNNING+=("$name"); continue; fi
+    if ! command -v python3 >/dev/null; then STALE_MANUAL+=("$name"); continue; fi
+    # Geht etwas schief, etwa kein gültiges JSON, bleiben die Dateien unverändert, dann nur der Hinweis
+    if ! removed="$(python3 -I - "$profile" "$EXT_DIR" "$EXT_ID" 2>/dev/null <<'PY'
+import json, os, sys, tempfile
+profile, ext_dir, ext_id = sys.argv[1:]
+files = {}
+for name in ('Preferences', 'Secure Preferences'):
+    f = os.path.join(profile, name)
+    if os.path.isfile(f):
+        with open(f, encoding='utf-8') as h:
+            files[f] = json.load(h)
+def same(p):
+    return isinstance(p, str) and os.path.isabs(p) and os.path.realpath(p) == os.path.realpath(ext_dir)
+stale = set()
+# Ohne die feste ID ist das Profil noch nicht umgestiegen, der Eintrag mit der alten ID ist dann der einzige
+if not any(ext_id in prefs.get('extensions', {}).get('settings', {}) for prefs in files.values()):
+    files = {}
+for prefs in files.values():
+    for i, s in prefs.get('extensions', {}).get('settings', {}).items():
+        if i != ext_id and isinstance(s, dict) and s.get('location') == 4 and same(s.get('path')):
+            stale.add(i)
+changed = []
+for f, prefs in files.items():
+    ext = prefs.get('extensions', {})
+    before = json.dumps(prefs, sort_keys=True)
+    for i in stale:
+        ext.get('settings', {}).pop(i, None)
+        for macs in ('settings', 'settings_encrypted_hash'):
+            prefs.get('protection', {}).get('macs', {}).get('extensions', {}).get(macs, {}).pop(i, None)
+    if isinstance(ext.get('pinned_extensions'), list):
+        ext['pinned_extensions'] = [i for i in ext['pinned_extensions'] if i not in stale]
+    if isinstance(ext.get('commands'), dict):
+        ext['commands'] = {k: v for k, v in ext['commands'].items() if not (isinstance(v, dict) and v.get('extension') in stale)}
+    if json.dumps(prefs, sort_keys=True) != before:
+        changed.append((f, prefs))
+# Erst schreiben, wenn alles vorbereitet ist. Neue Datei mit Rechten 0600, auf Platte, dann ersetzen.
+for f, prefs in changed:
+    fd, tmp = tempfile.mkstemp(dir=profile, prefix='.' + os.path.basename(f) + '.', suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as h:
+            json.dump(prefs, h, separators=(',', ':'), ensure_ascii=False)
+            h.flush()
+            os.fsync(h.fileno())
+        os.chmod(tmp, os.stat(f).st_mode & 0o7777)
+        os.replace(tmp, f)
+    except BaseException:
+        os.unlink(tmp)
+        raise
+print(' '.join(sorted(stale)))
+PY
+)"; then
+      STALE_MANUAL+=("$name"); continue
+    fi
+    [ -z "$removed" ] || STALE_REMOVED+=("$name ($removed)")
+  done
+done
+if [ ${#STALE_REMOVED[@]} -gt 0 ]; then
+  printf '\n'
+  t "Alte Einträge der Erweiterung entfernt, sie hätten verhindert, dass der Browser sie beim Start lädt:" \
+    "Removed old entries of the extension that would have kept the browser from loading it on start:"
+  printf '  %s\n' "${STALE_REMOVED[@]}"
+  printf '\n'
+fi
+if [ ${#STALE_RUNNING[@]} -gt 0 ] || [ ${#STALE_MANUAL[@]} -gt 0 ]; then
+  printf '\n'
+  t "Achtung: In diesen Profilen steht noch ein alter Eintrag der Erweiterung (alte ID, derselbe Ordner):" \
+    "Warning: these profiles still contain an old entry of the extension (old ID, same folder):"
+  printf '  %s\n' "${STALE_RUNNING[@]}" "${STALE_MANUAL[@]}"
+  t "Solange er da ist, lädt der Browser die Erweiterung beim Start nicht, die Ablagen zeigen ERR_BLOCKED_BY_CLIENT." \
+    "As long as it is there, the browser does not load the extension on start, and the stashes show ERR_BLOCKED_BY_CLIENT."
+  [ ${#STALE_RUNNING[@]} -eq 0 ] \
+    || t "Abhilfe: den Browser beenden und ./install.sh erneut ausführen (Enter behält den Schlüssel)." \
+         "Fix: quit the browser and run ./install.sh again (Enter keeps the key)."
+  [ ${#STALE_MANUAL[@]} -eq 0 ] \
+    || t "Automatisch entfernen ging nicht, dafür braucht install.sh python3 und lesbare Einstellungen des Browsers." \
+         "Removing it automatically failed, install.sh needs python3 and readable browser settings for that."
+  printf '\n'
+fi
 
 # session.restore_on_startup ist 1 bei „Dort weitermachen, wo ich aufgehört habe“. Fehlt der
 # Wert, gilt der Standard „Neuer Tab“ (5). Die gleichnamigen Prüfsummen unter protection.macs

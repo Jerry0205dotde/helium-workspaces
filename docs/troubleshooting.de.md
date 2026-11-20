@@ -32,6 +32,15 @@ Ein sichtbares Ablage-Fenster hat einen Titel wie `HWS-Ablage 3f9c… · Uni` un
 
 Zeigt die Workspace-Liste „… Tabs nicht wiederhergestellt“, konnte Helium diese Tabs nicht neu anlegen. **Erneut versuchen** wechselt in den Workspace und legt sie noch einmal an. Fehlen Tabs ohne diesen Hinweis, kurz warten. Die Zuordnung nach dem Start dauert bis zu 20 Sekunden.
 
+## Nach einem Neustart ist die Erweiterung weg und Ablagen zeigen `ERR_BLOCKED_BY_CLIENT`
+
+Zeigt ein Fenster nach dem Start „jchklfejnmfphkbcpnhdejmeoncejjbe ist gesperrt – Diese Seite wurde von Helium blockiert“ und fehlt das Symbol der Erweiterung, hat Helium sie beim Start nicht geladen. Ursache ist ein Eintrag mit der alten ID aus der Zeit vor 0.3.0, der auf denselben Ordner zeigt (siehe [Umstieg auf die feste Erweiterungs-ID](./updating.de.md#einmalig-umstieg-auf-die-feste-erweiterungs-id-ab-version-030)). In `chrome://extensions` taucht keiner der beiden auf.
+
+1. Die Ablage-Fenster mit der Fehlerseite **nicht schließen**, ihre Tabs gehören zu den Workspaces.
+2. Helium beenden.
+3. `./install.sh` im Repository-Ordner ausführen und die Frage mit <kbd>Enter</kbd> beantworten. Es meldet „Alte Einträge der Erweiterung entfernt“. Dafür braucht es `python3`. Läuft Helium noch, ändert es nichts und weist darauf hin.
+4. Helium starten. Die Erweiterung lädt wieder mit Workspaces, Sicherung und Schlüssel, die Ablagen werden wieder versteckt.
+
 ## Die Erweiterung ist deaktiviert oder reagiert nicht
 
 Ist die Erweiterung in `chrome://extensions` ausgeschaltet, war meist der Entwicklermodus aus. Die Ablage-Fenster stehen dann in der Taskleiste. Den Entwicklermodus wieder einschalten, dann ist die Erweiterung wieder aktiv und markiert die Ablagen neu.

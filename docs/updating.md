@@ -18,7 +18,7 @@ Up to version 0.2.23 the extension's ID depended on the path of its folder. Sinc
 4. **Enter the new key:** click **Copy** under **Key for install.sh** in the popup and run the command in the repository folder. Until then the stash windows show up in the taskbar. `install.sh` then lists the old and the new key; `./install.sh --remove <old key>` removes the old one.
 5. **Check the settings:** the import takes **Mute stashes**, **Unload stashes after** and **Automatic backup** from a file made by version 0.2.22 or later; otherwise set them again. Set any shortcuts you chose yourself in `chrome://extensions/shortcuts` again. The extension no longer cleans up automatic backups with a date in their name in `Downloads/helium-workspaces/`, made by versions before 0.3.5; they can be deleted by hand.
 
-Afterwards `chrome://extensions` also lists a switched-off "Workspaces" entry with the old ID. It does no harm; on start Helium only loads the extension with the new ID.
+The profile's settings keep an entry with the old ID and the same folder. On the next start of Helium it keeps the extension from loading: the stash pages show "… is blocked" with `ERR_BLOCKED_BY_CLIENT`, and the extension's icon is missing. The entry does not show up in `chrome://extensions`. So after the import, quit Helium and run `./install.sh` in the repository folder (<kbd>Enter</kbd> keeps the key). It removes the old entry, see [Troubleshooting](./troubleshooting.md#after-a-restart-the-extension-is-gone-and-stashes-show-err_blocked_by_client).
 
 ## Once: from a version with `extension/token.js`
 

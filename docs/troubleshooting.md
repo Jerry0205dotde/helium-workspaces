@@ -32,6 +32,15 @@ A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its fir
 
 If the workspace list shows "… tabs not restored", Helium could not recreate these tabs. **Try again** switches to the workspace and creates them once more. If tabs are missing without this notice, wait a moment. The assignment after startup takes up to 20 seconds.
 
+## After a restart the extension is gone and stashes show `ERR_BLOCKED_BY_CLIENT`
+
+If a window shows "jchklfejnmfphkbcpnhdejmeoncejjbe is blocked – This page has been blocked by Helium" after the start and the extension's icon is missing, Helium did not load it on start. The cause is an entry with the old ID from before 0.3.0 that points to the same folder (see [Switching to the fixed extension ID](./updating.md#once-switching-to-the-fixed-extension-id-from-version-030)). Neither of the two shows up in `chrome://extensions`.
+
+1. **Do not close** the stash windows with the error page, their tabs belong to the workspaces.
+2. Quit Helium.
+3. Run `./install.sh` in the repository folder and answer the question with <kbd>Enter</kbd>. It reports "Removed old entries of the extension". This needs `python3`. If Helium is still running, it changes nothing and says so.
+4. Start Helium. The extension loads again with its workspaces, backup and key, and the stashes are hidden again.
+
 ## The extension is disabled or does not respond
 
 If the extension is switched off in `chrome://extensions`, developer mode was usually off. The stash windows are then in the taskbar. Turn developer mode back on; the extension is then active again and marks the stashes anew.

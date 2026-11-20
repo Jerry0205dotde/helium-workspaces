@@ -604,7 +604,8 @@ test('Echter Chromium: Ersetzen stellt Reihenfolge und Gruppen eines übernommen
 
 // install.sh mit nachgebildeten KDE-Befehlen, kwinrc ist eine Datei je Schlüssel. Chromium
 // nutzt das Profil unter $XDG_CONFIG_HOME/chromium wie sein Standardprofil, install.sh meldet
-// den Host also genau dort an, wo Chromium ihn sucht. ext: Ordner der Erweiterung.
+// den Host also genau dort an, wo Chromium ihn sucht. ext: Ordner der Erweiterung, oder eine
+// Funktion, die ihn aus dem Ordner des Repositorys anlegt und zurückgibt.
 // extra: weitere Umgebungsvariablen für Browser und install.sh, etwa XDG_DATA_HOME
 function hostEnv(t, ext = EXT, extra = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-host-'));
@@ -613,6 +614,7 @@ function hostEnv(t, ext = EXT, extra = {}) {
   fs.mkdirSync(repo);
   for (const f of ['install.sh', 'native-host.sh']) fs.copyFileSync(path.join(ROOT, f), path.join(repo, f));
   fs.cpSync(path.join(ROOT, 'kwin'), path.join(repo, 'kwin'), { recursive: true });
+  if (typeof ext === 'function') ext = ext(repo);
   const kde = path.join(dir, 'bin');
   const kwinrc = path.join(dir, 'kwinrc');
   const log = path.join(dir, 'log');
@@ -634,11 +636,12 @@ function hostEnv(t, ext = EXT, extra = {}) {
   const tokenFile = path.join(kwinrc, 'token');
   return {
     b,
-    // Erstinstallation ohne Schlüssel: Enter an der Frage
+    // Erstinstallation ohne Schlüssel: Enter an der Frage. Gibt die Ausgabe zurück.
     install() {
       const r = spawnSync('bash', [path.join(repo, 'install.sh')], { input: '\n', env, encoding: 'utf8' });
       assert.equal(r.status, 0, r.stderr);
       assert.match(r.stdout, /Noch kein Schlüssel eingetragen\. Die Erweiterung trägt ihn selbst ein/);
+      return r.stdout;
     },
     key: () => (fs.existsSync(tokenFile) ? fs.readFileSync(tokenFile, 'utf8').trim() : ''),
     // Wie oft install.sh das KWin-Skript eingerichtet hat
@@ -705,6 +708,49 @@ test('Echter Chromium: Nach dem Update auf die Fassung mit nativeMessaging träg
   await waitFor(() => assert.equal(h.key(), token), { timeout: 30000 });
   assert.equal(await h.token(), token, 'Schlüssel hat sich beim Neuladen geändert');
   assert.equal(h.installs(), 2);
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});
+
+// Nach dem Umstieg auf die feste ID steht der alte Eintrag mit demselben Ordner noch in den
+// Einstellungen. Hat ihn „Entpackte Erweiterung laden“ angelegt (creation_flags 38, über das
+// DevTools-Protokoll kommt ein weiteres Flag dazu, mit dem der Fehler nicht auftritt), lädt
+// Chromium beim nächsten Start keinen der beiden: Ablage-Seiten zeigen ERR_BLOCKED_BY_CLIENT.
+// install.sh entfernt den alten Eintrag bei beendetem Browser, danach startet die Erweiterung
+// mit ihrem Speicher.
+test('Echter Chromium: install.sh entfernt den alten Eintrag, danach lädt der Start die Erweiterung', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 180000 }, async (t) => {
+  if (spawnSync('python3', ['--version']).status !== 0) return t.skip('python3 fehlt');
+  const h = hostEnv(t, (repo) => {
+    const dir = path.join(repo, 'extension');
+    fs.cpSync(EXT, dir, { recursive: true });
+    const { key, ...old } = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+    fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(old));
+    return dir;
+  });
+  const { b } = h;
+  const ext = b.ext;
+  const oldId = b.extId;
+  assert.notEqual(oldId, EXT_ID);
+  await b.launch();
+
+  fs.copyFileSync(path.join(EXT, 'manifest.json'), path.join(ext, 'manifest.json'));
+  b.sw('chrome.runtime.reload();').catch(() => {});
+  b.extId = EXT_ID;
+  await b.attachWorker();
+  const token = await h.token();
+  await b.quit();
+
+  const file = path.join(b.profile, 'Default', 'Preferences');
+  const prefs = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.ok(prefs.extensions.settings[oldId], 'alter Eintrag fehlt, Testfehler');
+  prefs.extensions.settings[oldId].creation_flags = 38;
+  fs.writeFileSync(file, JSON.stringify(prefs));
+
+  assert.match(h.install(), new RegExp(`Alte Einträge der Erweiterung entfernt[^\\n]*\\n {2}Chromium: \\S+ \\(${oldId}\\)\\n`));
+  const after = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepEqual(Object.keys(after.extensions.settings).filter((id) => after.extensions.settings[id].location === 4), [EXT_ID]);
+
+  await b.launch();
+  assert.equal(await h.token(), token, 'Speicher der Erweiterung ist nicht mehr da');
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
 
