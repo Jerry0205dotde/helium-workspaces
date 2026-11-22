@@ -50,6 +50,8 @@ jobs:
     if: github.event_name == 'schedule'
     runs-on: blacksmith-2vcpu-ubuntu-2404
     continue-on-error: true
+    # Ein Lauf dauert wenige Minuten; hängt ein Helium-Release beim Start, nicht bis zum Limit von 6 h
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
