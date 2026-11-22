@@ -26,6 +26,7 @@
 const EXCHANGE_FORMAT = 'helium-workspaces';
 const EXCHANGE_VERSION = 1;
 const GROUP_COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const EXCHANGE_LIMITS = { workspaces: 500, tabs: 20000, url: 2 * 1024 * 1024, text: 10000, bytes: 50 * 1024 * 1024 };
 
 const formatExchange = (data) => JSON.stringify(data, null, 2) + '\n';
@@ -198,7 +199,7 @@ function parseExchange(text, extOrigin) {
     const name = wsName(str(w.name, where, 'name'));
     where = tr('exWhereWsNamed', wi + 1, name);
     const color = str(w.color, where, 'color');
-    if (!/^#[0-9a-f]{6}$/i.test(color)) fail(where, tr('exBadColor', color));
+    if (!HEX_COLOR.test(color)) fail(where, tr('exBadColor', color));
     const emoji = firstChar(optStr(w.emoji, where, 'emoji'));
     let id = null;
     if (w.id !== undefined) {

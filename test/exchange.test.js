@@ -1061,3 +1061,43 @@ test('Überlange Tab- und Gruppentitel werden beim Export gekürzt, der Export b
   await importFile(dst, file, 'replace', true);
   assert.equal(dst.b.local.data.workspaces[0].name, 'A');
 });
+
+test('Doppelte IDs beim Sortieren werden entdoppelt, der Export bleibt importierbar (#233)', async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  const { ids, b } = env;
+
+  await ok(env.w.request({ type: 'reorder', ids: [ids.A, ids.A] }));
+  assert.deepEqual(b.local.data.workspaces.map((w) => w.id), [ids.A, ids.B]);
+
+  await ok(env.w.request({ type: 'reorder', ids: [ids.B, ids.B, ids.A, ids.B] }));
+  assert.deepEqual(b.local.data.workspaces.map((w) => w.id), [ids.B, ids.A]);
+
+  await ok(env.w.request({ type: 'reorder', ids: null }));
+  assert.deepEqual(b.local.data.workspaces.map((w) => w.id), [ids.B, ids.A]);
+
+  const file = await request(env, { type: 'export' });
+  assert.deepEqual(file.workspaces.map((w) => w.id), [ids.B, ids.A]);
+  const dst = await fresh();
+  await importFile(dst, file, 'replace', true);
+  assert.deepEqual(dst.b.local.data.workspaces.map((w) => w.id), [ids.B, ids.A]);
+});
+
+test('updateWs übernimmt nur #rrggbb-Farben, der Export bleibt importierbar (#233)', async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  const { ids, b } = env;
+  const before = b.local.data.workspaces[0].color;
+
+  for (const color of ['rot', '', '#fff', '#1234567', '#12345g', ' #123456', '#123456\n']) {
+    await ok(env.w.request({ type: 'update', wsId: ids.A, patch: { color } }));
+    assert.equal(b.local.data.workspaces[0].color, before, `ungültige Farbe angenommen: ${JSON.stringify(color)}`);
+  }
+
+  await ok(env.w.request({ type: 'update', wsId: ids.A, patch: { color: '#ABCDEF' } }));
+  assert.equal(b.local.data.workspaces[0].color, '#ABCDEF');
+
+  const file = await request(env, { type: 'export' });
+  assert.equal(file.workspaces[0].color, '#ABCDEF');
+  const dst = await fresh();
+  await importFile(dst, file, 'replace', true);
+  assert.equal(dst.b.local.data.workspaces[0].color, '#ABCDEF');
+});
