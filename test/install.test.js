@@ -13,6 +13,8 @@ const { spawnSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 const INSTALL = path.join(ROOT, 'install.sh');
 const TOKEN = '0123456789abcdef01234567';
+// Ein zweiter Browser bzw. ein zweites Profil mit eigenem Schlüssel (#155)
+const OTHER = 'fedcba9876543210fedcba98';
 // Die letzte Zeile einer Installation nennt die Version des KWin-Skripts (#117)
 const KWIN_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'kwin', 'metadata.json'), 'utf8')).KPlugin.Version;
 const DONE_DE = `Fertig, KWin-Skript ${KWIN_VERSION} installiert.\n`;
@@ -37,16 +39,17 @@ function which(name) {
   throw new Error(`${name} nicht gefunden`);
 }
 
-// installed: ob kpackagetool6 -s das Paket findet, updateError: Fehlermeldung, mit der -u trotzdem
-// scheitert, dbus: ob qdbus6 KWin erreicht, loaded: ob isScriptLoaded true liefert,
-// token: was kreadconfig6 als eingetragenen Schlüssel liefert, setup(dir): vorbereiten,
-// gibt den Pfad des auszuführenden install.sh zurück, profiles: Pfad unter ~/.config → Inhalt
-// der Preferences-Datei dort, input: was auf die Frage nach dem Schlüssel eingetippt wird,
+// installed: ob kpackagetool6 -s das Paket findet, updateError/removeError: Fehlermeldung, mit der
+// -u bzw. -r scheitert, dbus: ob qdbus6 KWin erreicht, loaded: ob isScriptLoaded true liefert,
+// failDbus: D-Bus-Methode (z. B. 'start' oder 'unloadScript'), die scheitert,
+// token/enabled: was kreadconfig6 für token bzw. helium-workspacesEnabled liefert, setup(dir):
+// vorbereiten, gibt den Pfad des auszuführenden install.sh zurück, profiles: Pfad unter ~/.config →
+// Inhalt der Preferences-Datei dort, input: was auf die Frage nach dem Schlüssel eingetippt wird,
 // env: Sprachvariablen (ohne Angabe Deutsch), check(dir): nach dem Lauf, vor dem Aufräumen,
 // das Ergebnis steht in checked, qdbus: unter welchem Namen es qdbus gibt (null: gar nicht),
 // missing: Programme, die fehlen. Mit einem der beiden sieht install.sh nur die nachgebildeten
 // Befehle und die echten aus SYSTEM_TOOLS, damit echte KDE-Programme den Test nicht stören.
-function run(args, { installed = true, updateError = '', dbus = true, loaded = true, token = '', tokenLater, setup, check, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' }, qdbus = 'qdbus6', missing = [] } = {}) {
+function run(args, { installed = true, updateError = '', removeError = '', dbus = true, loaded = true, failDbus = '', token = '', tokenLater, enabled = '', setup, check, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' }, qdbus = 'qdbus6', missing = [] } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-install-'));
   const home = path.join(dir, 'home');
   for (const [p, content] of Object.entries(profiles)) {
@@ -60,16 +63,21 @@ function run(args, { installed = true, updateError = '', dbus = true, loaded = t
   const fake = (name, body) =>
     missing.includes(name) ||
     fs.writeFileSync(path.join(bin, name), `#!/bin/bash\necho "${name} $*" >> "${log}"\n${body}\n`, { mode: 0o755 });
-  if (qdbus) fake(qdbus, !dbus ? 'echo "Could not connect to D-Bus server" >&2; exit 1' : loaded ? 'echo true' : 'echo false');
+  if (qdbus) {
+    const qdbusFail = failDbus ? `case "$3" in *.${failDbus}) echo "D-Bus call failed" >&2; exit 1 ;; esac\n` : '';
+    const qdbusOk = `${qdbusFail}case "$3" in *.isScriptLoaded) echo ${loaded ? 'true' : 'false'} ;; *) echo true ;; esac`;
+    fake(qdbus, dbus ? qdbusOk : 'echo "Could not connect to D-Bus server" >&2; exit 1');
+  }
   // Wie das echte kpackagetool6: -u scheitert, solange das Paket nicht installiert ist,
-  // mit updateError auch bei installiertem Paket, etwa wegen fehlender Rechte
+  // mit updateError/removeError auch bei installiertem Paket, etwa wegen fehlender Rechte
   const update = updateError ? `echo "${updateError}" >&2; exit 4` : `exit ${installed ? 0 : 1}`;
-  fake('kpackagetool6', `case "$2" in -s) exit ${installed ? 0 : 3} ;; -u) ${update} ;; esac; exit 0`);
+  const remove = removeError ? `echo "${removeError}" >&2; exit 4` : 'exit 0';
+  fake('kpackagetool6', `case "$2" in -s) exit ${installed ? 0 : 3} ;; -u) ${update} ;; -r) ${remove} ;; esac; exit 0`);
   fake('kwriteconfig6', 'exit 0');
   // tokenLater: was kreadconfig6 ab dem zweiten Lesen liefert, wie nach einem Eintrag von native-host.sh
   const reads = path.join(dir, 'reads');
   const later = tokenLater === undefined ? '' : `[ -f "${reads}" ] && { echo "${tokenLater}"; exit 0; }; touch "${reads}"; `;
-  fake('kreadconfig6', `[ "$6" = token ] && { ${later}echo "${token}"; }; exit 0`);
+  fake('kreadconfig6', `case "$6" in token) ${later}echo "${token}" ;; helium-workspacesEnabled) ${enabled ? `echo "${enabled}"` : ':'} ;; esac; exit 0`);
   // install.sh --uninstall wartet, bis KWin das neu geladene Skript ausgeführt hat
   fake('sleep', 'exit 0');
   try {
@@ -142,9 +150,11 @@ test('--uninstall lädt das Skript ohne Schlüssel neu, damit es die Ablagen zur
   assert.deepEqual(r.calls, [
     'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces',
     'kpackagetool6 --type=KWin/Script -s helium-workspaces',
-    'kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete',
-    // Die Fassung aus dem Repo, ältere holen ohne Schlüssel nichts zurück
+    // Die Fassung aus dem Repo, ältere holen ohne Schlüssel nichts zurück — vor Änderungen an kwinrc (#239)
     `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
+    'kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token',
+    'kreadconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled',
+    'kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete',
     // Auch wenn es in den Systemeinstellungen deaktiviert war
     'kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true',
     'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces',
@@ -217,6 +227,86 @@ test('--uninstall weist zusätzliche Schlüssel und --browsers ab, ohne etwas zu
   }
 });
 
+test('--uninstall lässt Schlüssel und Einrichtung unberührt, wenn das Paketupdate scheitert (#239)', () => {
+  const r = uninstall({
+    token: `${TOKEN},${OTHER}`,
+    enabled: 'true',
+    updateError: 'Error: Permission denied',
+    setup: (dir) => {
+      fs.mkdirSync(path.dirname(path.join(dir, 'home', '.config', HOSTS[0])), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'home', '.config', HOSTS[0]), '{}');
+      return INSTALL;
+    },
+    check: hostsIn,
+  });
+  assert.equal(r.status, 4);
+  assert.match(r.stderr, /Error: Permission denied/);
+  assert.deepEqual(r.calls, [
+    'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces',
+    'kpackagetool6 --type=KWin/Script -s helium-workspaces',
+    `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
+  ]);
+  assert.deepEqual(Object.keys(r.checked), [HOSTS[0]]);
+});
+
+test('--uninstall stellt Schlüssel, Aktivierung und Skript wieder her, wenn das Entfernen scheitert (#239)', () => {
+  const both = `${TOKEN},${OTHER}`;
+  for (const { enabled, loaded, restoredEnabled, reload } of [
+    { enabled: 'true', loaded: true, restoredEnabled: 'true', reload: true },
+    { enabled: 'false', loaded: false, restoredEnabled: 'false', reload: false },
+    { enabled: '', loaded: false, restoredEnabled: '--delete', reload: false },
+  ]) {
+    const r = uninstall({
+      token: both,
+      enabled,
+      loaded,
+      removeError: 'Error: Permission denied',
+      setup: (dir) => {
+        fs.mkdirSync(path.dirname(path.join(dir, 'home', '.config', HOSTS[0])), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'home', '.config', HOSTS[0]), '{}');
+        return INSTALL;
+      },
+      check: hostsIn,
+    });
+    assert.equal(r.status, 4);
+    assert.match(r.stderr, /Error: Permission denied/);
+    const afterRemove = r.calls.slice(r.calls.indexOf('kpackagetool6 --type=KWin/Script -r helium-workspaces') + 1);
+    assert.deepEqual(afterRemove, [
+      `kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token ${both}`,
+      `kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled ${restoredEnabled}`,
+      'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces',
+      ...(reload ? ['qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start'] : []),
+    ]);
+    assert.ok(!r.calls.some((c) => c.includes('--key browsers')), 'fasst die Browserliste an');
+    assert.deepEqual(Object.keys(r.checked), [HOSTS[0]]);
+  }
+});
+
+test('--uninstall stellt Schlüssel und Aktivierung wieder her, wenn D-Bus nach dem Löschen scheitert (#239)', () => {
+  const both = `${TOKEN},${OTHER}`;
+  for (const [failDbus, failedCall] of [
+    ['unloadScript', 'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces'],
+    ['start', 'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start'],
+  ]) {
+    const r = uninstall({ token: both, enabled: 'true', failDbus });
+    assert.notEqual(r.status, 0, failDbus);
+    const idx = r.calls.indexOf(failedCall);
+    assert.ok(idx >= 0, failDbus);
+    assert.deepEqual(r.calls.slice(idx + 1), [
+      `kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token ${both}`,
+      'kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true',
+      'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces',
+      'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start',
+    ], failDbus);
+    assert.ok(!r.calls.some((c) => c.includes('--key browsers')), failDbus);
+  }
+});
+
+test('--uninstall löscht keinen Schlüssel, wenn das Paket fehlt und Entladen scheitert (#239)', () => {
+  const r = uninstall({ installed: false, token: `${TOKEN},${OTHER}`, failDbus: 'unloadScript' });
+  assert.notEqual(r.status, 0);
+  assert.ok(!r.calls.some((c) => c.startsWith('kwriteconfig6')), r.calls.join('\n'));
+});
 test('--update holt den neuen Stand und richtet ihn mit dem eingetragenen Schlüssel ein', () => {
   let local;
   const r = run(['--update'], {
@@ -640,9 +730,6 @@ test('Bleibt isScriptLoaded nach dem Start false, nennt der Fehler die schon ges
     assert.equal(r.checked, true, 'extension/token.js vor dem Laden entfernt');
   }
 });
-
-// Ein zweiter Browser bzw. ein zweites Profil mit eigenem Schlüssel (#155)
-const OTHER = 'fedcba9876543210fedcba98';
 
 test('Ein neuer Schlüssel kommt zu den eingetragenen dazu, statt sie zu ersetzen (#155)', () => {
   for (const [args, input] of [[[OTHER], ''], [[], `${OTHER}\n`], [[`./install.sh ${OTHER}`], '']]) {

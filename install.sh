@@ -171,24 +171,54 @@ if [ -n "$UNINSTALL" ]; then
   [[ ${#TOKENS[@]} -eq 0 && -z "$SET_BROWSERS" ]] \
     || { t "--uninstall nimmt keine weiteren Angaben. Für einen einzelnen Schlüssel ./install.sh --remove <Schlüssel> ausführen." \
            "--uninstall takes no further arguments. To remove a single key, run ./install.sh --remove <key>." >&2; exit 1; }
-  check_kwin
+  # Erreicht qdbus KWin nicht, bricht das Skript hier ab, bevor etwas entfernt ist.
+  WAS_LOADED="$("$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces)"
   INSTALLED=""
   kpackagetool6 --type=KWin/Script -s helium-workspaces >/dev/null 2>&1 && INSTALLED=1
-  kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
   if [ -n "$INSTALLED" ]; then
     # Ohne Schlüssel neu geladen holt das KWin-Skript alle versteckten Ablagen zurück in die
-    # Taskleiste. Ältere Fassungen tun das nicht, deshalb zuerst die aus diesem Ordner. KWin
-    # führt das Skript erst kurz nach dem Laden aus, deshalb die Pause.
+    # Taskleiste. Ältere Fassungen tun das nicht, deshalb zuerst die aus diesem Ordner.
+    # Erst das Paket aktualisieren, bevor Schlüssel oder Einstellungen angefasst werden.
     kpackagetool6 --type=KWin/Script -u "$DIR/kwin" >/dev/null
+    OLD_TOKEN="$(kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token)"
+    OLD_ENABLED="$(kreadconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled)"
+    ROLLBACK=1
+    # Läuft nur über trap, das sieht ShellCheck nicht
+    # shellcheck disable=SC2317,SC2329
+    restore_uninstall() {
+      [ -n "$ROLLBACK" ] || return 0
+      ROLLBACK=""
+      if [ -n "$OLD_TOKEN" ]; then
+        kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token "$OLD_TOKEN" || true
+      fi
+      if [ -n "$OLD_ENABLED" ]; then
+        kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled "$OLD_ENABLED" || true
+      else
+        kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete || true
+      fi
+      "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null 2>&1 || true
+      if [ "$WAS_LOADED" = true ]; then
+        "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null 2>&1 || true
+      fi
+    }
+    trap restore_uninstall EXIT
+    kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
     # Auch ein in den Systemeinstellungen deaktiviertes Skript, sonst lädt KWin es nicht
     kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true
+    # KWin führt das Skript erst kurz nach dem Laden aus, deshalb die Pause.
     "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
     "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null
     sleep 1
+    # Dann entladen, sonst läuft das Skript bis zum nächsten Start von KWin weiter
+    "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
+    kpackagetool6 --type=KWin/Script -r helium-workspaces >/dev/null
+    ROLLBACK=""
+    trap - EXIT
+  else
+    # Auch ohne Paket noch entladen, falls das Skript noch im laufenden KWin steckt
+    "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
+    kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
   fi
-  # Dann entladen, sonst läuft das Skript bis zum nächsten Start von KWin weiter
-  "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
-  [ -z "$INSTALLED" ] || kpackagetool6 --type=KWin/Script -r helium-workspaces >/dev/null
   kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled --delete
   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers --delete
   for entry in "${BROWSER_DIRS[@]}"; do rm -f "$(host_manifest "$entry")"; done
