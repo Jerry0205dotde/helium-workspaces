@@ -719,10 +719,31 @@ test("--browsers '' stellt die Standardliste wieder her", () => {
 });
 
 test('Eine ungültige Browserliste bricht ab, bevor etwas gelesen oder eingetragen ist', () => {
-  for (const args of [['--browsers', 'helium;rm', TOKEN], ['--browsers', 'helium,,brave', TOKEN], ['--browsers']]) {
+  for (const args of [
+    ['--browsers', 'helium;rm', TOKEN],
+    ['--browsers', 'helium,,brave', TOKEN],
+    ['--browsers'],
+    ['--browsers=--uninstall', TOKEN],
+    ['--browsers', ' --uninstall', TOKEN],
+    ['--browsers', 'helium,-brave', TOKEN],
+  ]) {
     const r = run(args);
     assert.notEqual(r.status, 0, args.join(' '));
     assert.match(r.stderr, /Browserliste|--browsers braucht eine Liste/);
+    assert.deepEqual(r.calls, [], args.join(' '));
+  }
+});
+
+test('--browsers vor einer weiteren Option bricht ohne Änderungen ab (#238)', () => {
+  for (const args of [
+    ['--browsers', '--uninstall', TOKEN],
+    ['--browsers', '--update'],
+    ['--browsers', '--remove', TOKEN],
+    ['--browsers', '-h'],
+  ]) {
+    const r = run(args);
+    assert.notEqual(r.status, 0, args.join(' '));
+    assert.match(r.stderr, /--browsers braucht eine Liste/);
     assert.deepEqual(r.calls, [], args.join(' '));
   }
 });
