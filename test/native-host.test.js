@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const zlib = require('node:zlib');
 
 const HOST = path.join(__dirname, '..', 'native-host.sh');
 const KEY = '0123456789abcdef01234567';
@@ -88,7 +89,8 @@ test('Eine Nachricht ohne gültigen Schlüssel ändert nichts', async () => {
 // ---------------------------------------------------------------- Automatische Sicherung
 
 const OTHER_KEY = 'aaaaaaaaaaaaaaaaaaaaaaaa';
-const b64 = (text) => Buffer.from(text).toString('base64');
+// Wie die Erweiterung: gzip-komprimiert in Base64 (#245)
+const b64 = (text) => zlib.gzipSync(text).toString('base64');
 
 // Ein Datenordner wie ~/.local/share, nach dem Test wieder weg
 function dataDir(t, name = 'data') {
@@ -144,6 +146,15 @@ test('Eine große Sicherung kommt vollständig an', async (t) => {
   assert.equal(fs.readFileSync(autoFile(data, KEY, 10), 'utf8'), text);
 });
 
+// Eine Erweiterung, die nach dem Update noch nicht neu geladen ist, schickt unkomprimiert
+test('Unkomprimierte Sicherung älterer Fassungen kommt unverändert an', async (t) => {
+  const data = dataDir(t);
+  const text = '{\n  "workspaces": [{ "name": "Ä" }]\n}\n';
+  const r = await host(frame(JSON.stringify({ backup: 5, profile: KEY, data: Buffer.from(text).toString('base64') })), { env: { XDG_DATA_HOME: data } });
+  assert.deepEqual(r.reply, { ok: true, file: autoFile(data, KEY, 5) });
+  assert.equal(fs.readFileSync(autoFile(data, KEY, 5), 'utf8'), text);
+});
+
 test('Umlaute und Anführungszeichen im Pfad: Die Antwort bleibt gültig, die Länge zählt Bytes', async (t) => {
   const data = dataDir(t, 'Datén "ä" \\ x');
   const r = await host(backupMsg(2, KEY, '{}\n'), { env: { XDG_DATA_HOME: data } });
@@ -165,7 +176,9 @@ test('Ungültige Sicherung: nichts wird geschrieben, eine alte Datei bleibt', as
   // Daten, die kein Base64 sind, oder keine Daten: Die bisherige Datei bleibt unverändert
   await host(backupMsg(1, KEY, 'alt'), { env });
   const file = autoFile(data, KEY, 1);
-  for (const msg of [frame(JSON.stringify({ backup: 1, profile: KEY, data: '' })), frame(`{"backup":1,"profile":"${KEY}","data":"%%%"}`), frame(`{"backup":1,"profile":"${KEY}"}`)]) {
+  for (const msg of [frame(JSON.stringify({ backup: 1, profile: KEY, data: '' })), frame(`{"backup":1,"profile":"${KEY}","data":"%%%"}`),
+    // Abgeschnittenes gzip
+    frame(JSON.stringify({ backup: 1, profile: KEY, data: zlib.gzipSync('neu'.repeat(1000)).subarray(0, 20).toString('base64') })), frame(`{"backup":1,"profile":"${KEY}"}`)]) {
     const r = await host(msg, { env });
     assert.deepEqual(r.reply, { ok: false, error: 'write', file });
   }

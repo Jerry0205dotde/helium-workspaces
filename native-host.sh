@@ -6,6 +6,8 @@
 # - Automatische Sicherung: {"backup":<1–10>,"profile":"<Schlüssel>","data":"<Base64>"}
 #   schreibt den Export nach ${XDG_DATA_HOME:-~/.local/share}/helium-workspaces/backups/
 #   <Schlüssel>/helium-workspaces-auto-<n>.json, außerhalb von Downloads und Browserprofil.
+#   Die Daten sind gzip-komprimiert (#245). Unkomprimierte von älteren Fassungen der
+#   Erweiterung, die noch nicht neu geladen sind, schreibt gzip -f unverändert.
 #   Je Profil ein Ordner, darin höchstens zehn Dateien, die die Erweiterung reihum
 #   überschreibt. Erst in eine neue Datei daneben, dann umbenannt, so entsteht nie eine
 #   halbe Datei. Die Antwort nennt den Pfad. Die Sicherungen bleiben auch nach
@@ -52,7 +54,7 @@ backup() {
   # Die Sicherungen enthalten alle Adressen im Klartext, nur für diesen Benutzer lesbar
   umask 077
   if mkdir -p "$dir" 2>/dev/null && OUT="$(mktemp "$dir/.helium-workspaces-auto-$slot.XXXXXX")" \
-    && field data '"[A-Za-z0-9+/=]*"' | cut -d'"' -f4 | base64 -d > "$OUT" 2>/dev/null \
+    && field data '"[A-Za-z0-9+/=]*"' | cut -d'"' -f4 | base64 -d | gzip -dcf > "$OUT" 2>/dev/null \
     && [ -s "$OUT" ] && mv -f "$OUT" "$file"; then
     reply "{\"ok\":true,\"file\":$(json "$file")}"
   else

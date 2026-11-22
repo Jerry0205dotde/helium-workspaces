@@ -37,6 +37,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const zlib = require('node:zlib');
 const i18n = require('./i18n');
 
 const EXT_DIR = path.join(__dirname, '..', 'extension');
@@ -509,7 +510,7 @@ class Browser {
       if (msg.key) return { ok: true };
       const file = `${BACKUPS}${msg.profile}/helium-workspaces-auto-${msg.backup}.json`;
       if (this.hostMode === 'fail') return { ok: false, error: 'write', file };
-      this.files.set(file, Buffer.from(msg.data, 'base64').toString('utf8'));
+      this.files.set(file, zlib.gunzipSync(Buffer.from(msg.data, 'base64')).toString('utf8'));
       return { ok: true, file };
     };
   }
@@ -1046,6 +1047,16 @@ class Worker {
       URL,
       TextEncoder,
       btoa,
+      Blob,
+      Response,
+      // Komprimiert erst am Ende, dafür ohne Thread: settle() wartet nur auf Mikrotasks und Timer
+      CompressionStream: class {
+        constructor(format) {
+          if (format !== 'gzip') throw new TypeError(format);
+          const chunks = [];
+          return new TransformStream({ transform: (c) => void chunks.push(c), flush: (ctl) => ctl.enqueue(zlib.gzipSync(Buffer.concat(chunks))) });
+        }
+      },
       __now: () => browser.now,
       __random: seeded(workerSeed++),
     };

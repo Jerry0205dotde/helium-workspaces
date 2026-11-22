@@ -18,7 +18,7 @@ const EXT = path.join(__dirname, 'extension');
 // die Prüfung einen Namen, den es dort wirklich gibt, gehört er hierher.
 const common = ['chrome', 'console', 'setTimeout', 'clearTimeout', 'URL', 'URLSearchParams', 'Blob', 'TextEncoder', 'btoa', 'crypto', 'navigator', 'OffscreenCanvas'];
 const ENV = {
-  worker: [...common, 'importScripts'],
+  worker: [...common, 'importScripts', 'Response', 'CompressionStream'],
   page: [...common, 'document', 'window', 'location', 'CSS'],
   kwin: ['workspace', 'readConfig'],
 };
