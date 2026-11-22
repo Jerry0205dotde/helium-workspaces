@@ -63,8 +63,9 @@ REMOVE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --browsers)
-      [ $# -ge 2 ] || { t "--browsers braucht eine Liste, z. B. --browsers helium,brave-browser" \
-                          "--browsers needs a list, e.g. --browsers helium,brave-browser" >&2; exit 1; }
+      [[ $# -ge 2 && "$2" != -* ]] \
+        || { t "--browsers braucht eine Liste, z. B. --browsers helium,brave-browser" \
+               "--browsers needs a list, e.g. --browsers helium,brave-browser" >&2; exit 1; }
       BROWSERS="$2"; SET_BROWSERS=1; shift 2 ;;
     --browsers=*) BROWSERS="${1#*=}"; SET_BROWSERS=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
@@ -189,7 +190,7 @@ if [ -n "$UNINSTALL" ]; then
 fi
 
 BROWSERS="$(printf '%s' "$BROWSERS" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
-[[ -z "$BROWSERS" || "$BROWSERS" =~ ^[a-z0-9._-]+(,[a-z0-9._-]+)*$ ]] \
+[[ -z "$BROWSERS" || "$BROWSERS" =~ ^[a-z0-9._][a-z0-9._-]*(,[a-z0-9._][a-z0-9._-]*)*$ ]] \
   || { t "Ungültige Browserliste: $BROWSERS. Erwartet werden Fensterklassen mit Kommas dazwischen, z. B. helium,brave-browser." \
          "Invalid browser list: $BROWSERS. Expected window classes separated by commas, e.g. helium,brave-browser." >&2; exit 1; }
 
