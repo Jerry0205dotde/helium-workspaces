@@ -947,8 +947,7 @@ test('Echter Chromium: Neuladen während eines Tab-Transfers erhält die Zielabl
     void userAction(() => moveTabToWs(tab.id, target.id));
     await hit;
   `);
-  await b.sw('await chrome.tabs.create({ url: chrome.runtime.getURL("popup.html"), active: false });');
-  await b.inPage(`chrome-extension://${b.extId}/popup.html`, 'chrome.runtime.reload()').catch(() => {});
+  b.sw('chrome.runtime.reload();').catch(() => {});
   await b.attachWorker();
   const res = await waitFor(async () => {
     const r = await b.sw(`

@@ -356,7 +356,7 @@ async function moveTabToWs(tabId, wsId, group = false) {
 
   let done;
   try {
-    done = await finishMove();
+    done = await finishMove(true);
   } catch (err) {
     scheduleReconcile();
     throw err;
@@ -368,8 +368,9 @@ async function moveTabToWs(tabId, wsId, group = false) {
 // Schließt einen begonnenen Tab-Transfer (pendingMove in storage.local) anhand der tatsächlich
 // vorhandenen Tabs ab – nach einem Fehler, einem Neustart des Service Workers oder dem Neuladen
 // der Erweiterung. Sind schon Tabs im Ziel angekommen, wird der Rest nachgeholt; sonst gilt der
-// Transfer als nicht begonnen.
-async function finishMove() {
+// Transfer als nicht begonnen. focus: das Quellfenster wieder nach vorn holen (nur beim
+// Verschieben selbst, nicht beim Fortsetzen ohne Zutun).
+async function finishMove(focus = false) {
   const p = await getPendingMove();
   if (!p) return null;
   const cfg = await getConfig();
@@ -410,7 +411,7 @@ async function finishMove() {
     if (p.isStash) {
       const marker = target.tabs.find(isStashTab);
       if (marker) await chrome.tabs.update(marker.id, { active: true });
-      await chrome.windows.update(p.fromWindowId, { focused: true }).catch(() => {});
+      if (focus) await chrome.windows.update(p.fromWindowId, { focused: true }).catch(() => {});
       const tabs = await chrome.tabs.query({ windowId: target.id });
       await rememberStashWin(target.id, p.to, tabs.filter((t) => !isStashTab(t)).map((t) => t.id));
     }

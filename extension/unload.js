@@ -92,7 +92,7 @@ async function loadIfDiscarded(tabId) {
 }
 
 async function unloadRestored(tabId) {
-  if ((await getPending()) || (await getPendingMove())) return;
+  if (await getPending()) return;
   const t = await chrome.tabs.get(tabId).catch(() => null);
   if (t) await discard(t);
 }
@@ -142,7 +142,7 @@ function noteSilent(tabId) {
 // ist oder in den letzten unloadAfter Minuten zu hören war, bleiben geladen.
 async function unloadStashes() {
   const minutes = await getUnloadAfter();
-  if (!minutes || (await getPending()) || (await getPendingMove())) return;
+  if (!minutes || (await getPending())) return;
   const { stash } = await scan();
   const { stashedAt = {}, silentSince = {} } = await chrome.storage.session.get(['stashedAt', 'silentSince']);
   const now = Date.now();
