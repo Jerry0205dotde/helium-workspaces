@@ -152,6 +152,14 @@ async function keepFailed(wsId, failed) {
 async function keepLater(wsId, later, from = null) {
   if (!later.length && from !== 'saved') return;
   const { backup } = await getBackup();
+  const more = addLater(backup, wsId, later, from);
+  await chrome.storage.local.set({ backup });
+  if (more) feedSoon();
+}
+
+// Trägt later wie keepLater in backup ein, ohne zu speichern. Ergebnis: ob danach
+// Einträge zurückgestellt sind.
+function addLater(backup, wsId, later, from = null) {
   const b = (backup[wsId] ??= { stash: [], shown: [] });
   const old = b.later || [];
   // Von hinten durchsuchen: zurückgestellt wird immer das Ende der Liste
@@ -167,12 +175,13 @@ async function keepLater(wsId, later, from = null) {
   }
   b.later = from === 'saved' ? later : from === 'shown' ? [...later, ...old] : [...old, ...later];
   if (!b.later.length) delete b.later;
-  await chrome.storage.local.set({ backup });
-  // Falls kein Tab fertig lädt und feedLater deshalb nicht anstößt
-  if (b.later) {
-    clearTimeout(feedTimer);
-    feedTimer = setTimeout(() => serial(feedLater), LOAD_TIMEOUT);
-  }
+  return !!b.later;
+}
+
+// Falls kein Tab fertig lädt und feedLater deshalb nicht anstößt
+function feedSoon() {
+  clearTimeout(feedTimer);
+  feedTimer = setTimeout(() => serial(feedLater), LOAD_TIMEOUT);
 }
 
 // Legt zurückgestellte Tabs (keepLater, pinnedLater) an, solange weniger als LOAD_AT_ONCE aus
@@ -370,11 +379,15 @@ async function retryInto(ws, windowId, have = new Map(), gone = new Set()) {
     const r = await part(false);
     return { still: [...p.failed, ...r.failed], later: r.later };
   });
+  // failed und die zurückgestellten in einem Schritt speichern und erst danach pendingRetry
+  // entfernen: Endet der Worker dazwischen, setzt resumeRetry fort, statt dass die
+  // zurückgestellten verloren gehen (#242)
   const { backup } = await getBackup();
   if (backup[ws]) backup[ws].failed = still;
+  const more = later.length > 0 && addLater(backup, ws, later);
   await chrome.storage.local.set({ backup });
   await chrome.storage.session.remove('pendingRetry');
-  await keepLater(ws, later);
+  if (more) feedSoon();
 }
 
 // Setzt einen unterbrochenen erneuten Versuch fort (über resumeSwitch vor jeder Aktion und
