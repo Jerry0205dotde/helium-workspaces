@@ -20,10 +20,13 @@ async function createWs(name) {
 }
 
 async function updateWs(id, patch) {
+  if (!patch || typeof patch !== 'object') return;
   const cfg = await getConfig();
   const ws = cfg.workspaces.find((w) => w.id === id);
   if (!ws) return;
-  for (const k of ['name', 'color', 'emoji']) if (typeof patch[k] === 'string') ws[k] = patch[k];
+  if (typeof patch.name === 'string') ws.name = patch.name;
+  if (typeof patch.color === 'string' && HEX_COLOR.test(patch.color)) ws.color = patch.color;
+  if (typeof patch.emoji === 'string') ws.emoji = patch.emoji;
   ws.name = wsName(ws.name);
   await saveWorkspaces(cfg.workspaces);
   iconCache.clear();
@@ -31,9 +34,10 @@ async function updateWs(id, patch) {
 }
 
 async function reorderWs(ids) {
+  if (!Array.isArray(ids)) return;
   const cfg = await getConfig();
   const byId = new Map(cfg.workspaces.map((w) => [w.id, w]));
-  const next = ids.map((id) => byId.get(id)).filter(Boolean);
+  const next = [...new Set(ids)].map((id) => byId.get(id)).filter(Boolean);
   for (const w of cfg.workspaces) if (!next.includes(w)) next.push(w);
   await saveWorkspaces(next);
 }
