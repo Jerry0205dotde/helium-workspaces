@@ -60,10 +60,10 @@ test('Täglich: Einschalten sichert sofort über native-host.sh, danach einmal a
   // Nur an den Host der Erweiterung, mit dem Schlüssel des Profils als Unterordner
   const [sent] = backups(b);
   assert.equal(sent.host, 'helium_workspaces');
-  assert.deepEqual(Object.keys(sent.msg).sort(), ['backup', 'data', 'profile']);
+  assert.deepEqual(Object.keys(sent.msg).sort(), ['backup', 'gzip', 'profile']);
   assert.equal(sent.msg.profile, token);
   assert.equal(sent.msg.backup, 1);
-  assert.match(sent.msg.data, /^[A-Za-z0-9+/=]+$/);
+  assert.match(sent.msg.gzip, /^[A-Za-z0-9+/=]+$/);
 
   // Dieselbe Datei wie „Als Datei speichern“, bis auf den Zeitpunkt
   const data = JSON.parse(b.files.get(slotOf(b, 1)));

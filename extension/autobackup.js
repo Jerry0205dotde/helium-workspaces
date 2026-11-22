@@ -74,6 +74,8 @@ const autoBackupNow = () => autoBackupIfDue(true);
 // Datei (exported). Chromium nimmt Nachrichten an den Host nur bis 64 MiB an (#245). Base64
 // allein brächte einen Export ab 48 MiB darüber, die Importgrenze liegt aber bei 50 MiB.
 // Komprimiert bleibt auch ein Export an der Grenze darunter, selbst aus zufälligen Zeichen.
+// Das Feld heißt gzip statt data wie zuvor: Ein älterer native-host.sh lehnt die Nachricht so
+// ab, statt die komprimierten Bytes als Sicherung zu schreiben.
 // Überschreitet der Bestand eine Importgrenze (z. B. durch normal geöffnete Tabs), scheitert
 // die Sicherung mit klarer Meldung, statt vorhandene Sicherungen mit einer unimportierbaren
 // Datei zu überschreiben.
@@ -85,7 +87,7 @@ async function autoBackupMessage(slot) {
   const bytes = new Uint8Array(await new Response(gzip).arrayBuffer());
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return { at: Date.parse(data.exported), msg: { backup: slot, profile: await ensureToken(), data: btoa(bin) } };
+  return { at: Date.parse(data.exported), msg: { backup: slot, profile: await ensureToken(), gzip: btoa(bin) } };
 }
 
 async function writeAutoBackup({ at, msg }, count) {

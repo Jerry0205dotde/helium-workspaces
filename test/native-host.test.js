@@ -101,15 +101,15 @@ function dataDir(t, name = 'data') {
 }
 const autoFile = (data, profile, n) => path.join(data, 'helium-workspaces', 'backups', profile, `helium-workspaces-auto-${n}.json`);
 // Wie Chromium die Nachricht schreibt, auch in anderer Reihenfolge der Felder
-const backupMsg = (slot, profile, text, order = ['backup', 'profile', 'data']) => {
-  const m = { backup: slot, profile, data: b64(text) };
+const backupMsg = (slot, profile, text, order = ['backup', 'profile', 'gzip']) => {
+  const m = { backup: slot, profile, gzip: b64(text) };
   return frame(JSON.stringify(Object.fromEntries(order.map((k) => [k, m[k]]))));
 };
 
 test('Sicherung: landet im Ordner des Profils unter XDG_DATA_HOME, nur für den Benutzer lesbar', async (t) => {
   const data = dataDir(t);
   const text = '{\n  "workspaces": [{ "name": "Ä \\"x\\"" }]\n}\n';
-  for (const order of [['backup', 'profile', 'data'], ['backup', 'data', 'profile'], ['data', 'profile', 'backup']]) {
+  for (const order of [['backup', 'profile', 'gzip'], ['backup', 'gzip', 'profile'], ['gzip', 'profile', 'backup']]) {
     const r = await host(backupMsg(3, KEY, text, order), { env: { XDG_DATA_HOME: data } });
     const file = autoFile(data, KEY, 3);
     assert.deepEqual(r.reply, { ok: true, file }, order.join());
@@ -166,19 +166,21 @@ test('Ungültige Sicherung: nichts wird geschrieben, eine alte Datei bleibt', as
   const env = { XDG_DATA_HOME: data };
   for (const msg of [
     backupMsg(0, KEY, 'x'), backupMsg(11, KEY, 'x'), backupMsg(1, KEY.slice(1), 'x'), backupMsg(1, '../../../etc', 'x'),
-    frame(JSON.stringify({ backup: 1, data: b64('x') })), frame(JSON.stringify({ backup: '1', profile: KEY, data: b64('x') })),
+    frame(JSON.stringify({ backup: 1, gzip: b64('x') })), frame(JSON.stringify({ backup: '1', profile: KEY, gzip: b64('x') })),
   ]) {
     const r = await host(msg, { env });
     assert.deepEqual(r.reply, { ok: false, error: 'message' });
   }
   assert.deepEqual(fs.readdirSync(data), []);
 
-  // Daten, die kein Base64 sind, oder keine Daten: Die bisherige Datei bleibt unverändert
+  // Daten, die kein Base64 oder kein gzip sind, oder keine Daten: Die bisherige Datei bleibt unverändert
   await host(backupMsg(1, KEY, 'alt'), { env });
   const file = autoFile(data, KEY, 1);
   for (const msg of [frame(JSON.stringify({ backup: 1, profile: KEY, data: '' })), frame(`{"backup":1,"profile":"${KEY}","data":"%%%"}`),
-    // Abgeschnittenes gzip
-    frame(JSON.stringify({ backup: 1, profile: KEY, data: zlib.gzipSync('neu'.repeat(1000)).subarray(0, 20).toString('base64') })), frame(`{"backup":1,"profile":"${KEY}"}`)]) {
+    frame(JSON.stringify({ backup: 1, profile: KEY, gzip: '' })), frame(`{"backup":1,"profile":"${KEY}","gzip":"%%%"}`),
+    // Abgeschnittenes gzip und unkomprimierte Daten im Feld gzip
+    frame(JSON.stringify({ backup: 1, profile: KEY, gzip: b64('neu'.repeat(1000)).slice(0, 28) })),
+    frame(JSON.stringify({ backup: 1, profile: KEY, gzip: Buffer.from('neu').toString('base64') })), frame(`{"backup":1,"profile":"${KEY}"}`)]) {
     const r = await host(msg, { env });
     assert.deepEqual(r.reply, { ok: false, error: 'write', file });
   }

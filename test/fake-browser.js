@@ -510,7 +510,7 @@ class Browser {
       if (msg.key) return { ok: true };
       const file = `${BACKUPS}${msg.profile}/helium-workspaces-auto-${msg.backup}.json`;
       if (this.hostMode === 'fail') return { ok: false, error: 'write', file };
-      this.files.set(file, zlib.gunzipSync(Buffer.from(msg.data, 'base64')).toString('utf8'));
+      this.files.set(file, zlib.gunzipSync(Buffer.from(msg.gzip, 'base64')).toString('utf8'));
       return { ok: true, file };
     };
   }
