@@ -450,6 +450,10 @@ async function openLinkInWs(url, wsId, fromWindowId) {
 // Tab-Suche des Browsers). Die Ablage verliert dadurch ihren Titel und wird sichtbar.
 // Deshalb zeigt das zuletzt benutzte Hauptfenster diesen Workspace mit dem gewählten Tab.
 async function showStashTab(tabId) {
+  // Vor dem ersten Abgleich nach dem Neuladen der Erweiterung fehlen die Ablage-Seiten noch:
+  // resumeSwitch würde einen unterbrochenen Transfer oder Aufbau einer Ablage verwerfen.
+  // Ohne zugeordnetes Hauptfenster gäbe es hier ohnehin nichts zu tun.
+  if ((await chrome.storage.session.get('entriesUntil')).entriesUntil === undefined) return;
   await resumeSwitch();
   const s = await sess();
   const { stash, mains } = await scan();

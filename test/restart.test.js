@@ -794,8 +794,15 @@ test('Link in einen Workspace öffnen, der nur in der Sicherung liegt: seine Abl
   await cycle(env, expected);
 });
 
+// Wie ein Klick auf einen Tab des Hauptfensters (etwa zurück von chrome://extensions) gleich
+// nach dem Neuladen, bevor der erste Abgleich läuft: tabs.onActivated ruft showStashTab auf.
+function clickBeforeReconcile(b, windowId) {
+  const w = b.windows.find((x) => x.id === windowId);
+  b.fire('tabs.onActivated', { tabId: w.tabs.find((t) => t.active).id, windowId });
+}
+
 test('Neuladen während eines Tab-Transfers: Zielablage wird erkannt und kein Tab verdoppelt (#240)', async () => {
-  for (const mode of ['neu', 'leer', 'entladen', 'ohne-quell-ablage']) {
+  for (const [mode, click] of ['neu', 'leer', 'entladen', 'ohne-quell-ablage'].flatMap((m) => [[m, false], [m, true]])) {
     const env = await setup({ workspaces: { A: ['a0', 'a1'], B: ['b0'] } });
     const { b, ids } = env;
     let expected = { A: ['a1'], B: ['b0', 'a0'] };
@@ -823,12 +830,13 @@ test('Neuladen während eines Tab-Transfers: Zielablage wird erkannt und kein Ta
     await env.w.advance(100);
     assert.ok(b.local.data.pendingMove, `${mode}: pendingMove fehlt`);
     const w = b.reloadExtension();
+    if (click) clickBeforeReconcile(b, where(env, 'a1').win.id);
     await w.settle();
     const exp = await ok(w.request({ type: 'export' }));
     assert.deepEqual(
       Object.fromEntries(exp.workspaces.map((x) => [x.name, Array.from(x.tabs, (t) => t.url)])),
       { A: expected.A.map(url), B: expected.B.map(url) },
-      `Export (${mode})`,
+      `Export (${mode}${click ? ', Klick' : ''})`,
     );
     check(env, expected);
     await cycle(env, expected, ['B', 'A']);
@@ -851,7 +859,7 @@ test('Neuladen mitten in mehrteiligem Transfer oder beim Aufbau der Zielablage s
     await cycle(env, expected, ['B', 'A']);
   }
   // 2. Neuladen mitten beim Aufbau der Zielablage aus der Sicherung
-  {
+  for (const click of [false, true]) {
     const { env, main } = await onlyBackedUp();
     const { b, ids } = env;
     b.fail('tabs.create', { hang: true, after: 1, when: (o) => o.windowId !== main });
@@ -859,6 +867,7 @@ test('Neuladen mitten in mehrteiligem Transfer oder beim Aufbau der Zielablage s
     await env.w.settle();
     assert.equal(b.local.data.pendingStash?.ws, ids.B);
     const w = b.reloadExtension();
+    if (click) clickBeforeReconcile(b, main);
     await w.settle();
     check(env, ALL);
     await cycle(env, ALL);
