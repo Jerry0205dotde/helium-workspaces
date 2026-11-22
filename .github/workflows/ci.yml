@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Wöchentlich gegen das aktuelle Chrome Stable (setup-chrome unten), damit eine neue
-  # Chrome-Version, die die Erweiterung bricht, nicht erst beim nächsten PR auffällt
+  # Wöchentlich gegen das aktuelle Chrome Stable (setup-chrome unten) und das aktuelle Helium
+  # (Job helium), damit eine neue Browserversion, die die Erweiterung bricht, nicht erst beim
+  # nächsten PR auffällt
   schedule:
     - cron: '17 5 * * 1'
 
@@ -40,3 +41,34 @@ jobs:
       - run: node --test --experimental-test-coverage test/*.test.js
         env:
           CHROME: ${{ steps.chrome.outputs.chrome-path }}
+
+  # Ziel der Erweiterung ist Helium, das sich im Testaufbau anders verhalten kann als Chrome (#241).
+  # Nur im wöchentlichen Lauf dieselben Browsertests gegen das aktuelle Helium-Release, damit ein
+  # Helium-Update, das etwas bricht, nicht erst beim Benutzen auffällt. Schlägt er fehl, bleibt der
+  # Lauf grün, bis klar ist, dass der Job stabil läuft (#249)
+  helium:
+    if: github.event_name == 'schedule'
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      # Nur für die Systembibliotheken, die Helium ebenso braucht
+      - uses: browser-actions/setup-chrome@v2
+        with:
+          install-dependencies: true
+      # Gestartet über helium-wrapper wie aus dem Startmenü, der setzt den Bibliothekspfad
+      - name: Aktuelles Helium holen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R imputnet/helium-linux --pattern '*-x86_64_linux.tar.xz' -D "$RUNNER_TEMP/helium"
+          tar -xJf "$RUNNER_TEMP"/helium/*.tar.xz -C "$RUNNER_TEMP/helium"
+          bin=$(echo "$RUNNER_TEMP"/helium/helium-*/helium-wrapper)
+          "$bin" --version
+          echo "HELIUM=$bin" >> "$GITHUB_ENV"
+      - run: node --test test/chromium.test.js test/popup.test.js test/transfer.test.js
+        env:
+          CHROME: ${{ env.HELIUM }}
