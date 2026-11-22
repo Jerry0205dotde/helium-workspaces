@@ -35,7 +35,8 @@ jobs:
       # Die Skripte einer Umgebung werden zusammen geprüft (eslint.config.js)
       - run: npx --yes eslint@10.14.0 extension kwin
       # Syntax, Manifest samt erhöhter Version und KWin-Metadaten (test/static.test.js), das Verhalten der
-      # Hintergrundlogik mit nachgebildeten Chrome-APIs und dieselben Abläufe in Chrome
-      - run: node --test test/*.test.js
+      # Hintergrundlogik mit nachgebildeten Chrome-APIs und dieselben Abläufe in Chrome.
+      # Die Abdeckung im Log zeigt Zeilen der Hintergrundlogik, die kein Test ausführt (#246)
+      - run: node --test --experimental-test-coverage test/*.test.js
         env:
           CHROME: ${{ steps.chrome.outputs.chrome-path }}
