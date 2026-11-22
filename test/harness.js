@@ -95,8 +95,10 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
   assert.equal(b.local.data.pendingFeed, undefined, 'zurückgestellte Tabs werden noch nachgelegt');
   assert.equal(b.session.data.pendingStart, undefined, 'der Aufbau nach dem Start ist noch nicht abgeschlossen');
   assert.equal(w.eval('switching'), 0, 'switching wurde nicht zurückgesetzt');
-  // Die Erweiterung lädt nie eine Seite neu (Navigation per tabs.update mit url)
-  assert.deepEqual(b.calls.filter((c) => c.name === 'tabs.update' && c.args[1] && 'url' in c.args[1]), [], 'Tab wurde neu geladen');
+  // Die Erweiterung lädt nie eine Seite neu (Navigation per tabs.update mit url). Nur die
+  // Ablage-Seite darf auf einen anderen Workspace zeigen, sie hält keinen Inhalt (#248).
+  const loads = b.calls.filter((c) => c.name === 'tabs.update' && c.args[1] && 'url' in c.args[1] && !c.args[1].url.startsWith(`${b.origin}stash.html#`));
+  assert.deepEqual(loads, [], 'Tab wurde neu geladen');
   const wsList = b.local.data.workspaces;
   const windowWs = b.session.data.windowWs || {};
   const backup = b.local.data.backup || {};

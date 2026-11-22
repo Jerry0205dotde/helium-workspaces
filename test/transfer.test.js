@@ -181,7 +181,8 @@ test('Ein früherer Stand erscheint unter Importieren und wird nach Nachfrage wi
     assert.match(await p.text('#summary'), /^Stand vom .+: 2 Workspaces, 3 Tabs\.$/);
     assert.equal(await p.eval('document.querySelector("input[value=replace]").checked'), true, 'Ersetzen ist vorgewählt');
     await p.click('#import');
-    assert.equal(await p.text('#import'), '3 Tabs schließen und ersetzen?');
+    // Die unveränderte Ablage von B bleibt offen (#248), nur x1 im Hauptfenster schließt
+    assert.equal(await p.text('#import'), '1 Tab schließen und ersetzen?');
     assert.deepEqual(p.sent.filter((m) => m.type === 'import'), []);
     await p.click('#import');
     assert.deepEqual(p.sent.filter((m) => m.type === 'import').map((m) => [m.mode, m.confirmed]), [['replace', true]]);

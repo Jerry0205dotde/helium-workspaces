@@ -37,7 +37,7 @@ async function collectAll() {
   const pinnedOpen = [...(mains.length ? pinnedOf(mains, groups) : backupPinned), ...pinnedLater].filter((e) => e.url);
   const pinnedFirst = [...(mains.length ? pinnedOf(mains.slice(0, 1), groups) : backupPinned), ...pinnedLater].filter((e) => e.url);
   const pinnedFailed = list.flatMap((x) => x.pinnedFailed).filter((e) => e.url);
-  return { cfg, mains, groups, list, pinned: [...pinnedOpen, ...pinnedFailed], pinnedOpen, pinnedFirst, pinnedFailed };
+  return { cfg, mains, stashes: [...stash.values()], groups, list, pinned: [...pinnedOpen, ...pinnedFailed], pinnedOpen, pinnedFirst, pinnedFailed };
 }
 
 async function exportAll() {
@@ -136,15 +136,16 @@ function pinnedToAdd(list, all, mode) {
   return missingIn(list.filter((e) => missing.has(e.url)), [...all.pinnedFirst, ...failed]);
 }
 
-// Beim Ersetzen übernimmt ein Workspace der Datei ein offenes Hauptfenster, statt dessen
-// Tabs zu schließen und neu anzulegen, wenn alle Tabs darin zu ihm gehören und es mehr
-// als die Hälfte seiner Tabs enthält. Die Tabs behalten so ihren Verlauf, etwa beim
-// Umstieg auf die feste Erweiterungs-ID: Danach sind die alten Ablagen normale Fenster
-// (#156). Neue Tab-Seiten zählen auf keiner Seite mit. Vergeben wird nach den meisten Treffern,
-// jedes Fenster und jeder Workspace höchstens einmal. Ergebnis: Index in der Datei → Fenster.
-function planAdopt(data, mains) {
+// Beim Ersetzen übernimmt ein Workspace der Datei ein offenes Hauptfenster oder eine Ablage,
+// statt deren Tabs zu schließen und neu anzulegen, wenn alle Tabs darin zu ihm gehören und
+// sie mehr als die Hälfte seiner Tabs enthalten. Die Tabs behalten so ihren Verlauf, etwa
+// beim Umstieg auf die feste Erweiterungs-ID: Danach sind die alten Ablagen normale Fenster
+// (#156), oder beim Einspielen eines früheren Stands (#248). Neue Tab-Seiten zählen auf
+// keiner Seite mit. Vergeben wird nach den meisten Treffern, jedes Fenster und jeder
+// Workspace höchstens einmal. Ergebnis: Index in der Datei → Fenster.
+function planAdopt(data, wins) {
   const pairs = [];
-  for (const win of mains) {
+  for (const win of wins) {
     const have = movableTabsOf(win).filter((t) => !isNewTab(t)).map((t) => ({ url: urlOf(t) }));
     if (!have.length) continue;
     data.workspaces.forEach((imp, i) => {
@@ -162,6 +163,12 @@ function planAdopt(data, mains) {
   }
   return adopt;
 }
+
+// Fenster, die übernommen werden können: Hauptfenster und Ablagen
+const adoptable = (all) => [...all.mains, ...all.stashes];
+
+// Ein übernommenes Fenster, das danach den Workspace zeigt: weder Ablage noch minimiert
+const showsAdopted = (win) => win.state !== 'minimized' && !win.tabs.some(isStashTab);
 
 // Tabs, die beim Ersetzen in übernommenen Fenstern offen bleiben (zählt wie collectAll)
 const keptIn = (adopt) => [...adopt.values()].reduce((n, w) => n + movableTabsOf(w).filter(urlOf).length, 0);
@@ -282,6 +289,7 @@ async function arrangeAdopted(entries, win) {
 }
 
 // Macht die übernommenen Fenster zu Fenstern der neuen Workspaces (ids wie data.workspaces).
+// Eine Ablage bleibt Ablage, ihre Ablage-Seite zeigt danach auf den neuen Workspace (#248).
 // Ein minimiertes Fenster wird wieder zur Ablage, etwa eine alte Ablage nach dem Umstieg;
 // ein sichtbares zeigt den Workspace. Die offenen Tabs bekommen Reihenfolge und Gruppen der
 // Datei (arrangeAdopted). Fehlende Tabs werden in later vorgemerkt und danach über feedLater
@@ -292,7 +300,13 @@ async function adoptWindows(data, ids, adopt, stamp) {
     const id = ids[i];
     const imp = data.workspaces[i];
     delete s.prevWs[win.id];
-    if (win.state === 'minimized') {
+    const st = win.tabs.find(isStashTab);
+    if (st) {
+      delete s.windowWs[win.id];
+      await saveSess(s);
+      await chrome.tabs.update(st.id, { url: `${urlOf(st).split('#')[0]}#${id}` });
+      await rememberStashWin(win.id, id, stashTabsOf(win).map((t) => t.id));
+    } else if (win.state === 'minimized') {
       delete s.windowWs[win.id];
       await saveSess(s);
       await moving(() => chrome.tabs.create({ windowId: win.id, url: `${STASH_PAGE}#${id}`, index: 0, pinned: true, active: true }));
@@ -322,7 +336,7 @@ function projectImport(data, all, plan, mode, settings, extOrigin, adopt) {
   };
   let list;
   if (mode === 'replace') {
-    const shown = [...adopt].filter(([, w]) => w.state !== 'minimized').map(([i]) => i);
+    const shown = [...adopt].filter(([, w]) => showsAdopted(w)).map(([i]) => i);
     let target = data.workspaces.findIndex((_, i) => !shown.includes(i));
     if (target < 0) target = 0;
     const adopted = new Set(adopt.values());
@@ -369,7 +383,7 @@ async function previewImport(text) {
   await resumeSwitch();
   const all = await collectAll();
   const plan = planImport(data, all);
-  const adopt = planAdopt(data, all.mains);
+  const adopt = planAdopt(data, adoptable(all));
   const now = await getSettings();
   return {
     exported: data.exported,
@@ -429,7 +443,7 @@ async function importExchange(text, mode, confirmed) {
   await resumeSwitch();
   const all = await collectAll();
   const plan = planImport(data, all, mode);
-  const adopt = mode === 'replace' ? planAdopt(data, all.mains) : null;
+  const adopt = mode === 'replace' ? planAdopt(data, adoptable(all)) : null;
   const limitErr = exchangeLimitError(projectImport(data, all, plan, mode, await getSettings(), extOrigin, adopt));
   if (limitErr) throw new Error(limitErr);
   const stamp = `i${Date.now().toString(36)}`;
@@ -465,7 +479,7 @@ async function importExchange(text, mode, confirmed) {
     // Fenster zeigt, dann die alten löschen. Ein minimiertes Fenster nur mit neuen
     // Tab-Seiten ist eine alte leere Ablage (Chromium ersetzt die Ablage-Seite der alten ID
     // dann durch eine neue Tab-Seite) und wird geschlossen.
-    const shown = [...adopt].filter(([, w]) => w.state !== 'minimized').map(([i]) => ids[i]);
+    const shown = [...adopt].filter(([, w]) => showsAdopted(w)).map(([i]) => ids[i]);
     const target = ids.find((id) => !shown.includes(id)) ?? ids[0];
     const taken = [...adopt.values()];
     for (const w of all.mains) {
