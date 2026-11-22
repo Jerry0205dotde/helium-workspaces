@@ -253,7 +253,7 @@ test('--update bricht ohne eingetragenen Schlüssel vor git pull ab', () => {
 });
 
 test('--update nimmt keinen Schlüssel und keine Browserliste dazu', () => {
-  for (const args of [['--update', TOKEN], ['--update', '--browsers', 'helium'], ['--update', '--uninstall']]) {
+  for (const args of [['--update', TOKEN], ['--update', TOKEN, OTHER], ['--update', ''], ['--update', '--browsers', 'helium'], ['--update', '--uninstall']]) {
     const r = run(args, { token: TOKEN });
     assert.notEqual(r.status, 0, args.join(' '));
     assert.match(r.stderr, /--update nimmt keine weiteren Angaben/);
@@ -647,6 +647,9 @@ test('--remove ändert nichts bei einem fremden oder ungültigen Schlüssel, ohn
     [['--remove', TOKEN], { token: TOKEN, dbus: false }, /D-Bus/],
     [['--remove', TOKEN, '--browsers', 'helium'], { token: TOKEN }, /--remove nimmt nur den Schlüssel/],
     [['--remove', TOKEN, '--uninstall'], { token: TOKEN }, /--remove nimmt nur den Schlüssel/],
+    [['--remove', TOKEN, OTHER], { token: `${TOKEN},${OTHER}` }, /--remove nimmt nur den Schlüssel/],
+    [['--remove', 'nonsense', TOKEN], { token: TOKEN }, /--remove nimmt nur den Schlüssel/],
+    [['--remove', '', TOKEN], { token: TOKEN }, /--remove nimmt nur den Schlüssel/],
     [['--remove', '--update'], { token: TOKEN }, /--update nimmt keine weiteren Angaben/],
   ]) {
     const r = run(args, opts);
@@ -708,6 +711,23 @@ test('Ein ungültiger Schlüssel als Argument ändert nichts, auch nicht token.j
   assert.match(r.stderr, /Ungültiger Schlüssel/);
   assert.deepEqual(r.calls, [READ_TOKEN]);
   assert.equal(r.checked, true, 'extension/token.js schon entfernt');
+});
+
+test('Mehrere Schlüssel als einzelne Argumente werden vor Änderungen mit Hinweis auf Kommas abgelehnt (#237)', () => {
+  for (const args of [[TOKEN, OTHER], ['nonsense', TOKEN], [TOKEN, 'nonsense'], ['', TOKEN], ['--browsers', 'helium', TOKEN, OTHER]]) {
+    const r = run(args, { setup: copy, check: tokenFile });
+    assert.notEqual(r.status, 0, JSON.stringify(args));
+    assert.match(r.stderr, /Zu viele Angaben\..*Komma/, JSON.stringify(args));
+    assert.deepEqual(r.calls, [], JSON.stringify(args));
+    assert.equal(r.checked, true, 'extension/token.js schon entfernt');
+  }
+});
+
+test('Mehrere Schlüssel kommagetrennt in einem Argument werden alle eingetragen (#237)', () => {
+  const r = run([`${TOKEN},${OTHER}`]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(written(r), `${TOKEN},${OTHER}`);
+  assert.equal(r.stdout, `Eingetragene Schlüssel: ${TOKEN},${OTHER}\n${DONE_DE}`);
 });
 
 test('--browsers trägt die Liste nach dem Schlüssel ein, ohne Leerzeichen und kleingeschrieben', () => {
@@ -831,6 +851,9 @@ for (const [env, lang] of [
       uninstallExtra.stderr,
       de ? /^--uninstall nimmt keine weiteren Angaben.*--remove <Schlüssel>/ : /^--uninstall takes no further arguments.*--remove <key>/,
     );
+    const tooMany = run([TOKEN, OTHER], { env });
+    assert.notEqual(tooMany.status, 0);
+    assert.match(tooMany.stderr, de ? /^Zu viele Angaben\..*Komma/ : /^Too many arguments\..*commas/);
   });
 }
 

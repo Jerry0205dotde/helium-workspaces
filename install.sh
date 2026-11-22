@@ -54,8 +54,7 @@ EXT_ID=jchklfejnmfphkbcpnhdejmeoncejjbe
 HOST_NAME=helium_workspaces
 host_manifest() { printf '%s/%s/NativeMessagingHosts/%s.json' "$CONFIG" "${1%%:*}" "$HOST_NAME"; }
 
-TOKEN=""
-SET_TOKEN=""
+TOKENS=()
 BROWSERS=""
 SET_BROWSERS=""
 UNINSTALL=""
@@ -75,9 +74,10 @@ while [ $# -gt 0 ]; do
     # Der Kommentar am Anfang dieser Datei, ohne die Zeile mit #!
     -h|--help) sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0"; exit 0 ;;
     -*) t "Unbekannte Option: $1" "Unknown option: $1" >&2; exit 1 ;;
-    *) TOKEN="$1"; SET_TOKEN=1; shift ;;
+    *) TOKENS+=("$1"); shift ;;
   esac
 done
+TOKEN="${TOKENS[0]:-}"
 
 # Fehlt ein Programm, abbrechen, bevor etwas geändert ist. qdbus6 heißt nicht überall so.
 QDBUS=""
@@ -114,7 +114,7 @@ invalid_key() {
 }
 
 if [ -n "$UPDATE" ]; then
-  [ -z "$TOKEN$SET_BROWSERS$UNINSTALL$REMOVE" ] \
+  [[ ${#TOKENS[@]} -eq 0 && -z "$SET_BROWSERS$UNINSTALL$REMOVE" ]] \
     || { t "--update nimmt keine weiteren Angaben, Schlüssel und Browserliste bleiben wie eingetragen." \
            "--update takes no further arguments, the key and the browser list stay as they are." >&2; exit 1; }
   OLD="$(kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token)"
@@ -132,7 +132,7 @@ if [ -n "$UPDATE" ]; then
 fi
 
 if [ -n "$REMOVE" ]; then
-  [ -z "$SET_BROWSERS$UNINSTALL" ] \
+  [[ ${#TOKENS[@]} -le 1 && -z "$SET_BROWSERS$UNINSTALL" ]] \
     || { t "--remove nimmt nur den Schlüssel, der ausgetragen werden soll." \
            "--remove only takes the key to remove." >&2; exit 1; }
   TOKEN="$(clean_key "$TOKEN")"
@@ -164,7 +164,7 @@ if [ -n "$REMOVE" ]; then
 fi
 
 if [ -n "$UNINSTALL" ]; then
-  [ -z "$SET_TOKEN$SET_BROWSERS" ] \
+  [[ ${#TOKENS[@]} -eq 0 && -z "$SET_BROWSERS" ]] \
     || { t "--uninstall nimmt keine weiteren Angaben. Für einen einzelnen Schlüssel ./install.sh --remove <Schlüssel> ausführen." \
            "--uninstall takes no further arguments. To remove a single key, run ./install.sh --remove <key>." >&2; exit 1; }
   # Erreicht qdbus KWin nicht, bricht das Skript hier ab, bevor etwas entfernt ist.
@@ -191,6 +191,12 @@ if [ -n "$UNINSTALL" ]; then
   for entry in "${BROWSER_DIRS[@]}"; do rm -f "$(host_manifest "$entry")"; done
   t "KWin-Skript entfernt." "KWin script removed."
   exit 0
+fi
+
+if [ ${#TOKENS[@]} -gt 1 ]; then
+  t "Zu viele Angaben. Mehrere Schlüssel mit Komma trennen, z. B. ./install.sh <Schlüssel1>,<Schlüssel2>." \
+    "Too many arguments. Separate multiple keys with commas, e.g. ./install.sh <key1>,<key2>." >&2
+  exit 1
 fi
 
 BROWSERS="$(printf '%s' "$BROWSERS" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
