@@ -489,27 +489,55 @@ test('Nach dem Ersetzen hat das Importfenster wieder den Fokus, seine Meldung bl
   check(envOf(b), { X: ['x1', { url: 'x2', group: 'G', color: 'pink' }, { url: 'x3', group: 'G', color: 'pink' }], Y: ['y1'], pinned: ['p1', 'p9'] });
 });
 
-test('Ersetzen durch den eigenen Export: das Hauptfenster bleibt offen, die übrigen Tabs entstehen genau einmal neu', async () => {
+test('Ersetzen durch den eigenen Export: Hauptfenster und Ablagen bleiben samt Tabs offen (#248)', async () => {
   const env = await source();
   const { b } = env;
   const file = await request(env, { type: 'export' });
   const oldIds = Object.values(env.ids);
-  const shownTabs = b.mains()[0].tabs.map((t) => t.id);
+  const before = tabIds(env);
+  const stashes = Object.fromEntries(['B', 'C'].map((n) => [n, b.windows.find((w) => b.stashOf(w) === env.ids[n]).id]));
 
   const preview = await request(env, { type: 'importPreview', text: JSON.stringify(file) });
-  assert.equal(preview.keep, 4);
+  assert.equal(preview.keep, 10);
   const res = await importFile(env, file, 'replace', true);
-  assert.deepEqual(res, { created: 3, merged: 0, added: 10, skipped: 0, failed: 0, removed: 3, closed: 6, settings: 0, kept: 4, pinned: 0, pinnedSkipped: 2 });
-  // A war zu sehen: Sein Fenster zeigt jetzt das importierte A, mit denselben Tabs
+  assert.deepEqual(res, { created: 3, merged: 0, added: 10, skipped: 0, failed: 0, removed: 3, closed: 0, settings: 0, kept: 10, pinned: 0, pinnedSkipped: 2 });
+  // A war zu sehen: Sein Fenster zeigt jetzt das importierte A. Die Ablagen von B und C
+  // bleiben Ablagen und zeigen auf die neuen Workspaces. Kein Tab entsteht neu.
   assert.equal(shows(envOf(b), env.win), 'A');
-  assert.deepEqual(b.mains()[0].tabs.map((t) => t.id), shownTabs, 'Tabs des Hauptfensters wurden ersetzt');
+  assert.deepEqual(tabIds(env), before, 'Tabs wurden geschlossen oder neu angelegt');
   // Die IDs der Datei sind noch vergeben, deshalb bekommen die neuen Workspaces eigene
   const now = envOf(b);
+  for (const [n, id] of Object.entries(stashes)) assert.equal(b.stashOf(b.windows.find((w) => w.id === id)), now.ids[n], `Ablage von ${n}`);
+  assert.equal(b.windows.length, 3);
   assert.deepEqual(b.local.data.workspaces.map((w) => w.name), ['C', 'A', 'B']);
   assert.deepEqual(b.local.data.workspaces.filter((w) => oldIds.includes(w.id)), []);
+  assert.deepEqual(Object.values(b.local.data.stashWins).map((r) => r.ws).sort(), [now.ids.B, now.ids.C].sort());
   assert.deepEqual(Object.keys(b.local.data.backup).sort(), Object.values(now.ids).sort());
   check(now, ALL, { allowNewTab: false });
   await cycle(now, ['A', 'B', 'C'], ALL);
+});
+
+// Beim Einspielen eines früheren Stands bleibt eine unveränderte Ablage samt Tabs. Eine mit
+// einem seither dazugekommenen Tab wird wie bisher geschlossen, ihr Workspace kommt aus der Datei (#248)
+test('Ersetzen übernimmt nur Ablagen, deren Tabs alle zum Workspace der Datei gehören (#248)', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  const file = await request(env, { type: 'export' });
+  const stashB = b.windows.find((w) => b.stashOf(w) === env.ids.B).id;
+  const stashC = b.windows.find((w) => b.stashOf(w) === env.ids.C).id;
+  await b.chrome.tabs.create({ windowId: stashC, url: url('c9'), active: false });
+  await env.w.settle();
+  const before = tabIds(env);
+
+  const res = await importFile(env, file, 'replace', true);
+  assert.deepEqual([res.kept, res.closed, res.failed], [8, 3, 0]);
+  const now = envOf(b);
+  assert.equal(b.stashOf(b.windows.find((w) => w.id === stashB)), now.ids.B, 'Ablage von B wurde nicht übernommen');
+  assert.equal(b.windows.some((w) => w.id === stashC), false, 'Ablage von C mit fremdem Tab ist noch offen');
+  const after = tabIds(now);
+  for (const n of ['a1', 'a4', 'b0', 'b1', 'b2', 'b3']) assert.equal(after[url(n)], before[url(n)], `${n} wurde neu angelegt`);
+  check(now, ALL, { allowNewTab: false });
+  await cycle(now, ['C', 'B', 'A'], ALL);
 });
 
 // Nach dem Umstieg auf die feste Erweiterungs-ID (#156) startet die Erweiterung mit leerem
@@ -574,7 +602,7 @@ test('Ersetzen: Ein übernommenes Fenster bekommt auch die zurückgestellten feh
   b.worker.send({ type: 'import', text: JSON.stringify(file), mode: 'replace', confirmed: true }).then((r) => (res = r));
   await b.worker.advance(1000);
   res = plain(await ok(res));
-  assert.deepEqual([res.kept, res.added, res.failed], [11, 21, 0]);
+  assert.deepEqual([res.kept, res.added, res.failed], [12, 21, 0]);
   const now = envOf(b);
   const backupA = () => b.local.data.backup[now.ids.A];
   const saved = () => {
@@ -617,7 +645,7 @@ test('Ersetzen stellt die Reihenfolge der Datei in einem übernommenen Fenster h
   const { now, res } = await replaceAfter({ workspaces: { A: ['a1', 'a2', 'a3'], B: ['b1'] } }, async (b, win) => {
     await b.chrome.tabs.move(b.tabsByUrl(url('a3'))[0].id, { index: 0 });
   });
-  assert.deepEqual([res.kept, res.failed], [3, 0]);
+  assert.deepEqual([res.kept, res.failed], [4, 0]);
   assert.deepEqual(tabsOf(now.b, now.win).map((t) => t.url), ['a1', 'a2', 'a3'].map(url));
   check(now, { A: ['a1', 'a2', 'a3'], B: ['b1'], pinned: [] });
 });
@@ -661,7 +689,7 @@ test('Ersetzen: Scheitert das Umsortieren im übernommenen Fenster, entstehen di
   b.fail('tabs.move', { when: (ids) => Array.isArray(ids) });
   const res = await importFile(env, file, 'replace', true);
   const now = envOf(b);
-  assert.deepEqual([res.kept, res.failed], [3, 0]);
+  assert.deepEqual([res.kept, res.failed], [4, 0]);
   assert.deepEqual(tabsOf(b, now.win).map((t) => t.id).sort(), before);
   check(now, { A, B: ['b1'], pinned: [] });
 });
@@ -779,7 +807,7 @@ test('Ersetzen: Ein teilweise übernommenes Fenster bekommt die fehlenden Tabs i
   const kept = tabsOf(b, env.win).map((t) => t.id);
   const res = await importFile(env, file, 'replace', true);
   const now = envOf(b);
-  assert.deepEqual([res.kept, res.failed], [3, 0]);
+  assert.deepEqual([res.kept, res.failed], [4, 0]);
   assert.deepEqual(tabsOf(b, now.win).filter((t) => kept.includes(t.id)).map((t) => t.id), kept);
   // Der gruppierte fehlende Tab tritt seiner Gruppe bei, der übrige kommt hinten dazu
   assert.deepEqual(tabsOf(b, now.win).map((t) => t.url), ['a1', 'a2', 'a3', 'a5', 'a4'].map(url));

@@ -563,6 +563,7 @@ test('Echter Chromium: Umstieg auf die feste Erweiterungs-ID per Export und Erse
 // Ersetzen mit dem eigenen Export, nachdem im gezeigten A umsortiert, eine Gruppe umbenannt,
 // umgefärbt, eingeklappt und ein Tab aus ihr gelöst wurde: Das Fenster wird übernommen und
 // bekommt Reihenfolge und Gruppen der Datei zurück, ohne dass eine Seite neu lädt (#230, #231).
+// Die Ablagen von B und C bleiben Ablagen, ihr Titel nennt den neuen Workspace (#248).
 test('Echter Chromium: Ersetzen stellt Reihenfolge und Gruppen eines übernommenen Fensters her', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 180000 }, async (t) => {
   const { server, hits, base } = await startServer();
   const env = new Env(bin, base);
@@ -587,17 +588,26 @@ test('Echter Chromium: Ersetzen stellt Reihenfolge und Gruppen eines übernommen
     main.id,
     base,
   );
+  const tabIds = (st) => st.windows.flatMap((w) => w.tabs.filter((x) => !x.url.startsWith('chrome-extension:')).map((x) => `${x.id} ${x.url}`)).sort();
+  // Ablagen mit Tabs; die leere Ablage des gezeigten A schließt das Ersetzen wie bisher
+  const stashes = (st) => st.windows.filter((w) => w.tabs[0]?.url?.startsWith(env.stash) && w.tabs.length > 1).map((w) => w.id).sort();
   const changed = (await env.state()).windows.find((w) => w.id === main.id);
   assert.notDeepEqual(changed.tabs.map((x) => `${x.url} ${x.groupId}`), main.tabs.map((x) => `${x.url} ${x.groupId}`), 'Testfehler: nichts geändert');
   const loads = new Map(hits);
+  const before = await env.state();
 
   const res = await b.action('(text) => importExchange(text, "replace", true)', file);
-  assert.deepEqual([res.kept, res.failed], [4, 0]);
+  assert.deepEqual([res.kept, res.closed, res.failed], [9, 0, 0]);
   for (const w of (await env.state()).workspaces) env.ids[w.name] = w.id;
   const r = await env.settled();
   assert.equal(r.shows, 'A');
   assert.equal(r.main.id, main.id);
   assert.deepEqual(r.main.tabs.filter((x) => !x.pinned).map((x) => x.id), ids(), 'Tabs wurden geschlossen oder neu angelegt');
+  assert.deepEqual(tabIds(r.st), tabIds(before), 'Tabs der Ablagen wurden geschlossen oder neu angelegt');
+  assert.equal(stashes(before).length, 2, 'Testfehler: B und C haben keine Ablage');
+  assert.deepEqual(stashes(r.st), stashes(before), 'Ablagen wurden geschlossen oder neu angelegt');
+  assert.deepEqual(new Map(hits), loads, 'eine Seite wurde neu geladen');
+  await env.cycle();
   assert.deepEqual(new Map(hits), loads, 'eine Seite wurde neu geladen');
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
