@@ -162,18 +162,22 @@ test('Sehr großer Workspace mit wiederkehrenden URLs und einer umgeleiteten Sei
 });
 
 test('Ein kurz nach dem Start geschlossener Tab kommt nicht aus der Sicherung zurück (#150)', async () => {
-  // auch, wenn der Tab vorher noch zu einer anderen Seite gewechselt ist, und wenn er
-  // genau dann geschlossen wird, während die Sicherung mit der neuen Seite gespeichert wird
-  for (const how of ['direkt', 'nach Seitenwechsel', 'beim Sichern']) {
+  // auch, wenn der Tab vorher noch zu einer anderen Seite gewechselt ist, wenn er genau
+  // dann geschlossen wird, während die Sicherung mit der neuen Seite gespeichert wird, und
+  // wenn der gerade geweckte Service Worker seine Adresse noch nicht kennt
+  const known = { direkt: 'a4', 'nach Seitenwechsel': 'a4', 'beim Sichern': 'x0', 'nach Neustart des Service Workers': null };
+  for (const how of Object.keys(known)) {
     const env = await setup(SPEC);
     const { b } = env;
     b.restart();
-    const w = b.startWorker('startup');
+    let w = b.startWorker('startup');
     await w.settle();
     check(env, ALL);
+    // Weder Sicherung noch Abbild dieses Workers enthalten den Tab
+    if (how === 'nach Neustart des Service Workers') w = b.startWorker(null);
     // Noch in den ersten 20 s: Tab schließen, danach Seitenwechsel, die den Snapshot hinauszögern
     const a4 = where(env, 'a4').tab.id;
-    if (how !== 'direkt') {
+    if (['nach Seitenwechsel', 'beim Sichern'].includes(how)) {
       await b.chrome.tabs.update(a4, { url: url('x0') });
       await w.advance(100);
     }
@@ -185,6 +189,12 @@ test('Ein kurz nach dem Start geschlossener Tab kommt nicht aus der Sicherung zu
     } else {
       await b.chrome.tabs.remove(a4);
     }
+    // Ein Abgleich, bevor der nächste Snapshot den Tab aus der Sicherung nimmt: Die
+    // Sicherung hat noch einen Tab mehr, als offen sind, er darf trotzdem nicht zurückkommen.
+    const closed = JSON.parse(w.eval('JSON.stringify(closedTabs.map((c) => c.url))'));
+    assert.deepEqual(closed, [known[how] && url(known[how])], `Adresse des geschlossenen Tabs (${how})`);
+    await w.eval('reconcile()');
+    assert.equal(b.tabsByUrl(url(known[how] ?? 'a4')).length, 0, `geschlossener Tab wurde beim Abgleich wieder geöffnet (${how})`);
     const a1 = where(env, 'a1').tab.id;
     for (const name of ['x1', 'x2', 'x3']) {
       await w.advance(200);
