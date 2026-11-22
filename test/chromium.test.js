@@ -974,3 +974,31 @@ test('Echter Chromium: Neuladen während eines Tab-Transfers erhält die Zielabl
   assert.deepEqual(afterSwitch, { mains: 1, b0: 1, a0: 1, a1: 1 });
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
+
+// #245: Die Sicherung geht als Base64 über Native Messaging an native-host.sh, und Chromium
+// nimmt Nachrichten nur bis 64 MiB an. Ein Export von einigen MB kommt vollständig an, und auch
+// einer knapp unter der Importgrenze (50 MiB), den Base64 allein auf über 64 MiB brächte.
+test('Echter Chromium: große automatische Sicherung kommt vollständig über native-host.sh an (#245)', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 300000 }, async (t) => {
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-data-'));
+  t.after(() => fs.rmSync(data, { recursive: true, force: true }));
+  const h = hostEnv(t, EXT, { XDG_DATA_HOME: data });
+  await h.b.launch();
+  await h.token();
+  h.install();
+  // Ein neuer Workspace mit count Tabs, deren Adressen je len Zeichen lang sind. Nur in der
+  // Sicherung, es öffnet sich kein Tab.
+  for (const [count, len, min] of [[3000, 1000, 3e6], [23, 2 * 1024 * 1024 - 40, 48 * 1024 * 1024]]) {
+    await h.b.sw(`const [count, len] = args;
+      const text = JSON.stringify({ format: 'helium-workspaces', version: 1, workspaces: [{ name: 'Groß ' + count, color: '#123456', tabs: Array.from({ length: count }, (_, i) =>
+        ({ url: 'https://example.com/' + i + '/' + 'x'.repeat(len), title: 'Tab ' + i })) }] });
+      await userAction(() => importExchange(text, 'merge'));`, count, len);
+    const state = await h.b.sw('await chrome.storage.local.set({ autoBackupAt: 0 }); const r = await userAction(() => setAutoBackup(1)); await r?.done; return autoBackupState();');
+    assert.equal(state.error, null, `${count} Tabs`);
+    const file = fs.readFileSync(state.last.file);
+    assert.ok(file.length > min, `Datei nur ${file.length} Bytes`);
+    const tabs = JSON.parse(file).workspaces.find((w) => w.name === `Groß ${count}`).tabs;
+    assert.equal(tabs.length, count);
+    assert.equal(tabs.at(-1).url, `https://example.com/${count - 1}/${'x'.repeat(len)}`);
+  }
+  assert.deepEqual(h.b.errors, [], 'unbehandelte Fehler im Service Worker');
+});

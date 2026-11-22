@@ -85,6 +85,7 @@ test('manifest.json nennt eine Mindestversion, die alle benutzten Schnittstellen
     'Object.hasOwn': 93,
     'chrome.tabGroups': 89,
     'Intl.Segmenter': 87,
+    CompressionStream: 80,
   };
   const code = files(EXT, '.js')
     .map((f) => fs.readFileSync(f, 'utf8'))

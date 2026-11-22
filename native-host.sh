@@ -3,9 +3,11 @@
 # - Schlüssel: Die Erweiterung schickt bei jedem Start ihren Schlüssel als
 #   {"key":"<24 Hex-Ziffern>"}. Fehlt er in kwinrc, trägt ihn dieser Host mit install.sh ein,
 #   das lädt auch das KWin-Skript neu. Steht er schon dort, ändert sich nichts.
-# - Automatische Sicherung: {"backup":<1–10>,"profile":"<Schlüssel>","data":"<Base64>"}
+# - Automatische Sicherung: {"backup":<1–10>,"profile":"<Schlüssel>","gzip":"<Base64>"}
 #   schreibt den Export nach ${XDG_DATA_HOME:-~/.local/share}/helium-workspaces/backups/
 #   <Schlüssel>/helium-workspaces-auto-<n>.json, außerhalb von Downloads und Browserprofil.
+#   Der Export ist gzip-komprimiert (#245). Ältere Fassungen der Erweiterung, die nach einem
+#   Update noch nicht neu geladen sind, schicken ihn unkomprimiert als "data":"<Base64>".
 #   Je Profil ein Ordner, darin höchstens zehn Dateien, die die Erweiterung reihum
 #   überschreibt. Erst in eine neue Datei daneben, dann umbenannt, so entsteht nie eine
 #   halbe Datei. Die Antwort nennt den Pfad. Die Sicherungen bleiben auch nach
@@ -40,6 +42,15 @@ head -c "$LEN" > "$MSG"
 # den Daten beginnen. Chromium schreibt die Felder in eigener Reihenfolge, deshalb einzeln suchen.
 field() { LC_ALL=C grep -m1 -oE "\"$1\":$2" "$MSG"; }
 
+# Der Export aus der Nachricht, auf stdout
+export_data() {
+  if LC_ALL=C grep -q '"gzip":' "$MSG"; then
+    field gzip '"[A-Za-z0-9+/=]*"' | cut -d'"' -f4 | base64 -d | gzip -dc
+  else
+    field data '"[A-Za-z0-9+/=]*"' | cut -d'"' -f4 | base64 -d
+  fi
+}
+
 backup() {
   local slot profile base dir file
   slot="$(field backup '[0-9]+')"; slot="${slot#*:}"
@@ -52,7 +63,7 @@ backup() {
   # Die Sicherungen enthalten alle Adressen im Klartext, nur für diesen Benutzer lesbar
   umask 077
   if mkdir -p "$dir" 2>/dev/null && OUT="$(mktemp "$dir/.helium-workspaces-auto-$slot.XXXXXX")" \
-    && field data '"[A-Za-z0-9+/=]*"' | cut -d'"' -f4 | base64 -d > "$OUT" 2>/dev/null \
+    && export_data > "$OUT" 2>/dev/null \
     && [ -s "$OUT" ] && mv -f "$OUT" "$file"; then
     reply "{\"ok\":true,\"file\":$(json "$file")}"
   else

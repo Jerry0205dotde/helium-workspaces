@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const zlib = require('node:zlib');
 
 const HOST = path.join(__dirname, '..', 'native-host.sh');
 const KEY = '0123456789abcdef01234567';
@@ -88,7 +89,8 @@ test('Eine Nachricht ohne gültigen Schlüssel ändert nichts', async () => {
 // ---------------------------------------------------------------- Automatische Sicherung
 
 const OTHER_KEY = 'aaaaaaaaaaaaaaaaaaaaaaaa';
-const b64 = (text) => Buffer.from(text).toString('base64');
+// Wie die Erweiterung: gzip-komprimiert in Base64 (#245)
+const b64 = (text) => zlib.gzipSync(text).toString('base64');
 
 // Ein Datenordner wie ~/.local/share, nach dem Test wieder weg
 function dataDir(t, name = 'data') {
@@ -99,15 +101,15 @@ function dataDir(t, name = 'data') {
 }
 const autoFile = (data, profile, n) => path.join(data, 'helium-workspaces', 'backups', profile, `helium-workspaces-auto-${n}.json`);
 // Wie Chromium die Nachricht schreibt, auch in anderer Reihenfolge der Felder
-const backupMsg = (slot, profile, text, order = ['backup', 'profile', 'data']) => {
-  const m = { backup: slot, profile, data: b64(text) };
+const backupMsg = (slot, profile, text, order = ['backup', 'profile', 'gzip']) => {
+  const m = { backup: slot, profile, gzip: b64(text) };
   return frame(JSON.stringify(Object.fromEntries(order.map((k) => [k, m[k]]))));
 };
 
 test('Sicherung: landet im Ordner des Profils unter XDG_DATA_HOME, nur für den Benutzer lesbar', async (t) => {
   const data = dataDir(t);
   const text = '{\n  "workspaces": [{ "name": "Ä \\"x\\"" }]\n}\n';
-  for (const order of [['backup', 'profile', 'data'], ['backup', 'data', 'profile'], ['data', 'profile', 'backup']]) {
+  for (const order of [['backup', 'profile', 'gzip'], ['backup', 'gzip', 'profile'], ['gzip', 'profile', 'backup']]) {
     const r = await host(backupMsg(3, KEY, text, order), { env: { XDG_DATA_HOME: data } });
     const file = autoFile(data, KEY, 3);
     assert.deepEqual(r.reply, { ok: true, file }, order.join());
@@ -144,6 +146,15 @@ test('Eine große Sicherung kommt vollständig an', async (t) => {
   assert.equal(fs.readFileSync(autoFile(data, KEY, 10), 'utf8'), text);
 });
 
+// Eine Erweiterung, die nach dem Update noch nicht neu geladen ist, schickt unkomprimiert
+test('Unkomprimierte Sicherung älterer Fassungen kommt unverändert an', async (t) => {
+  const data = dataDir(t);
+  const text = '{\n  "workspaces": [{ "name": "Ä" }]\n}\n';
+  const r = await host(frame(JSON.stringify({ backup: 5, profile: KEY, data: Buffer.from(text).toString('base64') })), { env: { XDG_DATA_HOME: data } });
+  assert.deepEqual(r.reply, { ok: true, file: autoFile(data, KEY, 5) });
+  assert.equal(fs.readFileSync(autoFile(data, KEY, 5), 'utf8'), text);
+});
+
 test('Umlaute und Anführungszeichen im Pfad: Die Antwort bleibt gültig, die Länge zählt Bytes', async (t) => {
   const data = dataDir(t, 'Datén "ä" \\ x');
   const r = await host(backupMsg(2, KEY, '{}\n'), { env: { XDG_DATA_HOME: data } });
@@ -155,17 +166,21 @@ test('Ungültige Sicherung: nichts wird geschrieben, eine alte Datei bleibt', as
   const env = { XDG_DATA_HOME: data };
   for (const msg of [
     backupMsg(0, KEY, 'x'), backupMsg(11, KEY, 'x'), backupMsg(1, KEY.slice(1), 'x'), backupMsg(1, '../../../etc', 'x'),
-    frame(JSON.stringify({ backup: 1, data: b64('x') })), frame(JSON.stringify({ backup: '1', profile: KEY, data: b64('x') })),
+    frame(JSON.stringify({ backup: 1, gzip: b64('x') })), frame(JSON.stringify({ backup: '1', profile: KEY, gzip: b64('x') })),
   ]) {
     const r = await host(msg, { env });
     assert.deepEqual(r.reply, { ok: false, error: 'message' });
   }
   assert.deepEqual(fs.readdirSync(data), []);
 
-  // Daten, die kein Base64 sind, oder keine Daten: Die bisherige Datei bleibt unverändert
+  // Daten, die kein Base64 oder kein gzip sind, oder keine Daten: Die bisherige Datei bleibt unverändert
   await host(backupMsg(1, KEY, 'alt'), { env });
   const file = autoFile(data, KEY, 1);
-  for (const msg of [frame(JSON.stringify({ backup: 1, profile: KEY, data: '' })), frame(`{"backup":1,"profile":"${KEY}","data":"%%%"}`), frame(`{"backup":1,"profile":"${KEY}"}`)]) {
+  for (const msg of [frame(JSON.stringify({ backup: 1, profile: KEY, data: '' })), frame(`{"backup":1,"profile":"${KEY}","data":"%%%"}`),
+    frame(JSON.stringify({ backup: 1, profile: KEY, gzip: '' })), frame(`{"backup":1,"profile":"${KEY}","gzip":"%%%"}`),
+    // Abgeschnittenes gzip und unkomprimierte Daten im Feld gzip
+    frame(JSON.stringify({ backup: 1, profile: KEY, gzip: b64('neu'.repeat(1000)).slice(0, 28) })),
+    frame(JSON.stringify({ backup: 1, profile: KEY, gzip: Buffer.from('neu').toString('base64') })), frame(`{"backup":1,"profile":"${KEY}"}`)]) {
     const r = await host(msg, { env });
     assert.deepEqual(r.reply, { ok: false, error: 'write', file });
   }
