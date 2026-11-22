@@ -26,7 +26,8 @@ Ein sichtbares Ablage-Fenster hat einen Titel wie `HWS-Ablage 3f9c… · Uni` un
 
 - **`Es fehlen Programme, die install.sh braucht`**: Die darunter genannten Programme aus den [Voraussetzungen](../README.de.md#voraussetzungen) installieren. `install.sh` hat noch nichts geändert.
 - **`Ungültiger Schlüssel`**: Es wurde ein unvollständiger Schlüssel eingegeben. <kbd>Enter</kbd> ohne Eingabe überlässt das Eintragen der Erweiterung. Im Popup unter **Schlüssel für install.sh** auf **Kopieren** klicken und den kopierten Befehl ausführen. Der Schlüssel besteht aus 24 Zeichen `0`–`9` und `a`–`f`.
-- **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** oder **`KWin-Skript wurde nicht geladen`**: `install.sh` erreicht KWin nicht, etwa über SSH oder in einer Textkonsole. Das Skript ist dann schon installiert, aber nicht geladen. In einem Terminal in der Plasma-Sitzung erneut starten.
+- **`Could not connect to D-Bus server`**, **`Service 'org.kde.KWin' does not exist.`** oder **`Cannot find 'org.kde.kwin.Scripting.isScriptLoaded' in object /Scripting at org.kde.KWin`**: `install.sh` erreicht KWin nicht, etwa über SSH, in einer Textkonsole oder außerhalb von Plasma. `install.sh` hat noch nichts geändert. In einem Terminal in der Plasma-Sitzung erneut starten.
+- **`KWin-Skript wurde nicht geladen`**: KWin war erreichbar, und das Paket samt `kwinrc` ist schon aktualisiert, aber KWin hat das Skript danach nicht geladen. `./install.sh` in einem Terminal in der Plasma-Sitzung erneut ausführen (mit <kbd>Enter</kbd> bleibt der Schlüssel) und prüfen, ob das Skript in den Systemeinstellungen unter *Fensterverwaltung → KWin-Skripte* geladen werden kann. Nach `--update` ist das Repository schon auf dem neuen Stand; sobald `./install.sh` durchläuft, die Erweiterung in `chrome://extensions` neu laden.
 
 ## Tabs fehlen nach einem Neustart
 

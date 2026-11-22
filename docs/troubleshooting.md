@@ -26,7 +26,8 @@ A visible stash window has a title like `HWS-Ablage 3f9c… · Uni`, and its fir
 
 - **`Programs that install.sh needs are missing`**: install the programs listed below it from the [requirements](../README.md#requirements). `install.sh` has not changed anything yet.
 - **`Invalid key`**: an incomplete key was entered. <kbd>Enter</kbd> without input leaves writing the key to the extension. In the popup, click **Copy** under **Key for install.sh** and run the copied command. The key consists of 24 characters `0`–`9` and `a`–`f`.
-- **`Could not connect to D-Bus server`**, **`Cannot find 'org.kde.kwin.Scripting.unloadScript' in object /Scripting at org.kde.KWin`** or **`KWin script was not loaded`**: `install.sh` cannot reach KWin, for example over SSH or in a text console. The script is then already installed but not loaded. Run it again in a terminal inside the Plasma session.
+- **`Could not connect to D-Bus server`**, **`Service 'org.kde.KWin' does not exist.`** or **`Cannot find 'org.kde.kwin.Scripting.isScriptLoaded' in object /Scripting at org.kde.KWin`**: `install.sh` cannot reach KWin, for example over SSH, in a text console or outside Plasma. `install.sh` has not changed anything yet. Run it again in a terminal inside the Plasma session.
+- **`KWin script was not loaded`**: KWin was reachable, and the package and `kwinrc` are already updated, but KWin did not load the script afterwards. Run `./install.sh` again in a terminal inside the Plasma session (<kbd>Enter</kbd> keeps the key) and check whether the script can be loaded under *Window Management → KWin Scripts* in System Settings. After `--update`, the repository is already on the new version; once `./install.sh` succeeds, reload the extension in `chrome://extensions`.
 
 ## Tabs are missing after a restart
 
