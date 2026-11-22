@@ -1002,3 +1002,22 @@ test('Echter Chromium: große automatische Sicherung kommt vollständig über na
   }
   assert.deepEqual(h.b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
+
+// Frisch installiert, nie neu geladen, beendet und neu gestartet (#241). Der große Test lädt die
+// Erweiterung vor seinen Neustarts schon neu, hier bleibt es bei der Erstinstallation.
+test('Echter Chromium: Nach der Erstinstallation übersteht die Erweiterung Beenden und Neustart ohne Neuladen (#241)', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 120000 }, async (t) => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-first-'));
+  const b = new Chromium(bin, profile, EXT);
+  t.after(async () => {
+    await b.kill();
+    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  });
+  await b.launch();
+  const ws = await b.action('(n) => createWs(n)', 'Neu');
+  await b.quit();
+
+  await b.launch({ restore: 'newtab' });
+  const { workspaces } = await b.sw("return chrome.storage.local.get('workspaces');");
+  assert.ok(workspaces.some((w) => w.id === ws.id && w.name === 'Neu'), 'Workspace aus dem ersten Start fehlt');
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});
