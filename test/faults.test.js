@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { setup, check, ok, url, where, shows, fillSession } = require('./harness');
+const { setup, check, ok, url, where, shows, fillSession, NEWTAB } = require('./harness');
 
 const SPEC = {
   pinned: ['p1'],
@@ -366,6 +366,48 @@ test('Service Worker endet beim erneuten Versuch nach einem wieder gescheiterten
   await ok(w.request({ type: 'retry', windowId: main, wsId: env.ids.B }));
   assert.equal(b.local.data.backup[env.ids.B].failed?.length ?? 0, 0);
   check(env, ALL);
+});
+
+// Neun gescheiterte Tabs erneut versuchen, während keiner fertig lädt: sechs entstehen, drei
+// werden zurückgestellt. stop lässt das Speichern scheitern oder beendet den Worker an der
+// Stelle, an der vor #242 die zurückgestellten nur im Arbeitsspeicher standen.
+async function retryDeferred(stop) {
+  const nine = Array.from({ length: 9 }, (_, i) => `n${i + 1}`);
+  const spec = { pinned: ['p1'], workspaces: { A: ['a1'], N: nine } };
+  const env = await setup(spec);
+  const { b } = env;
+  b.restart({ restore: 'none', keepPinned: true });
+  b.startWorker('startup');
+  await env.w.settle();
+  const main = b.mains()[0].id;
+  b.fail('tabs.create', { when: (o) => nine.map(url).includes(o.url), times: 9 });
+  await ok(env.w.request({ type: 'switch', windowId: main, wsId: env.ids.N }));
+  assert.equal(b.local.data.backup[env.ids.N].failed.length, 9);
+  b.holdLoads = true;
+  const f = stop(env);
+  env.w.send({ type: 'retry', windowId: main, wsId: env.ids.N });
+  await env.w.advance(100);
+  assert.equal(f.hits, 1, 'Speichern bzw. Ende des Workers nicht erreicht');
+  const made = b.mains()[0].tabs.filter((t) => nine.map(url).includes(t.url)).map((t) => t.url);
+  assert.deepEqual(made, nine.slice(0, 6).map(url), 'nicht sechs Tabs angelegt');
+  const w = b.startWorker(null);
+  await w.settle();
+  const file = await ok(w.request({ type: 'export' }));
+  const exported = file.workspaces.find((x) => x.name === 'N').tabs.map((t) => t.url).filter((u) => u !== NEWTAB);
+  assert.deepEqual([...exported], nine.map(url), 'Export unvollständig');
+  b.releaseLoads();
+  await w.settle();
+  check(env, { ...spec.workspaces, pinned: spec.pinned });
+}
+
+test('Speichern scheitert beim erneuten Versuch mit zurückgestellten Tabs: keiner geht verloren (#242)', async () => {
+  await retryDeferred(({ b, ids }) =>
+    b.fail('storage.local.set', { when: (o) => o.backup?.[ids.N]?.later }),
+  );
+});
+
+test('Service Worker endet beim erneuten Versuch mit zurückgestellten Tabs: keiner geht verloren (#242)', async () => {
+  await retryDeferred(({ b }) => b.during('storage.session.remove', () => b.worker.kill(), { when: (k) => k === 'pendingRetry' }));
 });
 
 test('Scheiternder Speicherzugriff beim Sichern hinterlässt keine halbe Sicherung', async () => {
