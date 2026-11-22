@@ -185,7 +185,18 @@ async function replaceTabId(from, to) {
       startNew: Object.fromEntries(Object.entries(startNew).map(([id, at]) => [swap(+id), at])),
     });
   }
-  const { stashMuted, pendingFeed: f } = await chrome.storage.local.get(['stashMuted', 'pendingFeed']);
+  const { stashMuted, pendingFeed: f, stashWins, pendingMove } = await chrome.storage.local.get(['stashMuted', 'pendingFeed', 'stashWins', 'pendingMove']);
   if (stashMuted?.includes(from)) await chrome.storage.local.set({ stashMuted: stashMuted.map(swap) });
   if (f?.known.includes(from)) await chrome.storage.local.set({ pendingFeed: { ...f, known: f.known.map(swap) } });
+  if (stashWins) {
+    let hit = false;
+    for (const rec of Object.values(stashWins)) {
+      if (rec.tabs?.includes(from)) {
+        rec.tabs = rec.tabs.map(swap);
+        hit = true;
+      }
+    }
+    if (hit) await chrome.storage.local.set({ stashWins });
+  }
+  if (pendingMove?.tabs?.includes(from)) await setPendingMove({ ...pendingMove, tabs: pendingMove.tabs.map(swap) });
 }

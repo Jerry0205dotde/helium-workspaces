@@ -90,7 +90,8 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
   const { b, w } = env;
   assert.deepEqual(b.errors.map((e) => `${e.name}: ${e.error?.stack || e.error}`), [], 'Fehler in Ereignis-Listenern');
   assert.equal(b.session.data.pendingSwitch, undefined, 'ein Wechsel ist noch nicht abgeschlossen');
-  assert.equal(b.session.data.pendingStash, undefined, 'eine Ablage ist noch nicht vollständig aufgebaut');
+  assert.equal(b.local.data.pendingStash, undefined, 'eine Ablage ist noch nicht vollständig aufgebaut');
+  assert.equal(b.local.data.pendingMove, undefined, 'ein Tab-Transfer ist noch nicht abgeschlossen');
   assert.equal(b.local.data.pendingFeed, undefined, 'zurückgestellte Tabs werden noch nachgelegt');
   assert.equal(b.session.data.pendingStart, undefined, 'der Aufbau nach dem Start ist noch nicht abgeschlossen');
   assert.equal(w.eval('switching'), 0, 'switching wurde nicht zurückgesetzt');

@@ -902,3 +902,75 @@ test('Echter Chromium: Unterbrochenes Zusammenführen übersteht Neuladen der Er
   assert.equal(after.bWs.failed, undefined);
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
+
+test('Echter Chromium: Neuladen während eines Tab-Transfers erhält die Zielablage ohne Tab-Kopien (#240)', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 120000 }, async (t) => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-move-reload-'));
+  const b = new Chromium(bin, profile, EXT);
+  t.after(async () => {
+    await b.kill();
+    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  });
+  await b.launch();
+  await waitFor(async () => {
+    const s = await b.sw('return (await chrome.storage.session.get("windowWs")).windowWs;');
+    assert.ok(s && Object.keys(s).length, 'noch kein Hauptfenster zugeordnet');
+  });
+  // A ist offen mit a0 und a1, B liegt mit b0 in der Sicherung (entsteht als neue Ablage beim Transfer)
+  await b.sw(`
+    const cfg = await getConfig();
+    const wsA = cfg.workspaces[0].id;
+    await userAction(() => updateWs(wsA, { name: 'A' }));
+    const win = (await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] }))[0];
+    const oldIds = win.tabs.map((t) => t.id);
+    await chrome.tabs.create({ windowId: win.id, url: 'about:blank#move-a0', active: true });
+    await chrome.tabs.create({ windowId: win.id, url: 'about:blank#move-a1', active: false });
+    for (const id of oldIds) await chrome.tabs.remove(id).catch(() => {});
+    const exp = await userAction(exportAll);
+    exp.workspaces.push({ name: 'B', color: '#ef4444', emoji: '', tabs: [{ url: 'about:blank#move-b0', title: 'b0' }] });
+    await userAction(() => importExchange(JSON.stringify(exp), 'merge', false));
+  `);
+  // Abbruchpunkt unmittelbar nach tabs.move, vor tabs.update({ active: true }) auf der Zielablage
+  await b.sw(`
+    const target = (await getConfig()).workspaces.find((w) => w.name === 'B');
+    const tab = (await chrome.tabs.query({})).find((t) => t.url === 'about:blank#move-a0');
+    const update = chrome.tabs.update.bind(chrome.tabs);
+    let hitResolve;
+    const hit = new Promise((r) => (hitResolve = r));
+    let seenActive = 0;
+    chrome.tabs.update = (id, patch) => {
+      if (patch?.active && ++seenActive === 2) {
+        hitResolve();
+        return new Promise(() => {});
+      }
+      return update(id, patch);
+    };
+    void userAction(() => moveTabToWs(tab.id, target.id));
+    await hit;
+  `);
+  b.sw('chrome.runtime.reload();').catch(() => {});
+  await b.attachWorker();
+  const res = await waitFor(async () => {
+    const r = await b.sw(`
+      const pending = (await chrome.storage.local.get('pendingMove')).pendingMove;
+      const exp = await userAction(exportAll);
+      return { pending: !!pending, exp: Object.fromEntries(exp.workspaces.map((w) => [w.name, w.tabs.map((t) => t.url)])) };
+    `);
+    assert.equal(r.pending, false, 'pendingMove noch gesetzt');
+    return r;
+  });
+  assert.deepEqual(res.exp, { A: ['about:blank#move-a1'], B: ['about:blank#move-b0', 'about:blank#move-a0'] });
+  const afterSwitch = await b.sw(`
+    const target = (await getConfig()).workspaces.find((w) => w.name === 'B');
+    const mains = (await scan()).mains;
+    await userAction(() => switchTo(mains[0].id, target.id));
+    const tabs = await chrome.tabs.query({});
+    return {
+      mains: mains.length,
+      b0: tabs.filter((t) => t.url === 'about:blank#move-b0').length,
+      a0: tabs.filter((t) => t.url === 'about:blank#move-a0').length,
+      a1: tabs.filter((t) => t.url === 'about:blank#move-a1').length,
+    };
+  `);
+  assert.deepEqual(afterSwitch, { mains: 1, b0: 1, a0: 1, a1: 1 });
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});

@@ -185,7 +185,7 @@ let feedTimer = null;
 async function feedLater() {
   clearTimeout(feedTimer);
   const failed = new Map();
-  if ((await getPending()) || (await getPendingStash())) return { failed, pinnedFailed: 0 };
+  if ((await getPending()) || (await getPendingStash()) || (await getPendingMove())) return { failed, pinnedFailed: 0 };
   if ((await chrome.storage.session.get('pendingStart')).pendingStart) return { failed, pinnedFailed: 0 }; // restoreStart setzt fort
   const addFailed = (ws, n) => n && failed.set(ws, (failed.get(ws) || 0) + n);
   let pinnedFailed = 0;

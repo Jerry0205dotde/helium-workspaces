@@ -1,26 +1,33 @@
 // Hintergrundlogik: Workspace wechseln, Tab in einen anderen Workspace verschieben
 
-// Eine Ablage, die gerade aus der Sicherung entsteht, steht in storage.session
-// ('pendingStash': ihr Workspace ws, gescheiterte Einträge failed wie bei noteFailed). Bis
-// sie vollständig ist, sichert snapshot() nichts, sonst ersetzten ihre ersten Tabs die
-// Sicherung. Endet der Service Worker vorher oder scheitert der Aufbau, ergänzt
-// resumeStash() den Rest.
+// Eine Ablage, die gerade aus der Sicherung entsteht, steht in storage.local
+// ('pendingStash': ihr Workspace ws, Fenster windowId, gescheiterte Einträge failed wie bei
+// noteFailed), damit der Vermerk auch ein Neuladen der Erweiterung übersteht (onStartup
+// verwirft ihn). Bis sie vollständig ist, sichert snapshot() nichts, sonst ersetzten ihre
+// ersten Tabs die Sicherung. Endet der Service Worker vorher, lädt die Erweiterung neu oder
+// scheitert der Aufbau, ergänzt resumeStash() den Rest.
 async function ensureStash(wsId, restoreBackup) {
   const { stash } = await scan();
   const w = stash.get(wsId);
-  if (w) return { windowId: w.id, tabId: w.tabs.find(isStashTab).id };
+  if (w) {
+    await rememberStashWin(w.id, wsId, stashTabsOf(w).map((t) => t.id));
+    return { windowId: w.id, tabId: w.tabs.find(isStashTab).id };
+  }
   const b = restoreBackup && (await getBackup()).backup[wsId];
-  if (b) await chrome.storage.session.set({ pendingStash: { ws: wsId } });
+  if (b) await chrome.storage.local.set({ pendingStash: { ws: wsId } });
   try {
     const win = await chrome.windows.create({ url: `${STASH_PAGE}#${wsId}`, focused: false, state: 'minimized' });
     const tabId = win.tabs[0].id;
+    if (b) await chrome.storage.local.set({ pendingStash: { ws: wsId, windowId: win.id } });
+    await rememberStashWin(win.id, wsId, []);
     await chrome.tabs.update(tabId, { pinned: true });
     if (restoreBackup) {
       if (b) {
         const r = await recreate(savedOf(b), win.id, false, false, [], [], noteStashFailed);
         await keepFailed(wsId, r.failed);
         await keepLater(wsId, r.later, 'saved');
-        await chrome.storage.session.remove('pendingStash');
+        await rememberStashWin(win.id, wsId, r.ids);
+        await chrome.storage.local.remove('pendingStash');
       }
       await chrome.tabs.update(tabId, { active: true });
     }
@@ -32,12 +39,12 @@ async function ensureStash(wsId, restoreBackup) {
 }
 
 async function getPendingStash() {
-  return (await chrome.storage.session.get('pendingStash')).pendingStash || null;
+  return (await chrome.storage.local.get('pendingStash')).pendingStash || null;
 }
 
 async function noteStashFailed(i, e) {
   const p = await getPendingStash();
-  if (p) await chrome.storage.session.set({ pendingStash: { ...p, failed: [...(p.failed || []), { i, url: e.url }] } });
+  if (p) await chrome.storage.local.set({ pendingStash: { ...p, failed: [...(p.failed || []), { i, url: e.url }] } });
 }
 
 // Ergänzt eine unvollständig aus der Sicherung angelegte Ablage (siehe ensureStash) um die
@@ -55,10 +62,33 @@ async function resumeStash() {
       const r = await recreate(list, w.id, false, false, stashTabsOf(w), gone, noteStashFailed);
       await keepFailed(p.ws, r.failed);
       await keepLater(p.ws, r.later, 'saved');
+      await rememberStashWin(w.id, p.ws, r.ids);
       await chrome.tabs.update(w.tabs.find(isStashTab).id, { active: true });
     });
   }
-  await chrome.storage.session.remove('pendingStash');
+  await chrome.storage.local.remove('pendingStash');
+  return true;
+}
+
+// Ein begonnener Tab-Transfer steht in storage.local ('pendingMove'), damit er auch ein
+// Neuladen der Erweiterung übersteht (onStartup verwirft ihn). Solange er dort steht,
+// sichert snapshot() nichts; finishMove() schließt ihn anhand der vorhandenen Tabs ab.
+async function getPendingMove() {
+  return (await chrome.storage.local.get('pendingMove')).pendingMove || null;
+}
+
+async function setPendingMove(p) {
+  if (p) await chrome.storage.local.set({ pendingMove: p });
+  else await chrome.storage.local.remove('pendingMove');
+}
+
+async function resumeMove() {
+  const p = await getPendingMove();
+  if (!p) return false;
+  console.info('[workspaces] setze unterbrochenes Verschieben fort:', p.to);
+  const r = await finishMove();
+  console.info('[workspaces] Ergebnis:', r);
+  if (r === 'forward') await snapshot().catch((e) => console.warn('[workspaces] Sicherung nach Verschieben', e));
   return true;
 }
 
@@ -83,12 +113,14 @@ async function noteFailed(i, e) {
   if (p) await setPending({ ...p, failed: [...(p.failed || []), { i, url: e.url }] });
 }
 
-// Setzt einen unterbrochenen Aufbau nach dem Start (resumeStart), Wechsel, Aufbau einer
-// Ablage, ein unterbrochenes Nachlegen (resumeFeed) oder einen unterbrochenen erneuten
-// Versuch (resumeRetry) fort, bevor etwas anderes die Zuordnung liest.
+// Setzt einen unterbrochenen Aufbau nach dem Start (resumeStart), Aufbau einer Ablage,
+// Tab-Transfer, Wechsel, ein unterbrochenes Nachlegen (resumeFeed) oder einen unterbrochenen
+// erneuten Versuch (resumeRetry) fort, bevor etwas anderes die Zuordnung liest.
 async function resumeSwitch() {
   const started = await resumeStart();
-  const resumed = (await resumeStash()) || started;
+  const stashed = await resumeStash();
+  const moved = await resumeMove();
+  const resumed = stashed || moved || started;
   const p = await getPending();
   if (!p) {
     const fed = !!(await resumeFeed());
@@ -288,38 +320,109 @@ async function moveTabToWs(tabId, wsId, group = false) {
     t.id === tabId || (group && tab.groupId >= 0 ? t.groupId === tab.groupId : tab.highlighted && t.highlighted);
   const ids = new Set(main.tabs.filter(picked).map((t) => t.id));
 
-  await moving(async () => {
-    // Fenster darf nicht leer werden
-    const left = main.tabs.filter((t) => !ids.has(t.id));
-    const movesUnpinned = main.tabs.some((t) => ids.has(t.id) && !t.pinned);
-    if (!left.length || (movesUnpinned && !left.some((t) => !t.pinned))) {
-      await chrome.tabs.create({ windowId: tab.windowId, active: true });
-    }
-    // Von rechts nach links lösen: Ein gelöster Tab rückt hinter die angehefteten, so
-    // behalten mehrere ihre Reihenfolge
-    for (const t of [...main.tabs].reverse()) if (ids.has(t.id) && t.pinned) await chrome.tabs.update(t.id, { pinned: false });
+  let failed = null;
+  try {
+    await moving(async () => {
+      // Fenster darf nicht leer werden
+      const left = main.tabs.filter((t) => !ids.has(t.id));
+      const movesUnpinned = main.tabs.some((t) => ids.has(t.id) && !t.pinned);
+      if (!left.length || (movesUnpinned && !left.some((t) => !t.pinned))) {
+        await chrome.tabs.create({ windowId: tab.windowId, active: true });
+      }
+      // Von rechts nach links lösen: Ein gelöster Tab rückt hinter die angehefteten, so
+      // behalten mehrere ihre Reihenfolge
+      for (const t of [...main.tabs].reverse()) if (ids.has(t.id) && t.pinned) await chrome.tabs.update(t.id, { pinned: false });
 
-    // Nach dem Lösen haben sich die Positionen verschoben, deshalb frisch lesen
-    const all = await chrome.tabs.query({ windowId: tab.windowId });
-    // Ein einzeln verschobener Tab verlässt seine Gruppe, auch wenn er ihr letzter ist
-    const whole = (gid) => gid >= 0 && (group || ids.size > 1) && all.every((t) => t.groupId !== gid || ids.has(t.id));
-    const list = all.filter((t) => ids.has(t.id)).map((t) => ({ ...t, groupId: whole(t.groupId) ? t.groupId : -1 }));
+      // Nach dem Lösen haben sich die Positionen verschoben, deshalb frisch lesen
+      const all = await chrome.tabs.query({ windowId: tab.windowId });
+      // Ein einzeln verschobener Tab verlässt seine Gruppe, auch wenn er ihr letzter ist
+      const whole = (gid) => gid >= 0 && (group || ids.size > 1) && all.every((t) => t.groupId !== gid || ids.has(t.id));
+      const list = all.filter((t) => ids.has(t.id)).map((t) => ({ ...t, groupId: whole(t.groupId) ? t.groupId : -1 }));
 
-    const shownIn = mains.find((w) => s.windowWs[w.id] === wsId);
-    if (shownIn) {
-      await moveOrdered(list, shownIn.id);
-    } else {
-      const st = await ensureStash(wsId, true);
-      await moveOrdered(list, st.windowId);
-      await chrome.tabs.update(st.tabId, { active: true });
-      await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
-    }
-  });
-  const s2 = await sess();
-  for (const id of ids) delete s2.tabOrigin[id];
-  await saveSess(s2);
-  for (const id of ids) await setTabIcon(id, wsId);
+      const shownIn = mains.find((w) => s.windowWs[w.id] === wsId);
+      if (shownIn) {
+        await setPendingMove({ fromWindowId: main.id, to: wsId, targetWindowId: shownIn.id, isStash: false, tabs: list.map((t) => t.id), group: !!group });
+        await moveOrdered(list, shownIn.id);
+      } else {
+        const st = await ensureStash(wsId, true);
+        await setPendingMove({ fromWindowId: main.id, to: wsId, targetWindowId: st.windowId, isStash: true, tabs: list.map((t) => t.id), group: !!group });
+        await moveOrdered(list, st.windowId);
+      }
+    });
+  } catch (err) {
+    console.warn('[workspaces] Verschieben unterbrochen, schließe es anhand der Fenster ab:', err);
+    failed = err;
+  }
+
+  let done;
+  try {
+    done = await finishMove(true);
+  } catch (err) {
+    scheduleReconcile();
+    throw err;
+  }
   await snapshot();
+  if (failed && done !== 'forward') throw failed;
+}
+
+// Schließt einen begonnenen Tab-Transfer (pendingMove in storage.local) anhand der tatsächlich
+// vorhandenen Tabs ab – nach einem Fehler, einem Neustart des Service Workers oder dem Neuladen
+// der Erweiterung. Sind schon Tabs im Ziel angekommen, wird der Rest nachgeholt; sonst gilt der
+// Transfer als nicht begonnen. focus: das Quellfenster wieder nach vorn holen (nur beim
+// Verschieben selbst, nicht beim Fortsetzen ohne Zutun).
+async function finishMove(focus = false) {
+  const p = await getPendingMove();
+  if (!p) return null;
+  const cfg = await getConfig();
+  if (!cfg.workspaces.some((w) => w.id === p.to)) {
+    await setPendingMove(null);
+    return 'gone';
+  }
+  return moving(async () => {
+    const s = await sess();
+    const { stash, mains } = await scan();
+    const target = p.isStash
+      ? stash.get(p.to)
+      : mains.find((w) => w.id === p.targetWindowId && (!s.windowWs[w.id] || s.windowWs[w.id] === p.to));
+    const ids = new Set(p.tabs);
+    const arrived = target ? target.tabs.filter((t) => ids.has(t.id)) : [];
+    if (!target || !arrived.length) {
+      await setPendingMove(null);
+      return target ? 'back' : 'gone';
+    }
+
+    const from = mains.find((w) => w.id === p.fromWindowId);
+    if (from) {
+      const restIds = new Set(from.tabs.filter((t) => ids.has(t.id)).map((t) => t.id));
+      if (restIds.size) {
+        const left = from.tabs.filter((t) => !restIds.has(t.id));
+        const movesUnpinned = from.tabs.some((t) => restIds.has(t.id) && !t.pinned);
+        if (!left.length || (movesUnpinned && !left.some((t) => !t.pinned))) {
+          await chrome.tabs.create({ windowId: from.id, active: true });
+        }
+        for (const t of [...from.tabs].reverse()) if (restIds.has(t.id) && t.pinned) await chrome.tabs.update(t.id, { pinned: false });
+        const all = await chrome.tabs.query({ windowId: from.id });
+        const whole = (gid) => gid >= 0 && (p.group || ids.size > 1) && all.every((t) => t.groupId !== gid || restIds.has(t.id));
+        const list = all.filter((t) => restIds.has(t.id)).map((t) => ({ ...t, groupId: whole(t.groupId) ? t.groupId : -1 }));
+        await moveOrdered(list, target.id);
+      }
+    }
+
+    if (p.isStash) {
+      const marker = target.tabs.find(isStashTab);
+      if (marker) await chrome.tabs.update(marker.id, { active: true });
+      if (focus) await chrome.windows.update(p.fromWindowId, { focused: true }).catch(() => {});
+      const tabs = await chrome.tabs.query({ windowId: target.id });
+      await rememberStashWin(target.id, p.to, tabs.filter((t) => !isStashTab(t)).map((t) => t.id));
+    }
+
+    const s2 = await sess();
+    for (const id of ids) delete s2.tabOrigin[id];
+    await saveSess(s2);
+    for (const id of ids) await setTabIcon(id, p.to);
+    await setPendingMove(null);
+    return 'forward';
+  });
 }
 
 // Öffnet einen Link (Kontextmenü) als neuen Tab im Hintergrund des Workspace: in einem
@@ -347,6 +450,10 @@ async function openLinkInWs(url, wsId, fromWindowId) {
 // Tab-Suche des Browsers). Die Ablage verliert dadurch ihren Titel und wird sichtbar.
 // Deshalb zeigt das zuletzt benutzte Hauptfenster diesen Workspace mit dem gewählten Tab.
 async function showStashTab(tabId) {
+  // Vor dem ersten Abgleich nach dem Neuladen der Erweiterung fehlen die Ablage-Seiten noch:
+  // resumeSwitch würde einen unterbrochenen Transfer oder Aufbau einer Ablage verwerfen.
+  // Ohne zugeordnetes Hauptfenster gäbe es hier ohnehin nichts zu tun.
+  if ((await chrome.storage.session.get('entriesUntil')).entriesUntil === undefined) return;
   await resumeSwitch();
   const s = await sess();
   const { stash, mains } = await scan();
