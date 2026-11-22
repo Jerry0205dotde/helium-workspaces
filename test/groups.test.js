@@ -33,7 +33,7 @@ test('Ersetzen durch den eigenen Export: keine Gruppe bleibt als geschlossene ge
   const file = await ok(env.w.request({ type: 'export' }));
   await ok(env.w.request({ type: 'import', text: JSON.stringify(file), mode: 'replace', confirmed: true }));
   for (const w of b.local.data.workspaces) env.ids[w.name] = w.id;
-  // Lesen lag in der Ablage von B und kommt beim Wechsel aus der Sicherung
+  // Die Ablage von B wird übernommen, Lesen bleibt darin offen (#248)
   await cycle(env, ['B', 'C', 'A']);
   check(env, ALL);
   assert.deepEqual(closed(b), []);
