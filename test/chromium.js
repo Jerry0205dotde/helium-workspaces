@@ -37,10 +37,16 @@ async function waitFor(fn, { timeout = 20000, interval = 250 } = {}) {
   }
 }
 
+// Flag in creation_flags, das nur Extensions.loadUnpacked setzt (ohne es 38 wie über
+// „Entpackte Erweiterung laden“). Damit entfernt Chromium die Erweiterung beim nächsten
+// Start, als wäre sie nur für diesen Start geladen; erst ein Neuladen installiert sie ohne
+// das Flag neu (#241).
+const DEVTOOLS_FLAG = 1 << 15;
+
 // restore: 'last' = „Dort weitermachen, wo ich aufgehört habe“, 'newtab' = „Neuer Tab“.
 // Der Entwicklermodus ist an wie bei jedem, der die Erweiterung entpackt lädt; ohne ihn
 // deaktiviert Chromium sie beim Neuladen.
-function setPrefs(profile, restore) {
+function setPrefs(profile, restore, extId) {
   const file = path.join(profile, 'Default', 'Preferences');
   fs.mkdirSync(path.dirname(file), { recursive: true });
   let prefs = {};
@@ -51,6 +57,10 @@ function setPrefs(profile, restore) {
   prefs.extensions = { ...prefs.extensions, ui: { ...prefs.extensions?.ui, developer_mode: true } };
   // Downloads (die automatische Sicherung) landen im Testprofil, ohne Rückfrage
   prefs.download = { ...prefs.download, default_directory: path.join(profile, 'Downloads'), prompt_for_download: false };
+  // Die Installation aus dem letzten Start bleibt wie eine über die Oberfläche, ohne dass
+  // die Erweiterung dafür neu geladen wird
+  const ext = prefs.extensions.settings?.[extId];
+  if (ext?.creation_flags & DEVTOOLS_FLAG) ext.creation_flags &= ~DEVTOOLS_FLAG;
   fs.writeFileSync(file, JSON.stringify(prefs));
 }
 
@@ -71,7 +81,7 @@ class Chromium {
   // Profil, vor der Sitzungswiederherstellung, wie bei einer normalen Installation.
   // (--load-extension lädt sie dagegen erst nach den Fenstern und nur für einen Start.)
   async launch({ restore = 'last' } = {}) {
-    setPrefs(this.profile, restore);
+    setPrefs(this.profile, restore, this.extId);
     const args = [
       `--user-data-dir=${this.profile}`,
       '--remote-debugging-pipe',
