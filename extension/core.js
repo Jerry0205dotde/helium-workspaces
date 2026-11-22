@@ -189,7 +189,8 @@ async function scan() {
   const mains = [];
   const dups = [];
   for (const w of wins) {
-    if (w.incognito) continue;
+    // Die normale und die Inkognito-Instanz (incognito.js) führen je nur ihre eigenen Fenster
+    if (w.incognito !== INCOGNITO) continue;
     const ws = stashWsOf(w);
     if (ws) {
       if (stash.has(ws)) dups.push(w);

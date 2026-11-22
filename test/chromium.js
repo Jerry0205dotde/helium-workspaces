@@ -80,7 +80,8 @@ class Chromium {
   // „Entpackte Erweiterung laden“ installiert, danach lädt Chromium sie beim Start aus dem
   // Profil, vor der Sitzungswiederherstellung, wie bei einer normalen Installation.
   // (--load-extension lädt sie dagegen erst nach den Fenstern und nur für einen Start.)
-  async launch({ restore = 'last' } = {}) {
+  // incognito: bei der Installation „Im Inkognitomodus zulassen“ einschalten (incognito.js)
+  async launch({ restore = 'last', incognito = false } = {}) {
     setPrefs(this.profile, restore, this.extId);
     const args = [
       `--user-data-dir=${this.profile}`,
@@ -112,6 +113,9 @@ class Chromium {
     this.pending = new Map();
     this.errors ??= [];
     this.worker = null;
+    // Kontext des normalen Profils: Beim Start gibt es noch keine Inkognito-Instanz
+    this.context = null;
+    this.incognito = null;
     proc.stdio[3].on('error', () => {});
     let buf = Buffer.alloc(0);
     proc.stdio[4].on('data', (d) => {
@@ -120,7 +124,7 @@ class Chromium {
     });
     await this.send('Target.setDiscoverTargets', { discover: true });
     if (!this.installed) {
-      const { id } = await this.send('Extensions.loadUnpacked', { path: this.ext });
+      const { id } = await this.send('Extensions.loadUnpacked', { path: this.ext, ...(incognito && { enableInIncognito: true }) });
       if (id !== this.extId) throw new Error(`unerwartete Erweiterungs-ID ${id}`);
       this.installed = true;
     }
@@ -135,7 +139,7 @@ class Chromium {
       else resolve(msg.result);
     } else if (msg.method === 'Target.detachedFromTarget' && msg.params.sessionId === this.worker?.sessionId) {
       this.worker.detached = true;
-    } else if (msg.method === 'Runtime.exceptionThrown' && msg.sessionId === this.worker?.sessionId) {
+    } else if (msg.method === 'Runtime.exceptionThrown' && [this.worker?.sessionId, this.incognito?.sessionId].includes(msg.sessionId)) {
       // Unbehandelte Fehler im Service Worker
       this.errors.push(msg.params.exceptionDetails.exception?.description || msg.params.exceptionDetails.text);
     }
@@ -170,24 +174,47 @@ class Chromium {
       if (this.worker && !this.worker.detached && targetInfos.some((x) => x.targetId === old)) {
         throw new Error('alter Service Worker läuft noch');
       }
-      const t = targetInfos.find((x) => x.type === 'service_worker' && x.targetId !== old && x.url === `chrome-extension://${this.extId}/background.js`);
+      const t = targetInfos.find(
+        (x) =>
+          x.type === 'service_worker' &&
+          x.targetId !== old &&
+          x.url === `chrome-extension://${this.extId}/background.js` &&
+          (!this.context || x.browserContextId === this.context),
+      );
       if (!t) throw new Error('Service Worker der Erweiterung nicht gefunden');
       return t;
     });
     const { sessionId } = await this.send('Target.attachToTarget', { targetId: target.targetId, flatten: true });
     this.worker = { targetId: target.targetId, sessionId };
+    this.context = target.browserContextId;
     await this.send('Runtime.enable', {}, sessionId);
     await this.send('Runtime.runIfWaitingForDebugger', {}, sessionId);
   }
 
   // Wertet expr (async-Funktionsrumpf) im Service Worker aus und gibt das Ergebnis zurück
-  async sw(body, ...args) {
+  sw(body, ...args) {
+    return this.evaluate(this.worker.sessionId, body, args);
+  }
+
+  // Wie sw(), aber im Service Worker der Inkognito-Instanz (launch({ incognito: true }) und ein
+  // offenes Inkognito-Fenster). Startet er neu, verbindet es sich mit dem neuen.
+  async incognitoSw(body, ...args) {
+    const { targetInfos } = await this.send('Target.getTargets');
+    const url = `chrome-extension://${this.extId}/background.js`;
+    const t = targetInfos.find((x) => x.type === 'service_worker' && x.url === url && x.browserContextId !== this.context);
+    if (!t) throw new Error('kein Service Worker der Inkognito-Instanz');
+    if (this.incognito?.targetId !== t.targetId) {
+      const { sessionId } = await this.send('Target.attachToTarget', { targetId: t.targetId, flatten: true });
+      this.incognito = { targetId: t.targetId, sessionId };
+      await this.send('Runtime.enable', {}, sessionId);
+      await this.send('Runtime.runIfWaitingForDebugger', {}, sessionId);
+    }
+    return this.evaluate(this.incognito.sessionId, body, args);
+  }
+
+  async evaluate(sessionId, body, args) {
     const expression = `(async (...args) => { ${body} })(...${JSON.stringify(args)})`;
-    const r = await this.send(
-      'Runtime.evaluate',
-      { expression, awaitPromise: true, returnByValue: true },
-      this.worker.sessionId,
-    );
+    const r = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId);
     if (r.exceptionDetails) {
       throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
     }

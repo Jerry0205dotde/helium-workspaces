@@ -1079,3 +1079,107 @@ test('Echter Chromium: Export meldet Erfolg erst nach dem Speichern, einen verwe
   assert.match(ok, done);
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
+
+// Für Inkognito zugelassen (#250): Die Inkognito-Instanz übernimmt die Workspaces des Profils
+// ohne Tabs und wechselt dort mit eigenen Inkognito-Ablagen. Weder ihre Tabs noch ihre
+// Änderungen erreichen den Speicher des Profils, auch nicht nach dem Neuladen der Erweiterung.
+// Mit dem letzten Inkognito-Fenster ist alles weg, die nächste Sitzung beginnt neu.
+test('Echter Chromium: Für Inkognito zugelassen, eigene Workspaces ohne Spuren im Profil (#250)', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 300000 }, async (t) => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-incognito-'));
+  const b = new Chromium(bin, profile, EXT);
+  t.after(async () => {
+    await b.kill();
+    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  });
+  await b.launch({ incognito: true });
+  const assigned = (sw) =>
+    waitFor(async () => {
+      const s = await sw('return (await chrome.storage.session.get("windowWs")).windowWs;');
+      assert.ok(s && Object.keys(s).length, 'noch kein Hauptfenster zugeordnet');
+    });
+  await assigned((x) => b.sw(x));
+  const token = await b.sw(`
+    const cfg = await getConfig();
+    await userAction(() => updateWs(cfg.workspaces[0].id, { name: 'A' }));
+    await userAction(() => createWs('B'));
+    return ensureToken();
+  `);
+  const inc = (body, ...args) => b.incognitoSw(body, ...args);
+  const openIncognito = async () => {
+    await b.sw("await chrome.windows.create({ incognito: true, url: ['about:blank#inc-a0', 'about:blank#inc-a1'] });");
+    await waitFor(() => inc('return 1;'));
+    await assigned(inc);
+  };
+  await openIncognito();
+
+  // Wechsel nach B im Inkognito-Fenster: A kommt in eine Inkognito-Ablage, die KWin versteckt
+  const STATE_INC = `
+    const wins = await chrome.windows.getAll({ populate: true });
+    const exp = await userAction(exportAll);
+    return {
+      incognito: chrome.extension.inIncognitoContext,
+      names: (await getConfig()).workspaces.map((w) => w.name),
+      wins: wins.map((w) => ({ incognito: w.incognito, tabs: w.tabs.map((x) => x.url), title: w.tabs[0].title })),
+      exp: Object.fromEntries(exp.workspaces.map((w) => [w.name, w.tabs.map((x) => x.url)])),
+    };`;
+  const first = await inc(STATE_INC);
+  assert.equal(first.incognito, true);
+  assert.deepEqual(first.names, ['A', 'B'], 'Workspaces aus dem Profil übernommen');
+  assert.deepEqual(first.exp, { A: ['about:blank#inc-a0', 'about:blank#inc-a1'], B: [] }, 'ohne Tabs aus dem Profil');
+  await inc(`
+    const B = (await getConfig()).workspaces.find((w) => w.name === 'B');
+    const { mains } = await scan();
+    await userAction(() => switchTo(mains[0].id, B.id));
+    await chrome.tabs.create({ windowId: mains[0].id, url: 'about:blank#inc-b0' });
+    await userAction(() => updateWs(B.id, { name: 'B privat' }));
+  `);
+  const stash = `chrome-extension://${b.extId}/stash.html#`;
+  const switched = await waitFor(async () => {
+    const r = await inc(STATE_INC);
+    const sw = r.wins.find((w) => w.tabs[0].startsWith(stash));
+    assert.ok(sw, 'keine Ablage');
+    assert.equal(sw.title, `HWS-Ablage ${token} · A`, 'Titel der Ablage');
+    return { ...r, sw };
+  });
+  assert.ok(switched.wins.every((w) => w.incognito), 'alle Fenster der Inkognito-Instanz sind Inkognito-Fenster');
+  assert.deepEqual(switched.sw.tabs.slice(1), ['about:blank#inc-a0', 'about:blank#inc-a1']);
+  assert.deepEqual(switched.names, ['A', 'B privat']);
+  assert.deepEqual(switched.exp['B privat'].filter((u) => u.startsWith('about:blank#inc-')), ['about:blank#inc-b0']);
+
+  // Das Profil weiß davon nichts
+  const PROFILE = `
+    return {
+      names: (await getConfig()).workspaces.map((w) => w.name),
+      wins: (await chrome.windows.getAll()).length,
+      stored: JSON.stringify([await chrome.storage.local.get(null), await chrome.storage.session.get(null)]),
+    };`;
+  const untouched = (r) => {
+    assert.deepEqual(r.names, ['A', 'B']);
+    assert.equal(r.wins, 1, 'das Profil sieht die Inkognito-Fenster nicht');
+    assert.doesNotMatch(r.stored, /inc-|B privat/, 'Inkognito im Speicher des Profils');
+  };
+  untouched(await b.sw(PROFILE));
+
+  // Neuladen der Erweiterung: Die Inkognito-Instanz findet ihre Fenster und Ablagen wieder
+  b.sw('chrome.runtime.reload();').catch(() => {});
+  await b.attachWorker();
+  const reloaded = await waitFor(async () => {
+    const r = await inc(STATE_INC);
+    assert.deepEqual(r.exp.A, ['about:blank#inc-a0', 'about:blank#inc-a1']);
+    assert.equal(r.wins.filter((w) => w.tabs[0].startsWith(stash)).length, 1, `genau eine Ablage: ${JSON.stringify(r.wins)}`);
+    return r;
+  });
+  assert.deepEqual(reloaded.names, ['A', 'B privat']);
+  assert.deepEqual(reloaded.exp['B privat'].filter((u) => u.startsWith('about:blank#inc-')), ['about:blank#inc-b0']);
+  untouched(await b.sw(PROFILE));
+
+  // Mit dem letzten Inkognito-Fenster endet die Sitzung, die nächste beginnt mit dem Profil
+  inc('for (const w of await chrome.windows.getAll()) chrome.windows.remove(w.id);').catch(() => {});
+  await waitFor(() => assert.rejects(inc('return 1;')));
+  await openIncognito();
+  const fresh = await inc(STATE_INC);
+  assert.deepEqual(fresh.names, ['A', 'B']);
+  assert.deepEqual(fresh.exp, { A: ['about:blank#inc-a0', 'about:blank#inc-a1'], B: [] });
+  untouched(await b.sw(PROFILE));
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});

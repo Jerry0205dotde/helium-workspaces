@@ -731,6 +731,9 @@
   "autoBackupInvalid": {
     "message": "Unbekannter Abstand für die automatische Sicherung."
   },
+  "autoBackupIncognito": {
+    "message": "Inkognito-Workspaces werden nicht automatisch gesichert, damit Inkognito-Tabs nie auf der Festplatte landen. Exportieren sichert sie auf Wunsch."
+  },
   "autoBackupNoHost": {
     "message": "Das Hilfsprogramm für die Sicherung ist nicht eingerichtet. Im Ordner des Repositorys ./install.sh ausführen, nach einem Update ./install.sh --update."
   },

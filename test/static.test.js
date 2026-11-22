@@ -49,6 +49,10 @@ test('manifest.json ist gültig und verweist nur auf vorhandene Dateien', () => 
     }
   }
   for (const p of ['tabs', 'tabGroups', 'storage', 'unlimitedStorage', 'contextMenus']) assert.ok(m.permissions.includes(p), `Berechtigung ${p} fehlt`);
+  // Zugelassen für Inkognito, braucht die Erweiterung dort eine eigene Instanz: Nur so kann sie
+  // dort Ablage-Seiten öffnen, und nur so hat incognito.js einen Speicher, den das normale Profil
+  // nicht sieht (#250)
+  assert.equal(m.incognito, 'split', 'incognito muss "split" sein');
   for (const [name, c] of Object.entries(m.commands || {})) {
     assert.match(c.description || '', /\S/, `Befehl ${name} ohne Beschreibung`);
   }

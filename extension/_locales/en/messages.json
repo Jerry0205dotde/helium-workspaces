@@ -731,6 +731,9 @@
   "autoBackupInvalid": {
     "message": "Unknown interval for the automatic backup."
   },
+  "autoBackupIncognito": {
+    "message": "Incognito workspaces are not backed up automatically, so incognito tabs never end up on disk. Export saves them on request."
+  },
   "autoBackupNoHost": {
     "message": "The helper program for the backup is not set up. Run ./install.sh in the repository folder, after an update ./install.sh --update."
   },
