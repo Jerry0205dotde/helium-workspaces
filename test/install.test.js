@@ -189,6 +189,34 @@ test('--uninstall entfernt nichts, wenn KWin nicht erreichbar ist', () => {
   assert.deepEqual(r.calls, ['qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces']);
 });
 
+test('--uninstall weist zusätzliche Schlüssel und --browsers ab, ohne etwas zu ändern (#236)', () => {
+  const twoKeys = `${TOKEN},fedcba9876543210fedcba98`;
+  for (const args of [
+    ['--uninstall', TOKEN],
+    [TOKEN, '--uninstall'],
+    ['--uninstall', ''],
+    ['--uninstall', '--browsers', 'bad;list'],
+    ['--uninstall', '--browsers=helium'],
+    ['--uninstall', '--browsers', ''],
+  ]) {
+    const r = run(args, {
+      token: twoKeys,
+      setup: (dir) => {
+        for (const h of HOSTS) {
+          fs.mkdirSync(path.dirname(path.join(dir, 'home', '.config', h)), { recursive: true });
+          fs.writeFileSync(path.join(dir, 'home', '.config', h), '{}');
+        }
+        return INSTALL;
+      },
+      check: hostsIn,
+    });
+    assert.notEqual(r.status, 0, JSON.stringify(args));
+    assert.match(r.stderr, /--uninstall nimmt keine weiteren Angaben.*--remove <Schlüssel>/, JSON.stringify(args));
+    assert.deepEqual(r.calls, [], JSON.stringify(args));
+    assert.deepEqual(Object.keys(r.checked), HOSTS, JSON.stringify(args));
+  }
+});
+
 test('--update holt den neuen Stand und richtet ihn mit dem eingetragenen Schlüssel ein', () => {
   let local;
   const r = run(['--update'], {
@@ -797,6 +825,12 @@ for (const [env, lang] of [
     assert.match(unknown.stderr, de ? /^Der Schlüssel \w+ ist nicht eingetragen\./ : /^The key \w+ is not set up\./);
     const combined = run(['--remove', TOKEN, '--uninstall'], { env });
     assert.match(combined.stderr, de ? /^--remove nimmt nur den Schlüssel/ : /^--remove only takes the key/);
+    const uninstallExtra = run(['--uninstall', TOKEN], { env });
+    assert.notEqual(uninstallExtra.status, 0);
+    assert.match(
+      uninstallExtra.stderr,
+      de ? /^--uninstall nimmt keine weiteren Angaben.*--remove <Schlüssel>/ : /^--uninstall takes no further arguments.*--remove <key>/,
+    );
   });
 }
 

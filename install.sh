@@ -55,6 +55,7 @@ HOST_NAME=helium_workspaces
 host_manifest() { printf '%s/%s/NativeMessagingHosts/%s.json' "$CONFIG" "${1%%:*}" "$HOST_NAME"; }
 
 TOKEN=""
+SET_TOKEN=""
 BROWSERS=""
 SET_BROWSERS=""
 UNINSTALL=""
@@ -74,7 +75,7 @@ while [ $# -gt 0 ]; do
     # Der Kommentar am Anfang dieser Datei, ohne die Zeile mit #!
     -h|--help) sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0"; exit 0 ;;
     -*) t "Unbekannte Option: $1" "Unknown option: $1" >&2; exit 1 ;;
-    *) TOKEN="$1"; shift ;;
+    *) TOKEN="$1"; SET_TOKEN=1; shift ;;
   esac
 done
 
@@ -163,6 +164,9 @@ if [ -n "$REMOVE" ]; then
 fi
 
 if [ -n "$UNINSTALL" ]; then
+  [ -z "$SET_TOKEN$SET_BROWSERS" ] \
+    || { t "--uninstall nimmt keine weiteren Angaben. Für einen einzelnen Schlüssel ./install.sh --remove <Schlüssel> ausführen." \
+           "--uninstall takes no further arguments. To remove a single key, run ./install.sh --remove <key>." >&2; exit 1; }
   # Erreicht qdbus KWin nicht, bricht das Skript hier ab, bevor etwas entfernt ist.
   "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces >/dev/null
   INSTALLED=""
