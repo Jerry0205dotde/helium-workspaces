@@ -715,7 +715,7 @@ test('Service Worker endet beim Aufbau der Ablage für einen verschobenen Tab: d
     else b.fail(api, { hang: true });
     env.w.send({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: ids.B });
     await env.w.settle();
-    assert.equal(b.session.data.pendingStash?.ws, ids.B);
+    assert.equal(b.local.data.pendingStash?.ws, ids.B);
     const w = b.startWorker(null);
     await w.settle();
     // Eine weitere Änderung löst einen Snapshot aus
@@ -792,4 +792,89 @@ test('Link in einen Workspace öffnen, der nur in der Sicherung liegt: seine Abl
   check(env, expected);
   assert.equal(where(env, 'l1').stash, true);
   await cycle(env, expected);
+});
+
+test('Neuladen während eines Tab-Transfers: Zielablage wird erkannt und kein Tab verdoppelt (#240)', async () => {
+  for (const mode of ['neu', 'leer', 'entladen', 'ohne-quell-ablage']) {
+    const env = await setup({ workspaces: { A: ['a0', 'a1'], B: ['b0'] } });
+    const { b, ids } = env;
+    let expected = { A: ['a1'], B: ['b0', 'a0'] };
+    let after = 0;
+    if (mode === 'neu') {
+      b.restart({ restore: 'none' });
+      await b.startWorker('startup').settle();
+      b.now += 60000;
+      after = 1; // erster active-Aufruf gehört zu ensureStash, zweiter zu finishMove
+    } else if (mode === 'leer') {
+      await ok(env.w.request({ type: 'switch', windowId: env.win, wsId: ids.B }));
+      await b.chrome.tabs.create({ windowId: env.win, active: true });
+      await b.chrome.tabs.remove(where(env, 'b0').tab.id);
+      await ok(env.w.request({ type: 'switch', windowId: env.win, wsId: ids.A }));
+      expected = { A: ['a1'], B: ['a0'] };
+    } else if (mode === 'entladen') {
+      b.discardTab(where(env, 'b0').tab.id);
+    } else if (mode === 'ohne-quell-ablage') {
+      const stashA = b.windows.find((x) => b.stashOf(x) === ids.A);
+      await b.chrome.windows.remove(stashA.id);
+      await env.w.settle();
+    }
+    b.fail('tabs.update', { hang: true, after, when: (_, o) => o?.active === true });
+    env.w.send({ type: 'moveTab', tabId: where(env, 'a0').tab.id, wsId: ids.B });
+    await env.w.advance(100);
+    assert.ok(b.local.data.pendingMove, `${mode}: pendingMove fehlt`);
+    const w = b.reloadExtension();
+    await w.settle();
+    const exp = await ok(w.request({ type: 'export' }));
+    assert.deepEqual(
+      Object.fromEntries(exp.workspaces.map((x) => [x.name, Array.from(x.tabs, (t) => t.url)])),
+      { A: expected.A.map(url), B: expected.B.map(url) },
+      `Export (${mode})`,
+    );
+    check(env, expected);
+    await cycle(env, expected, ['B', 'A']);
+  }
+});
+
+test('Neuladen mitten in mehrteiligem Transfer oder beim Aufbau der Zielablage schließt sauber ab (#240)', async () => {
+  // 1. Zweiter Teil eines mehrteiligen Transfers (Gruppe) hängt, dann Neuladen
+  {
+    const env = await setup({ workspaces: { A: ['a0', { url: 'a1', group: 'G', color: 'blue' }, 'a2'], B: ['b0'] } });
+    const { b, ids } = env;
+    await b.chrome.tabs.highlight({ windowId: env.win, tabs: [0, 1] });
+    b.fail('tabGroups.move', { hang: true });
+    env.w.send({ type: 'moveTab', tabId: where(env, 'a0').tab.id, wsId: ids.B });
+    await env.w.settle();
+    const w = b.reloadExtension();
+    await w.settle();
+    const expected = { A: ['a2'], B: ['b0', 'a0', { url: 'a1', group: 'G', color: 'blue' }] };
+    check(env, expected);
+    await cycle(env, expected, ['B', 'A']);
+  }
+  // 2. Neuladen mitten beim Aufbau der Zielablage aus der Sicherung
+  {
+    const { env, main } = await onlyBackedUp();
+    const { b, ids } = env;
+    b.fail('tabs.create', { hang: true, after: 1, when: (o) => o.windowId !== main });
+    env.w.send({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: ids.B });
+    await env.w.settle();
+    assert.equal(b.local.data.pendingStash?.ws, ids.B);
+    const w = b.reloadExtension();
+    await w.settle();
+    check(env, ALL);
+    await cycle(env, ALL);
+  }
+});
+
+test('Tab schließen und sofort die Erweiterung neu laden bringt ihn nicht aus der Sicherung zurück (#240)', async () => {
+  const env = await setup({ workspaces: { A: ['a0', 'a1'], B: ['b0'] } });
+  const { b, ids } = env;
+  const stashA = b.windows.find((x) => b.stashOf(x) === ids.A);
+  await b.chrome.windows.remove(stashA.id);
+  await env.w.settle();
+  await b.chrome.tabs.remove(where(env, 'a0').tab.id);
+  await env.w.advance(100); // vor dem verzögerten Snapshot
+  const w = b.reloadExtension();
+  await w.settle();
+  assert.equal(b.tabsByUrl(url('a0')).length, 0, 'geschlossener Tab wurde nach Neuladen neu angelegt');
+  check(env, { A: ['a1'], B: ['b0'] });
 });

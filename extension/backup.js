@@ -106,13 +106,24 @@ function pinnedOf(mains, groups) {
   return out;
 }
 
+// Hält stashWins für eine einzelne Ablage aktuell (beim Anlegen, Ersetzen oder Verschieben),
+// bevor der nächste volle Snapshot läuft.
+async function rememberStashWin(windowId, wsId, tabIds) {
+  const { stashWins = {} } = await chrome.storage.local.get('stashWins');
+  const cur = stashWins[windowId];
+  if (cur && cur.ws === wsId && cur.tabs.length === tabIds.length && cur.tabs.every((id, i) => id === tabIds[i])) return;
+  stashWins[windowId] = { ws: wsId, tabs: tabIds };
+  await chrome.storage.local.set({ stashWins });
+}
+
 // Sichert den Inhalt aller Workspaces, falls ein Fenster verloren geht
 // (z. B. wenn das Hauptfenster per X geschlossen wird). gone: das gerade geschlossene
 // letzte Hauptfenster aus dem Abbild ({ win, groups, ws }), das noch mitgesichert wird.
 async function snapshot(gone) {
-  // Wechsel, Aufbau einer Ablage oder nach dem Start noch nicht abgeschlossen
+  // Wechsel, Tab-Transfer, Aufbau einer Ablage oder nach dem Start noch nicht abgeschlossen
   if (await getPending()) return;
   if (await getPendingStash()) return;
+  if (await getPendingMove()) return;
   const { pendingStart } = await chrome.storage.session.get('pendingStart');
   const { pendingFeed } = await chrome.storage.local.get('pendingFeed');
   if (pendingFeed || pendingStart) return; // feedInto, restoreStart

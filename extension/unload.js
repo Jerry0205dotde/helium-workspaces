@@ -92,7 +92,7 @@ async function loadIfDiscarded(tabId) {
 }
 
 async function unloadRestored(tabId) {
-  if (await getPending()) return;
+  if ((await getPending()) || (await getPendingMove())) return;
   const t = await chrome.tabs.get(tabId).catch(() => null);
   if (t) await discard(t);
 }
@@ -142,7 +142,7 @@ function noteSilent(tabId) {
 // ist oder in den letzten unloadAfter Minuten zu hören war, bleiben geladen.
 async function unloadStashes() {
   const minutes = await getUnloadAfter();
-  if (!minutes || (await getPending())) return;
+  if (!minutes || (await getPending()) || (await getPendingMove())) return;
   const { stash } = await scan();
   const { stashedAt = {}, silentSince = {} } = await chrome.storage.session.get(['stashedAt', 'silentSince']);
   const now = Date.now();
@@ -185,7 +185,18 @@ async function replaceTabId(from, to) {
       startNew: Object.fromEntries(Object.entries(startNew).map(([id, at]) => [swap(+id), at])),
     });
   }
-  const { stashMuted, pendingFeed: f } = await chrome.storage.local.get(['stashMuted', 'pendingFeed']);
+  const { stashMuted, pendingFeed: f, stashWins, pendingMove } = await chrome.storage.local.get(['stashMuted', 'pendingFeed', 'stashWins', 'pendingMove']);
   if (stashMuted?.includes(from)) await chrome.storage.local.set({ stashMuted: stashMuted.map(swap) });
   if (f?.known.includes(from)) await chrome.storage.local.set({ pendingFeed: { ...f, known: f.known.map(swap) } });
+  if (stashWins) {
+    let hit = false;
+    for (const rec of Object.values(stashWins)) {
+      if (rec.tabs?.includes(from)) {
+        rec.tabs = rec.tabs.map(swap);
+        hit = true;
+      }
+    }
+    if (hit) await chrome.storage.local.set({ stashWins });
+  }
+  if (pendingMove?.tabs?.includes(from)) await setPendingMove({ ...pendingMove, tabs: pendingMove.tabs.map(swap) });
 }

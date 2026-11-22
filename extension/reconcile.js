@@ -74,12 +74,44 @@ function assignWindows(wins, s, cfg, entries, guessed = new Set()) {
   return result;
 }
 
+// Ablage-Fenster, deren Ablage-Seite fehlt (z. B. weil die Erweiterung neu geladen
+// wurde und Chromium dabei ihre Seiten schließt), wieder zu Ablagen machen.
+async function repairStashes() {
+  const { stashWins, pendingStash, pendingMove, pendingFeed: feeding } = await chrome.storage.local.get(['stashWins', 'pendingStash', 'pendingMove', 'pendingFeed']);
+  if (!stashWins && !pendingStash?.windowId && !pendingMove?.isStash) return false;
+  const cfg = await getConfig();
+  const s = await sess();
+  const { mains } = await scan();
+  let repaired = false;
+  for (const w of mains) {
+    if (s.windowWs[w.id]) continue;
+    const fromStash = pendingStash?.windowId === w.id ? { ws: pendingStash.ws, tabs: [] } : null;
+    const fromMove = pendingMove?.isStash && pendingMove.targetWindowId === w.id ? { ws: pendingMove.to, tabs: [] } : null;
+    const rec = stashWins?.[w.id] || fromStash || fromMove;
+    if (!rec || !cfg.workspaces.some((x) => x.id === rec.ws)) continue;
+    // War die Ablage leer, hat Chromium statt ihrer Ablage-Seite eine neue Tab-Seite
+    // geladen, damit das Fenster offen bleibt. Diese gehört nicht in den Workspace.
+    const ids = new Set(rec.tabs);
+    const incoming = fromMove ? pendingMove.tabs : [];
+    const blank = !ids.size && w.tabs.length && w.tabs.every((t) => isNewTab(t) && !incoming.includes(t.id));
+    const fed = feeding?.windowId === w.id && feeding.ws === rec.ws;
+    if (!blank && !fed && !fromStash && !w.tabs.some((t) => ids.has(t.id) || incoming.includes(t.id))) continue;
+    await moving(async () => {
+      await chrome.tabs.create({ windowId: w.id, url: `${STASH_PAGE}#${rec.ws}`, index: 0, pinned: true, active: true });
+      if (blank) await chrome.tabs.remove(w.tabs.map((t) => t.id)).catch(() => {});
+    });
+    repaired = true;
+  }
+  return repaired;
+}
+
 let resumeTries = 0;
 
 async function reconcile() {
   let changed = false;
   try {
-    changed = await resumeSwitch();
+    if (await repairStashes()) changed = true;
+    if (await resumeSwitch()) changed = true;
     resumeTries = 0;
   } catch (err) {
     console.warn('[workspaces] Wechsel noch nicht abschließbar:', err);
@@ -92,13 +124,14 @@ async function reconcile() {
 
   // Nach Browserstart oder Neuladen der Erweiterung ist storage.session leer: dann die
   // gesicherten Fenster-Einträge für 20 s zur Zuordnung wiederhergestellter Fenster nutzen.
-  let { entries, entriesUntil } = await chrome.storage.session.get(['entries', 'entriesUntil']);
+  let { entries, entriesUntil, browserStart } = await chrome.storage.session.get(['entries', 'entriesUntil', 'browserStart']);
   if (entriesUntil === undefined) {
     entries = (await chrome.storage.local.get('backupWindows')).backupWindows || [];
     entriesUntil = Date.now() + 20000;
   }
-  // Solange läuft auch die Reparatur verlorener Tabs. Sie hängt nicht nur am ersten
-  // Abgleich, weil der Service Worker vor der Sitzungswiederherstellung laufen kann.
+  // Solange läuft nach einem echten Browserstart (onStartup setzt browserStart) auch die
+  // Reparatur verlorener Tabs. Sie hängt nicht nur am ersten Abgleich, weil der Service
+  // Worker vor der Sitzungswiederherstellung laufen kann.
   const starting = Date.now() <= entriesUntil;
 
   // Beim Start ohne Sitzungswiederherstellung legt Chromium die angehefteten Tabs aller
@@ -107,7 +140,7 @@ async function reconcile() {
   // Ablagen fehlen darin. Ohne die Ablage-Seiten ist es das Startfenster; die Workspaces
   // kommen aus der Sicherung. War ein Tab in mehreren Hauptfenstern angeheftet, steht er
   // darin mehrfach: Er bleibt so oft, wie ihn die Sicherung kennt, mindestens einmal.
-  if (starting) {
+  if (starting && browserStart) {
     let merged = false;
     for (const w of [...stash.values(), ...dups]) {
       const marks = w.tabs.filter(isStashTab);
@@ -128,30 +161,6 @@ async function reconcile() {
       merged = true;
     }
     if (merged) {
-      ({ stash, mains, dups } = await scan());
-      changed = true;
-    }
-  }
-
-  // Ablage-Fenster, deren Ablage-Seite fehlt (z. B. weil die Erweiterung neu geladen
-  // wurde und Chromium dabei ihre Seiten schließt), wieder zu Ablagen machen.
-  const { stashWins, pendingFeed: feeding } = await chrome.storage.local.get(['stashWins', 'pendingFeed']);
-  if (stashWins) {
-    let repaired = false;
-    for (const w of mains) {
-      const rec = stashWins[w.id];
-      if (!rec || s.windowWs[w.id] || !cfg.workspaces.some((x) => x.id === rec.ws)) continue;
-      // War die Ablage leer, hat Chromium statt ihrer Ablage-Seite eine neue Tab-Seite
-      // geladen, damit das Fenster offen bleibt. Diese gehört nicht in den Workspace.
-      const ids = new Set(rec.tabs);
-      const blank = !ids.size && w.tabs.length && w.tabs.every(isNewTab);
-      const fed = feeding?.windowId === w.id && feeding.ws === rec.ws;
-      if (!blank && !fed && !w.tabs.some((t) => ids.has(t.id))) continue;
-      await chrome.tabs.create({ windowId: w.id, url: `${STASH_PAGE}#${rec.ws}`, index: 0, pinned: true, active: true });
-      if (blank) await chrome.tabs.remove(w.tabs.map((t) => t.id)).catch(() => {});
-      repaired = true;
-    }
-    if (repaired) {
       ({ stash, mains, dups } = await scan());
       changed = true;
     }
@@ -259,7 +268,7 @@ async function reconcile() {
   // schon die doppelten Tabs. repairFromBackup würde die geschlossenen Kopien dann als
   // verloren ergänzen; der Snapshot am Ende bringt sie auf den Stand.
   if (await dropStartCopies(s, stash)) changed = true;
-  else if (starting && (await moving(() => repairFromBackup(cfg, s, stash, mains)))) changed = true;
+  else if (starting && browserStart && (await moving(() => repairFromBackup(cfg, s, stash, mains)))) changed = true;
   s.tabOrigin = {};
   await saveSess(s);
   if (await resumeFeed()) changed = true;
@@ -491,7 +500,8 @@ async function onWindowRemoved(winId) {
   closing.delete(winId);
   const s = await sess();
   const ws = s.windowWs[winId];
-  if ((await getPending())?.windowId === winId) scheduleReconcile();
+  const pm = await getPendingMove();
+  if ((await getPending())?.windowId === winId || pm?.fromWindowId === winId || pm?.targetWindowId === winId) scheduleReconcile();
   if (ws === undefined) {
     scheduleReconcile();
     return;
