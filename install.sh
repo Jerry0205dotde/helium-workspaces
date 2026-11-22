@@ -23,8 +23,8 @@
 # Erweiterung mit ihrer alten ID (vor 0.3.0) und demselben Ordner, entfernt install.sh ihn mit
 # python3, sonst lädt der Browser die Erweiterung beim Start nicht. Läuft der Browser, weist
 # es nur darauf hin.
-# Bevor es etwas ändert, prüft das Skript, ob alle benötigten Programme da sind. Für qdbus6
-# nimmt es auch qdbus-qt6 (Fedora) oder qdbus. ./install.sh --help zeigt diesen Text.
+# Bevor es etwas ändert, prüft das Skript, ob alle benötigten Programme da sind und KWin erreichbar
+# ist. Für qdbus6 nimmt es auch qdbus-qt6 (Fedora) oder qdbus. ./install.sh --help zeigt diesen Text.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -112,11 +112,16 @@ invalid_key() {
     "Invalid key. Copy it in the extension's popup under \"Key for install.sh\"." >&2
   exit 1
 }
+# Erreicht qdbus KWin nicht, bricht das Skript hier ab, bevor etwas geändert ist.
+check_kwin() {
+  "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces >/dev/null
+}
 
 if [ -n "$UPDATE" ]; then
   [[ ${#TOKENS[@]} -eq 0 && -z "$SET_BROWSERS$UNINSTALL$REMOVE" ]] \
     || { t "--update nimmt keine weiteren Angaben, Schlüssel und Browserliste bleiben wie eingetragen." \
            "--update takes no further arguments, the key and the browser list stay as they are." >&2; exit 1; }
+  check_kwin
   OLD="$(kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token)"
   [ -n "$OLD" ] || { t "Noch kein Schlüssel eingetragen. Zuerst ./install.sh ohne --update ausführen." \
                        "No key set up yet. Run ./install.sh without --update first." >&2; exit 1; }
@@ -137,8 +142,7 @@ if [ -n "$REMOVE" ]; then
            "--remove only takes the key to remove." >&2; exit 1; }
   TOKEN="$(clean_key "$TOKEN")"
   [[ "$TOKEN" =~ ^[0-9a-f]{24}$ ]] || invalid_key
-  # Erreicht qdbus KWin nicht, bricht das Skript hier ab, bevor etwas geändert ist.
-  "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces >/dev/null
+  check_kwin
   read_keys
   has_key "$TOKEN" || { t "Der Schlüssel $TOKEN ist nicht eingetragen." "The key $TOKEN is not set up." >&2; exit 1; }
   REST=()
@@ -167,8 +171,7 @@ if [ -n "$UNINSTALL" ]; then
   [[ ${#TOKENS[@]} -eq 0 && -z "$SET_BROWSERS" ]] \
     || { t "--uninstall nimmt keine weiteren Angaben. Für einen einzelnen Schlüssel ./install.sh --remove <Schlüssel> ausführen." \
            "--uninstall takes no further arguments. To remove a single key, run ./install.sh --remove <key>." >&2; exit 1; }
-  # Erreicht qdbus KWin nicht, bricht das Skript hier ab, bevor etwas entfernt ist.
-  "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces >/dev/null
+  check_kwin
   INSTALLED=""
   kpackagetool6 --type=KWin/Script -s helium-workspaces >/dev/null 2>&1 && INSTALLED=1
   kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token --delete
@@ -203,6 +206,11 @@ BROWSERS="$(printf '%s' "$BROWSERS" | tr -d '[:space:]' | tr '[:upper:]' '[:lowe
 [[ -z "$BROWSERS" || "$BROWSERS" =~ ^[a-z0-9._][a-z0-9._-]*(,[a-z0-9._][a-z0-9._-]*)*$ ]] \
   || { t "Ungültige Browserliste: $BROWSERS. Erwartet werden Fensterklassen mit Kommas dazwischen, z. B. helium,brave-browser." \
          "Invalid browser list: $BROWSERS. Expected window classes separated by commas, e.g. helium,brave-browser." >&2; exit 1; }
+if [ -n "$TOKEN" ]; then
+  TOKEN="$(clean_key "$TOKEN")"
+  [[ "$TOKEN" =~ ^[0-9a-f]{24}(,[0-9a-f]{24})*$ ]] || invalid_key
+fi
+check_kwin
 
 read_keys
 OLD="$(join_keys)"
@@ -217,17 +225,15 @@ if [ -z "$TOKEN" ]; then
   TOKEN="${TOKEN:-$OLD}"
   # Während der Frage kann native-host.sh einen Schlüssel eingetragen haben, der bleibt
   read_keys
+  TOKEN="$(clean_key "$TOKEN")"
+  [ -z "$TOKEN" ] || [[ "$TOKEN" =~ ^[0-9a-f]{24}(,[0-9a-f]{24})*$ ]] || invalid_key
 fi
 # Mehrere Schlüssel kommagetrennt, so gibt --update die eingetragenen weiter. Leer bleibt er
 # nur nach Enter ohne eingetragenen Schlüssel, dann schickt ihn die Erweiterung an native-host.sh.
-TOKEN="$(clean_key "$TOKEN")"
 if [ -n "$TOKEN" ]; then
-  [[ "$TOKEN" =~ ^[0-9a-f]{24}(,[0-9a-f]{24})*$ ]] || invalid_key
   IFS=, read -ra NEW <<< "$TOKEN"
   for k in "${NEW[@]}"; do has_key "$k" || KEYS+=("$k"); done
 fi
-# Überbleibsel älterer Versionen, die den Schlüssel als Datei abgelegt haben
-rm -f "$DIR/extension/token.js"
 
 # Erst nachsehen, ob das Paket da ist, damit ein Fehler beim Aktualisieren sichtbar bleibt,
 # statt in einem Installationsversuch mit irreführender Meldung zu enden
@@ -249,7 +255,10 @@ kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true
 "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces >/dev/null
 "$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null
 [ "$("$QDBUS" org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces)" = true ] \
-  || { t "KWin-Skript wurde nicht geladen" "KWin script was not loaded" >&2; exit 1; }
+  || { t "KWin-Skript wurde nicht geladen (Paket und kwinrc wurden bereits aktualisiert)." \
+         "KWin script was not loaded (package and kwinrc were already updated)." >&2; exit 1; }
+# Überbleibsel älterer Versionen, die den Schlüssel als Datei abgelegt haben
+rm -f "$DIR/extension/token.js"
 
 # native-host.sh bei jedem Browser anmelden, den es auf diesem Gerät gibt. Der Pfad zeigt in
 # dieses Repository, ein erneuter Aufruf (auch --update) schreibt ihn neu. Sonderzeichen im

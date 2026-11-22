@@ -38,7 +38,7 @@ function which(name) {
 }
 
 // installed: ob kpackagetool6 -s das Paket findet, updateError: Fehlermeldung, mit der -u trotzdem
-// scheitert, dbus: ob qdbus6 KWin erreicht,
+// scheitert, dbus: ob qdbus6 KWin erreicht, loaded: ob isScriptLoaded true liefert,
 // token: was kreadconfig6 als eingetragenen Schlüssel liefert, setup(dir): vorbereiten,
 // gibt den Pfad des auszuführenden install.sh zurück, profiles: Pfad unter ~/.config → Inhalt
 // der Preferences-Datei dort, input: was auf die Frage nach dem Schlüssel eingetippt wird,
@@ -46,7 +46,7 @@ function which(name) {
 // das Ergebnis steht in checked, qdbus: unter welchem Namen es qdbus gibt (null: gar nicht),
 // missing: Programme, die fehlen. Mit einem der beiden sieht install.sh nur die nachgebildeten
 // Befehle und die echten aus SYSTEM_TOOLS, damit echte KDE-Programme den Test nicht stören.
-function run(args, { installed = true, updateError = '', dbus = true, token = '', tokenLater, setup, check, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' }, qdbus = 'qdbus6', missing = [] } = {}) {
+function run(args, { installed = true, updateError = '', dbus = true, loaded = true, token = '', tokenLater, setup, check, profiles = {}, input = '', env: lang = { LANG: 'de_DE.UTF-8' }, qdbus = 'qdbus6', missing = [] } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-install-'));
   const home = path.join(dir, 'home');
   for (const [p, content] of Object.entries(profiles)) {
@@ -60,7 +60,7 @@ function run(args, { installed = true, updateError = '', dbus = true, token = ''
   const fake = (name, body) =>
     missing.includes(name) ||
     fs.writeFileSync(path.join(bin, name), `#!/bin/bash\necho "${name} $*" >> "${log}"\n${body}\n`, { mode: 0o755 });
-  if (qdbus) fake(qdbus, dbus ? 'echo true' : 'echo "Could not connect to D-Bus server" >&2; exit 1');
+  if (qdbus) fake(qdbus, !dbus ? 'echo "Could not connect to D-Bus server" >&2; exit 1' : loaded ? 'echo true' : 'echo false');
   // Wie das echte kpackagetool6: -u scheitert, solange das Paket nicht installiert ist,
   // mit updateError auch bei installiertem Paket, etwa wegen fehlender Rechte
   const update = updateError ? `echo "${updateError}" >&2; exit 4` : `exit ${installed ? 0 : 1}`;
@@ -241,7 +241,7 @@ test('--update holt den neuen Stand und richtet ihn mit dem eingetragenen Schlü
 test('--update ändert nichts, wenn git pull nicht vorspulen kann', () => {
   const r = run(['--update'], { token: TOKEN, setup: (dir) => repos(dir, { diverge: true }) });
   assert.notEqual(r.status, 0);
-  assert.ok(!r.calls.some((c) => !c.startsWith('kreadconfig6')), r.calls.join('\n'));
+  assert.deepEqual(r.calls, [PROBE, READ_TOKEN]);
   assert.doesNotMatch(r.stdout, /Neu laden/);
 });
 
@@ -249,7 +249,28 @@ test('--update bricht ohne eingetragenen Schlüssel vor git pull ab', () => {
   const r = run(['--update'], { setup: (dir) => repos(dir) });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /Noch kein Schlüssel eingetragen/);
-  assert.deepEqual(r.calls, ['kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token']);
+  assert.deepEqual(r.calls, [PROBE, READ_TOKEN]);
+});
+
+test('--update zieht keinen neuen Stand und ändert nichts, wenn KWin nicht erreichbar ist (#235)', () => {
+  let local;
+  let headBefore;
+  const r = run(['--update'], {
+    token: TOKEN,
+    dbus: false,
+    setup: (dir) => {
+      const script = repos(dir);
+      local = path.dirname(script);
+      headBefore = git(local, 'rev-parse', 'HEAD');
+      return script;
+    },
+    check: () => git(local, 'rev-parse', 'HEAD'),
+  });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /D-Bus/);
+  assert.deepEqual(r.calls, [PROBE]);
+  assert.equal(r.checked, headBefore, 'git pull lief trotz unerreichbarem KWin');
+  assert.doesNotMatch(r.stdout, /Neu laden/);
 });
 
 test('--update nimmt keinen Schlüssel und keine Browserliste dazu', () => {
@@ -288,7 +309,7 @@ test('Ohne qdbus6 nimmt install.sh qdbus-qt6 bzw. qdbus (#123)', () => {
   for (const qdbus of ['qdbus-qt6', 'qdbus']) {
     const r = run([TOKEN], { qdbus });
     assert.equal(r.status, 0, r.stderr);
-    assert.deepEqual(r.calls.filter((c) => c.startsWith('qdbus')), ENABLE_AND_RELOAD.slice(1).map((c) => c.replace('qdbus6', qdbus)));
+    assert.deepEqual(r.calls.filter((c) => c.startsWith('qdbus')), [PROBE, ...ENABLE_AND_RELOAD.slice(1)].map((c) => c.replace('qdbus6', qdbus)));
     assert.equal(r.stdout, DONE_DE);
 
     const removed = uninstall({ qdbus });
@@ -512,6 +533,7 @@ test('Ein ungültiger Schlüssel bricht ab, bevor etwas eingetragen ist', () => 
   assert.equal(written(r), undefined);
 });
 
+const PROBE = 'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces';
 const READ_TOKEN = 'kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token';
 // Ob das Paket schon installiert ist, entscheidet zwischen -u und -i (#163)
 const SHOW = 'kpackagetool6 --type=KWin/Script -s helium-workspaces';
@@ -520,7 +542,7 @@ const ENABLE_AND_RELOAD = [
   'kwriteconfig6 --file kwinrc --group Plugins --key helium-workspacesEnabled true',
   'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript helium-workspaces',
   'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start',
-  'qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded helium-workspaces',
+  PROBE,
 ];
 const writeToken = (token) => `kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key token ${token}`;
 const writeBrowsers = (list) => `kwriteconfig6 --file kwinrc --group Script-helium-workspaces --key browsers ${list}`;
@@ -542,6 +564,7 @@ test('Erstinstallation: installiert das Paket, trägt den Schlüssel ein und lä
   assert.equal(r.status, 0, r.stderr);
   const kwin = path.join(r.dir, 'repo', 'kwin');
   assert.deepEqual(r.calls, [
+    PROBE,
     READ_TOKEN,
     SHOW,
     `kpackagetool6 --type=KWin/Script -i ${kwin}`,
@@ -557,6 +580,7 @@ test('Erneute Installation: Enter an der Frage behält den eingetragenen Schlüs
   assert.equal(r.status, 0, r.stderr);
   // Nach der Frage noch einmal gelesen, falls native-host.sh inzwischen einen Schlüssel eingetragen hat
   assert.deepEqual(r.calls, [
+    PROBE,
     READ_TOKEN,
     READ_TOKEN,
     SHOW,
@@ -567,10 +591,54 @@ test('Erneute Installation: Enter an der Frage behält den eingetragenen Schlüs
 });
 
 test('Scheitert das Aktualisieren, bricht install.sh mit der Meldung von kpackagetool6 ab, ohne zu installieren (#163)', () => {
-  const r = run([TOKEN], { updateError: 'Error: Permission denied' });
+  const r = run([TOKEN], { updateError: 'Error: Permission denied', setup: copy, check: tokenFile });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /Error: Permission denied/);
-  assert.deepEqual(r.calls, [READ_TOKEN, SHOW, `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`]);
+  assert.deepEqual(r.calls, [PROBE, READ_TOKEN, SHOW, `kpackagetool6 --type=KWin/Script -u ${path.join(r.dir, 'repo', 'kwin')}`]);
+  assert.equal(r.checked, true, 'extension/token.js schon entfernt');
+});
+
+test('Installation ändert nichts, wenn KWin nicht erreichbar ist (#235)', () => {
+  for (const [args, input] of [
+    [[OTHER], ''],
+    [['--browsers', 'helium', OTHER], ''],
+    [[], `${OTHER}\n`],
+  ]) {
+    const r = run(args, {
+      token: TOKEN,
+      dbus: false,
+      input,
+      profiles: { 'net.imput.helium/Default': prefs(1) },
+      setup: copy,
+      check: (dir) => ({ tokenJs: tokenFile(dir), hosts: hostsIn(dir) }),
+    });
+    assert.notEqual(r.status, 0, JSON.stringify(args));
+    assert.match(r.stderr, /D-Bus/, JSON.stringify(args));
+    assert.equal(r.stdout, '', JSON.stringify(args));
+    assert.deepEqual(r.calls, [PROBE], JSON.stringify(args));
+    assert.deepEqual(r.checked, { tokenJs: true, hosts: {} }, JSON.stringify(args));
+  }
+});
+
+test('Bleibt isScriptLoaded nach dem Start false, nennt der Fehler die schon geschriebenen Teiländerungen (#235)', () => {
+  for (const [env, expected] of [
+    [{ LANG: 'de_DE.UTF-8' }, /KWin-Skript wurde nicht geladen \(Paket und kwinrc wurden bereits aktualisiert\)\./],
+    [{ LANG: 'en_US.UTF-8' }, /KWin script was not loaded \(package and kwinrc were already updated\)\./],
+  ]) {
+    const r = run([TOKEN], { installed: false, loaded: false, env, setup: copy, check: tokenFile });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, expected);
+    // Vorprüfung lief durch (exit 0 trotz false), erst die abschließende Prüfung scheiterte
+    assert.deepEqual(r.calls, [
+      PROBE,
+      READ_TOKEN,
+      SHOW,
+      `kpackagetool6 --type=KWin/Script -i ${path.join(r.dir, 'repo', 'kwin')}`,
+      writeToken(TOKEN),
+      ...ENABLE_AND_RELOAD,
+    ]);
+    assert.equal(r.checked, true, 'extension/token.js vor dem Laden entfernt');
+  }
 });
 
 // Ein zweiter Browser bzw. ein zweites Profil mit eigenem Schlüssel (#155)
@@ -662,7 +730,7 @@ test('--remove ändert nichts bei einem fremden oder ungültigen Schlüssel, ohn
 test('Enter ohne eingetragenen Schlüssel installiert ohne Schlüssel, die Erweiterung trägt ihn dann ein', () => {
   const r = run([], { input: '\n', installed: false });
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(r.calls, [READ_TOKEN, READ_TOKEN, SHOW, `kpackagetool6 --type=KWin/Script -i ${ROOT}/kwin`, ...ENABLE_AND_RELOAD]);
+  assert.deepEqual(r.calls, [PROBE, READ_TOKEN, READ_TOKEN, SHOW, `kpackagetool6 --type=KWin/Script -i ${ROOT}/kwin`, ...ENABLE_AND_RELOAD]);
   assert.equal(r.stdout, `Noch kein Schlüssel eingetragen. Die Erweiterung trägt ihn selbst ein, sobald du ihr Popup öffnest.\n` +
     `Sonst im Popup unter "Schlüssel für install.sh" auf Kopieren klicken und den Befehl hier ausführen.\n${DONE_DE}`);
 });
@@ -709,7 +777,7 @@ test('Ein ungültiger Schlüssel als Argument ändert nichts, auch nicht token.j
   const r = run(['0123456789ABCDEF01234567'], { token: TOKEN, setup: copy, check: tokenFile });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /Ungültiger Schlüssel/);
-  assert.deepEqual(r.calls, [READ_TOKEN]);
+  assert.deepEqual(r.calls, []);
   assert.equal(r.checked, true, 'extension/token.js schon entfernt');
 });
 
@@ -735,6 +803,7 @@ test('--browsers trägt die Liste nach dem Schlüssel ein, ohne Leerzeichen und 
     const r = run(args);
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(r.calls, [
+      PROBE,
       READ_TOKEN,
       SHOW,
       `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
@@ -756,6 +825,7 @@ test("--browsers '' stellt die Standardliste wieder her", () => {
     const r = run(args);
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(r.calls, [
+      PROBE,
       READ_TOKEN,
       SHOW,
       `kpackagetool6 --type=KWin/Script -u ${ROOT}/kwin`,
