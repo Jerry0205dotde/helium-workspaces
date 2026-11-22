@@ -843,3 +843,62 @@ test('Echter Chromium: 500 Workspaces zusammenführen und 501. anlegen werden ab
   assert.equal(res.reReplaceError, null);
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
+
+test('Echter Chromium: Unterbrochenes Zusammenführen übersteht Neuladen der Erweiterung ohne Verlust und Doppel (#234)', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 120000 }, async (t) => {
+  const { server, base } = await startServer();
+  const env = new Env(bin, base);
+  const b = env.browser;
+  t.after(async () => {
+    await b.kill();
+    server.close();
+    fs.rmSync(env.profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  });
+  await env.launch('last');
+  const st0 = await env.state();
+  await openTabs(env, st0.windows[0].id, ['a1']);
+  const file = await b.action('() => exportAll()');
+  file.workspaces[0].tabs.push(
+    { url: `${base}a2`, title: 'a2' },
+    { url: `${base}a3`, title: 'a3' },
+  );
+  file.pinned.push({ url: `${base}p1`, title: 'p1' });
+
+  // a2 wird noch angelegt, a3 hängt bis zum Neuladen (wie im Fehlerbericht #234)
+  await b.sw(`
+    const [text, holdUrl] = args;
+    const orig = chrome.tabs.create.bind(chrome.tabs);
+    let hit;
+    const held = new Promise((r) => (hit = r));
+    chrome.tabs.create = (opts) => {
+      if (opts?.url === holdUrl) {
+        hit();
+        return new Promise(() => {});
+      }
+      return orig(opts);
+    };
+    userAction(() => importExchange(text, 'merge'));
+    await held;
+  `, JSON.stringify(file), `${base}a3`);
+
+  b.sw('chrome.runtime.reload();').catch(() => {});
+  await b.attachWorker();
+
+  const after = await waitFor(async () => {
+    const exp = await b.action('() => exportAll()');
+    const st = await env.state();
+    const ws = st.workspaces[0];
+    const bWs = st.backup[ws.id] || {};
+    const { pendingFeed, pinnedLater } = await b.sw("return chrome.storage.local.get(['pendingFeed', 'pinnedLater']);");
+    const openUrls = st.windows[0].tabs.filter((x) => !x.pinned).map((x) => x.url);
+    assert.deepEqual(openUrls, ['a1', 'a2', 'a3'].map((n) => base + n));
+    assert.equal(pendingFeed, undefined);
+    assert.equal(pinnedLater, undefined);
+    assert.equal(bWs.later, undefined);
+    return { exp, bWs };
+  }, { timeout: 30000 });
+
+  assert.deepEqual(after.exp.workspaces[0].tabs.map((x) => x.url), ['a1', 'a2', 'a3'].map((n) => base + n));
+  assert.deepEqual(after.exp.pinned.map((x) => x.url), [`${base}p1`]);
+  assert.equal(after.bWs.failed, undefined);
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});

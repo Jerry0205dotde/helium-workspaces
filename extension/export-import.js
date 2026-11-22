@@ -12,7 +12,7 @@ async function collectAll() {
   const cfg = await getConfig();
   const s = await sess();
   const { stash, mains } = await scan();
-  const { backup, backupPinned } = await getBackup();
+  const { backup, backupPinned, pinnedLater } = await getBackup();
   const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
   const list = cfg.workspaces.map((ws) => {
     const { sw, showing } = windowsOf(ws.id, s, stash, mains);
@@ -33,9 +33,9 @@ async function collectAll() {
     };
   });
   // Angeheftete Tabs zählen wie in der Sicherung (pinnedOf), damit Export und Import
-  // denselben Bestand sehen. pinnedFirst: was addPinned beim Ergänzen schon im ersten Fenster vorfindet.
-  const pinnedOpen = (mains.length ? pinnedOf(mains, groups) : backupPinned).filter((e) => e.url);
-  const pinnedFirst = (mains.length ? pinnedOf(mains.slice(0, 1), groups) : backupPinned).filter((e) => e.url);
+  // denselben Bestand sehen. pinnedFirst: was der Import beim Ergänzen schon im ersten Fenster vorfindet.
+  const pinnedOpen = [...(mains.length ? pinnedOf(mains, groups) : backupPinned), ...pinnedLater].filter((e) => e.url);
+  const pinnedFirst = [...(mains.length ? pinnedOf(mains.slice(0, 1), groups) : backupPinned), ...pinnedLater].filter((e) => e.url);
   const pinnedFailed = list.flatMap((x) => x.pinnedFailed).filter((e) => e.url);
   return { cfg, mains, groups, list, pinned: [...pinnedOpen, ...pinnedFailed], pinnedOpen, pinnedFirst, pinnedFailed };
 }
@@ -128,7 +128,7 @@ function planImport(data, all, mode = 'merge') {
 }
 
 // Angeheftete Tabs, die der Import ergänzt. Eine Adresse fehlt, wenn die Datei sie öfter
-// enthält, als der Export sie zählt. Dann ergänzt addPinned sie im ersten Fenster, bis sie
+// enthält, als der Export sie zählt. Dann ergänzt der Import sie im ersten Fenster, bis sie
 // dort (mit den fehlgeschlagenen) so oft vorkommt wie in der Datei.
 function pinnedToAdd(list, all, mode) {
   const failed = mode === 'replace' ? [] : all.pinnedFailed;
@@ -284,11 +284,10 @@ async function arrangeAdopted(entries, win) {
 // Macht die übernommenen Fenster zu Fenstern der neuen Workspaces (ids wie data.workspaces).
 // Ein minimiertes Fenster wird wieder zur Ablage, etwa eine alte Ablage nach dem Umstieg;
 // ein sichtbares zeigt den Workspace. Die offenen Tabs bekommen Reihenfolge und Gruppen der
-// Datei (arrangeAdopted). Fehlende Tabs kommen hinten dazu, gruppierte in ihre Gruppe, die
-// über LOAD_AT_ONCE hinaus zurückgestellten nach und nach (#184).
+// Datei (arrangeAdopted). Fehlende Tabs werden in later vorgemerkt und danach über feedLater
+// angelegt (#184, #234).
 async function adoptWindows(data, ids, adopt, stamp) {
   const s = await sess();
-  let failed = 0;
   for (const [i, win] of adopt) {
     const id = ids[i];
     const imp = data.workspaces[i];
@@ -303,12 +302,8 @@ async function adoptWindows(data, ids, adopt, stamp) {
     }
     const add = await moving(() => arrangeAdopted(imp.tabs, win));
     if (!add.length) continue;
-    const r = await moving(() => recreate(importEntries(add, stamp, { from: imp.tabs, join: true }), win.id, false, true));
-    await keepFailed(id, r.failed);
-    await keepLater(id, r.later);
-    failed += r.failed.length;
+    await keepLater(id, importEntries(add, stamp, { from: imp.tabs, join: true }), 'saved');
   }
-  return failed;
 }
 
 // Berechnet den Stand, den exportAll() nach einem Import liefern würde, ohne etwas zu
@@ -421,21 +416,6 @@ function importEntries(tabs, stamp, { from = tabs, existing = [], join = false }
   });
 }
 
-// Angeheftete Tabs werden nur ergänzt, nie geschlossen.
-async function addPinned(list) {
-  if (!list.length) return { added: 0, failed: 0 };
-  const { mains } = await scan();
-  if (!mains.length) {
-    const { backupPinned } = await getBackup();
-    await chrome.storage.local.set({ backupPinned: [...backupPinned, ...list] });
-    return { added: list.length, failed: 0 };
-  }
-  const r = await moving(() => recreate(list, mains[0].id, true));
-  const ws = (await sess()).windowWs[mains[0].id] || (await getConfig()).lastWs;
-  await keepFailed(ws, asPinned(r.failed));
-  return { added: r.ids.length, failed: r.failed.length };
-}
-
 // Übernimmt eine Export-Datei. Die Datei wird vorher vollständig geprüft; ist sie
 // ungültig, ändert sich nichts. 'merge' legt fehlende Workspaces an und ergänzt
 // vorhandene, ohne etwas zu schließen. 'replace' legt alle Workspaces der Datei neu an
@@ -454,9 +434,12 @@ async function importExchange(text, mode, confirmed) {
   if (limitErr) throw new Error(limitErr);
   const stamp = `i${Date.now().toString(36)}`;
   const cfg = await getConfig();
-  const { backup } = await getBackup();
+  const { backup, pinnedLater } = await getBackup();
+  const nextPinned = [...pinnedLater, ...plan.pinnedAdd];
   const taken = new Set(cfg.workspaces.map((w) => w.id));
   const res = { created: 0, merged: 0, added: 0, skipped: 0, failed: 0, removed: 0, closed: 0, settings: 0 };
+  const mergedLive = new Map();
+  let adoptedIds = [];
 
   // Neuer Workspace, Tabs zunächst nur in der Sicherung. Die ID aus der Datei bleibt,
   // solange sie hier frei ist, damit ein späterer Import ihn wiedererkennt.
@@ -474,9 +457,10 @@ async function importExchange(text, mode, confirmed) {
   if (mode === 'replace') {
     const oldIds = cfg.workspaces.map((w) => w.id);
     const ids = data.workspaces.map(addWs);
-    await chrome.storage.local.set({ backup });
-    await saveWorkspaces(cfg.workspaces);
-    res.failed += await adoptWindows(data, ids, adopt, stamp);
+    adoptedIds = [...adopt.keys()].map((i) => ids[i]);
+    await chrome.storage.local.set({ backup, workspaces: cfg.workspaces, ...(plan.pinnedAdd.length ? { pinnedLater: nextPinned } : {}) });
+    await buildMenus();
+    await adoptWindows(data, ids, adopt, stamp);
     // Erst die übrigen Fenster zu einem neuen Workspace wechseln, den noch kein übernommenes
     // Fenster zeigt, dann die alten löschen. Ein minimiertes Fenster nur mit neuen
     // Tab-Seiten ist eine alte leere Ablage (Chromium ersetzt die Ablage-Seite der alten ID
@@ -512,33 +496,34 @@ async function importExchange(text, mode, confirmed) {
       res.skipped += m.imp.tabs.length - m.add.length;
       if (!m.add.length) continue;
       res.merged++;
-      if (!m.target.live) {
-        const b = (backup[m.target.ws.id] ??= { stash: [], shown: [] });
-        const existing = savedOf(b);
+      const b = (backup[m.target.ws.id] ??= { stash: [], shown: [] });
+      const existing = savedOf(b);
+      // Workspaces mit Fenster: vor dem Anlegen in later vormerken, damit feedLater() sie
+      // abgesichert nachlegt und ein Neustart oder Neuladen keinen Rest verliert (#234).
+      if (m.target.live) {
+        b.later = [...(b.later || []), ...importEntries(m.add, stamp, { from: m.imp.tabs, existing, join: true })];
+        mergedLive.set(m.target.ws.id, (mergedLive.get(m.target.ws.id) || 0) + m.add.length);
+      } else {
         b.stash = [...(b.stash || []), ...importEntries(m.add, stamp, { from: m.imp.tabs, existing })];
-        res.added += m.add.length;
       }
+      res.added += m.add.length;
     }
-    await chrome.storage.local.set({ backup });
-    await saveWorkspaces(cfg.workspaces);
-    // Workspaces mit Fenster: Tabs gleich dort anlegen, sonst ersetzt der nächste
-    // Snapshot die Sicherung wieder durch die lebenden Tabs.
-    for (const m of plan.merge) {
-      if (!m.target?.live || !m.add.length) continue;
-      const entries = importEntries(m.add, stamp, { from: m.imp.tabs, join: true });
-      const r = await moving(() => recreate(entries, m.target.window, false, true));
-      await keepFailed(m.target.ws.id, r.failed);
-      await keepLater(m.target.ws.id, r.later);
-      res.added += r.ids.length + r.later.length;
-      res.failed += r.failed.length;
-    }
+    await chrome.storage.local.set({ backup, workspaces: cfg.workspaces, ...(plan.pinnedAdd.length ? { pinnedLater: nextPinned } : {}) });
+    await buildMenus();
   }
-  const p = await addPinned(plan.pinnedAdd);
-  res.pinned = p.added;
-  res.failed += p.failed;
-  res.pinnedSkipped = data.pinned.length - plan.pinnedAdd.length;
   res.settings = await applySettings(data.settings);
   await updateAllIcons();
   await snapshot();
+  const fed = await feedLater();
+  for (const [ws, count] of mergedLive) {
+    const f = Math.min(fed.failed.get(ws) || 0, count);
+    res.added -= f;
+    res.failed += f;
+  }
+  for (const ws of adoptedIds) res.failed += fed.failed.get(ws) || 0;
+  const pinnedFailed = Math.min(fed.pinnedFailed, plan.pinnedAdd.length);
+  res.pinned = plan.pinnedAdd.length - pinnedFailed;
+  res.failed += pinnedFailed;
+  res.pinnedSkipped = data.pinned.length - plan.pinnedAdd.length;
   return res;
 }

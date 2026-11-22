@@ -135,7 +135,7 @@ async function reconcile() {
 
   // Ablage-Fenster, deren Ablage-Seite fehlt (z. B. weil die Erweiterung neu geladen
   // wurde und Chromium dabei ihre Seiten schließt), wieder zu Ablagen machen.
-  const { stashWins } = await chrome.storage.local.get('stashWins');
+  const { stashWins, pendingFeed: feeding } = await chrome.storage.local.get(['stashWins', 'pendingFeed']);
   if (stashWins) {
     let repaired = false;
     for (const w of mains) {
@@ -145,7 +145,8 @@ async function reconcile() {
       // geladen, damit das Fenster offen bleibt. Diese gehört nicht in den Workspace.
       const ids = new Set(rec.tabs);
       const blank = !ids.size && w.tabs.length && w.tabs.every(isNewTab);
-      if (!blank && !w.tabs.some((t) => ids.has(t.id))) continue;
+      const fed = feeding?.windowId === w.id && feeding.ws === rec.ws;
+      if (!blank && !fed && !w.tabs.some((t) => ids.has(t.id))) continue;
       await chrome.tabs.create({ windowId: w.id, url: `${STASH_PAGE}#${rec.ws}`, index: 0, pinned: true, active: true });
       if (blank) await chrome.tabs.remove(w.tabs.map((t) => t.id)).catch(() => {});
       repaired = true;
@@ -261,6 +262,7 @@ async function reconcile() {
   else if (starting && (await moving(() => repairFromBackup(cfg, s, stash, mains)))) changed = true;
   s.tabOrigin = {};
   await saveSess(s);
+  if (await resumeFeed()) changed = true;
 
   // Symbole der Tabs setzen onCreated und onAttached; neu sind sie nur bei Änderungen
   if (changed) await updateAllIcons();

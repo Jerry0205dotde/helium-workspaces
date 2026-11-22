@@ -113,7 +113,8 @@ async function snapshot(gone) {
   // Wechsel, Aufbau einer Ablage oder nach dem Start noch nicht abgeschlossen
   if (await getPending()) return;
   if (await getPendingStash()) return;
-  const { pendingFeed, pendingStart } = await chrome.storage.session.get(['pendingFeed', 'pendingStart']);
+  const { pendingStart } = await chrome.storage.session.get('pendingStart');
+  const { pendingFeed } = await chrome.storage.local.get('pendingFeed');
   if (pendingFeed || pendingStart) return; // feedInto, restoreStart
   const at = changes;
   const cfg = await getConfig();
@@ -187,9 +188,15 @@ async function snapshot(gone) {
 const EARLIER_KEEP = 3;
 
 async function keepEarlier() {
-  const { workspaces, backup, backupPinned, earlier = [] } = await chrome.storage.local.get(['workspaces', 'backup', 'backupPinned', 'earlier']);
+  const { workspaces, backup, backupPinned, pinnedLater, earlier = [] } = await chrome.storage.local.get([
+    'workspaces',
+    'backup',
+    'backupPinned',
+    'pinnedLater',
+    'earlier',
+  ]);
   if (!Array.isArray(workspaces) || !workspaces.length) return;
-  const state = { at: Date.now(), workspaces, backup: backup || {}, backupPinned: backupPinned || [] };
+  const state = { at: Date.now(), workspaces, backup: backup || {}, backupPinned: [...(backupPinned || []), ...(pinnedLater || [])] };
   const content = (e) => JSON.stringify({ ...earlierExchange(e), exported: null });
   if (earlier[0] && content(earlier[0]) === content(state)) return;
   await chrome.storage.local.set({ earlier: [state, ...earlier].slice(0, EARLIER_KEEP) });

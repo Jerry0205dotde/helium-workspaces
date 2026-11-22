@@ -1101,3 +1101,134 @@ test('updateWs übernimmt nur #rrggbb-Farben, der Export bleibt importierbar (#2
   await importFile(dst, file, 'replace', true);
   assert.equal(dst.b.local.data.workspaces[0].color, '#ABCDEF');
 });
+
+// ---------------------------------------------------------------- Unterbrochener Import (#234)
+
+test('Unterbrochenes Zusammenführen holt alle noch nicht angelegten Tabs samt Gruppe und angehefteten Tabs nach (#234)', async () => {
+  for (const kind of ['worker', 'reload']) {
+    const env = await setup({
+      pinned: ['p1'],
+      workspaces: {
+        A: ['a1', { url: 'a2', group: 'Mathe', color: 'blue' }],
+        B: ['b1'],
+      },
+    });
+    const { b, ids } = env;
+    const file = await request(env, { type: 'export' });
+    file.workspaces[0].groups.push({ id: 'n', title: 'Neu', color: 'green', collapsed: true });
+    file.workspaces[0].tabs.push(tab('a3', '1'), tab('a4', 'n'), tab('a5', 'n'));
+    file.workspaces[1].tabs.push(tab('b2'));
+    file.pinned.push(tab('p2'), tab('p3'));
+
+    // a3 wird noch angelegt, vor a4 endet der Service Worker oder die Erweiterung lädt neu
+    b.fail('tabs.create', { when: (o) => o.url === url('a4'), hang: true });
+    env.w.send({ type: 'import', mode: 'merge', text: JSON.stringify(file) });
+    await env.w.advance(100);
+    assert.ok(b.local.data.backup[ids.A].later?.length, `${kind}: later nicht vorgemerkt`);
+    assert.ok(b.local.data.pendingFeed, `${kind}: pendingFeed fehlt`);
+
+    if (kind === 'reload') b.reloadExtension();
+    else b.startWorker();
+    await b.worker.settle();
+
+    const expected = {
+      pinned: ['p1', 'p2', 'p3'],
+      A: [
+        'a1',
+        { url: 'a2', group: 'Mathe', color: 'blue' },
+        { url: 'a3', group: 'Mathe', color: 'blue' },
+        { url: 'a4', group: 'Neu', color: 'green', collapsed: true },
+        { url: 'a5', group: 'Neu', color: 'green', collapsed: true },
+      ],
+      B: ['b1', 'b2'],
+    };
+    check(env, expected);
+    assert.equal(b.local.data.backup[ids.A].later, undefined, kind);
+    assert.equal(b.local.data.backup[ids.B].later, undefined, kind);
+    assert.equal(b.local.data.pinnedLater, undefined, kind);
+    assert.equal(b.local.data.backup[ids.A].failed, undefined, kind);
+    const after = await request(env, { type: 'export' });
+    assert.deepEqual(after.workspaces[0].tabs.map((t) => t.url), ['a1', 'a2', 'a3', 'a4', 'a5'].map(url), kind);
+    assert.deepEqual(after.workspaces[1].tabs.map((t) => t.url), ['b1', 'b2'].map(url), kind);
+    assert.deepEqual(after.pinned.map((t) => t.url), ['p1', 'p2', 'p3'].map(url), kind);
+  }
+});
+
+test('Unterbrochenes Zusammenführen in eine leere Ablage übersteht das Neuladen der Erweiterung (#234)', async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  const { b } = env;
+  // b1 schließen, sodass die Ablage von B nur noch die Ablage-Seite enthält
+  await b.chrome.tabs.remove(where(env, 'b1').tab.id);
+  await env.w.settle();
+  const file = await request(env, { type: 'export' });
+  file.workspaces[1].tabs.push(tab('b2'), tab('b3'));
+
+  b.fail('tabs.create', { when: (o) => o.url === url('b3'), hang: true });
+  env.w.send({ type: 'import', mode: 'merge', text: JSON.stringify(file) });
+  await env.w.advance(100);
+  b.reloadExtension();
+  await b.worker.settle();
+
+  check(env, { A: ['a1'], B: ['b2', 'b3'], pinned: [] });
+  assert.equal(where(env, 'b2').stash, true);
+  assert.equal(where(env, 'b3').stash, true);
+});
+
+test('Unterbrochenes Ersetzen im übernommenen Fenster und bei angehefteten Tabs holt den Rest ohne Doppel nach (#234)', async () => {
+  for (const kind of ['worker', 'reload']) {
+    // 1. Übernommenes Fenster beim Ersetzen (3 von 5 Tabs schon offen)
+    const env = await setup({ pinned: ['p1'], workspaces: { A: ['a1', 'a2', 'a3'], B: ['b1'] } });
+    const { b } = env;
+    const file = await request(env, { type: 'export' });
+    file.workspaces[0].tabs.push(tab('a4'), tab('a5'));
+    b.fail('tabs.create', { when: (o) => o.url === url('a5'), hang: true });
+    env.w.send({ type: 'import', mode: 'replace', confirmed: true, text: JSON.stringify(file) });
+    await env.w.advance(100);
+    if (kind === 'reload') b.reloadExtension();
+    else b.startWorker();
+    await b.worker.settle();
+    check(envOf(b), { pinned: ['p1'], A: ['a1', 'a2', 'a3', 'a4', 'a5'], B: ['b1'] });
+
+    // 2. Angeheftete Tabs beim Zusammenführen
+    const env2 = await setup({ pinned: ['p1'], workspaces: { A: ['a1'] } });
+    const f2 = await request(env2, { type: 'export' });
+    f2.pinned.push(tab('p2'), tab('p3'));
+    env2.b.fail('tabs.create', { when: (o) => o.url === url('p3'), hang: true });
+    env2.w.send({ type: 'import', mode: 'merge', text: JSON.stringify(f2) });
+    await env2.w.advance(100);
+    if (kind === 'reload') env2.b.reloadExtension();
+    else env2.b.startWorker();
+    await env2.b.worker.settle();
+    check(env2, { pinned: ['p1', 'p2', 'p3'], A: ['a1'] });
+    assert.equal(env2.b.local.data.pinnedLater, undefined, kind);
+  }
+});
+
+test('Unterbrochenes Zusammenführen nach einem gescheiterten Tab und sofortiges Scheitern melden fehlgeschlagene richtig (#234)', async () => {
+  // 1. Sofortiges Scheitern beim Zusammenführen (normal + angeheftet) erscheint in res.failed und backup.failed
+  const env = await setup({ pinned: ['p1'], workspaces: { A: ['a1'] } });
+  const file = await request(env, { type: 'export' });
+  file.workspaces[0].tabs.push(tab('a2'), tab('a3'));
+  file.pinned.push(tab('p2'));
+  env.b.fail('tabs.create', { when: (o) => o.url === url('a3') });
+  env.b.fail('tabs.create', { when: (o) => o.url === url('p2') });
+  const res = await importFile(env, file, 'merge');
+  assert.deepEqual([res.added, res.pinned, res.failed], [1, 0, 2]);
+  assert.deepEqual(
+    env.b.local.data.backup[env.ids.A].failed.map((e) => [e.url, !!e.p]),
+    [[url('a3'), false], [url('p2'), true]],
+  );
+
+  // 2. Scheitern + Hängen + Neuladen: gescheiterter Tab landet in failed, der Rest wird angelegt
+  const env2 = await setup({ workspaces: { A: ['a1'] } });
+  const f2 = await request(env2, { type: 'export' });
+  f2.workspaces[0].tabs.push(tab('a2'), tab('a3'), tab('a4'));
+  env2.b.fail('tabs.create', { when: (o) => o.url === url('a2') });
+  env2.b.fail('tabs.create', { when: (o) => o.url === url('a4'), hang: true });
+  env2.w.send({ type: 'import', mode: 'merge', text: JSON.stringify(f2) });
+  await env2.w.advance(100);
+  env2.b.reloadExtension();
+  await env2.b.worker.settle();
+  check(env2, { A: ['a1', 'a3', 'a4'], pinned: [] });
+  assert.deepEqual(env2.b.local.data.backup[env2.ids.A].failed.map((e) => e.url), [url('a2')]);
+});

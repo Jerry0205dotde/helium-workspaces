@@ -91,7 +91,7 @@ async function resumeSwitch() {
   const resumed = (await resumeStash()) || started;
   const p = await getPending();
   if (!p) {
-    const fed = await resumeFeed();
+    const fed = !!(await resumeFeed());
     return (await resumeRetry()) || fed || resumed;
   }
   console.info('[workspaces] setze unterbrochenen Wechsel fort:', p.from, '→', p.to);
