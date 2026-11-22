@@ -281,7 +281,7 @@ chrome.runtime.onStartup.addListener(() =>
     await keepEarlier().catch((e) => console.warn('[workspaces] Früheren Stand nicht aufgehoben', e));
     // Fenster- und Tab-IDs gelten nur innerhalb einer Browsersitzung. Gelöschte
     // Workspaces lassen sich nur bis zum nächsten Browserstart zurückholen.
-    await chrome.storage.local.remove(['stashWins', 'stashMuted', 'deleted']);
+    await chrome.storage.local.remove(['stashWins', 'stashMuted', 'deleted', 'pendingFeed']);
     const { backupWindows } = await chrome.storage.local.get('backupWindows');
     if (backupWindows) await chrome.storage.local.set({ backupWindows: backupWindows.map(({ id, ...e }) => e) });
     await buildMenus();

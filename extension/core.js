@@ -121,8 +121,8 @@ const checkSession = () => sessionUsage().catch((e) => console.warn('[workspaces
 const savedOf = (b) => [...(b?.shown || []), ...(b?.stash || []), ...(b?.later || [])];
 
 async function getBackup() {
-  const { backup, backupPinned } = await chrome.storage.local.get(['backup', 'backupPinned']);
-  return { backup: backup || {}, backupPinned: backupPinned || [] };
+  const { backup, backupPinned, pinnedLater } = await chrome.storage.local.get(['backup', 'backupPinned', 'pinnedLater']);
+  return { backup: backup || {}, backupPinned: backupPinned || [], pinnedLater: pinnedLater || [] };
 }
 
 // ---------------------------------------------------------------- Ablauf

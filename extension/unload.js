@@ -172,10 +172,9 @@ async function replaceTabId(from, to) {
     delete s.tabOrigin[from];
   }
   await saveSess(s);
-  const keys = ['pendingSwitch', 'pendingFeed', 'pendingRetry', 'pendingStart', 'startCopies', 'startSeen', 'startNew', 'startFed'];
-  const { pendingSwitch: p, pendingFeed: f, pendingRetry: r, pendingStart: ps, startCopies, startSeen, startNew = {}, startFed = [] } = await chrome.storage.session.get(keys);
+  const keys = ['pendingSwitch', 'pendingRetry', 'pendingStart', 'startCopies', 'startSeen', 'startNew', 'startFed'];
+  const { pendingSwitch: p, pendingRetry: r, pendingStart: ps, startCopies, startSeen, startNew = {}, startFed = [] } = await chrome.storage.session.get(keys);
   if (p) await setPending({ ...p, oldTabs: p.oldTabs.map(swap) });
-  if (f) await chrome.storage.session.set({ pendingFeed: { ...f, known: f.known.map(swap) } });
   if (r) await chrome.storage.session.set({ pendingRetry: { ...r, open: r.open.map((x) => ({ ...x, id: swap(x.id) })) } });
   if (ps) await chrome.storage.session.set({ pendingStart: { ...ps, known: ps.known.map(swap), blank: swap(ps.blank) } });
   if (startCopies) {
@@ -186,6 +185,7 @@ async function replaceTabId(from, to) {
       startNew: Object.fromEntries(Object.entries(startNew).map(([id, at]) => [swap(+id), at])),
     });
   }
-  const { stashMuted } = await chrome.storage.local.get('stashMuted');
+  const { stashMuted, pendingFeed: f } = await chrome.storage.local.get(['stashMuted', 'pendingFeed']);
   if (stashMuted?.includes(from)) await chrome.storage.local.set({ stashMuted: stashMuted.map(swap) });
+  if (f?.known.includes(from)) await chrome.storage.local.set({ pendingFeed: { ...f, known: f.known.map(swap) } });
 }

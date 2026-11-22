@@ -91,7 +91,7 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
   assert.deepEqual(b.errors.map((e) => `${e.name}: ${e.error?.stack || e.error}`), [], 'Fehler in Ereignis-Listenern');
   assert.equal(b.session.data.pendingSwitch, undefined, 'ein Wechsel ist noch nicht abgeschlossen');
   assert.equal(b.session.data.pendingStash, undefined, 'eine Ablage ist noch nicht vollständig aufgebaut');
-  assert.equal(b.session.data.pendingFeed, undefined, 'zurückgestellte Tabs werden noch nachgelegt');
+  assert.equal(b.local.data.pendingFeed, undefined, 'zurückgestellte Tabs werden noch nachgelegt');
   assert.equal(b.session.data.pendingStart, undefined, 'der Aufbau nach dem Start ist noch nicht abgeschlossen');
   assert.equal(w.eval('switching'), 0, 'switching wurde nicht zurückgesetzt');
   // Die Erweiterung lädt nie eine Seite neu (Navigation per tabs.update mit url)
@@ -132,7 +132,7 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
   if (expected.pinned) {
     const main = b.mains()[0];
     if (main) assert.deepEqual(main.tabs.filter((t) => t.pinned).map((t) => t.url), expected.pinned.map(url), 'angeheftete Tabs');
-    assert.deepEqual(sortUrls((b.local.data.backupPinned || []).map((e) => e.url)), sortUrls(expected.pinned.map(url)), 'gesicherte angeheftete Tabs');
+    assert.deepEqual(sortUrls([...(b.local.data.backupPinned || []), ...(b.local.data.pinnedLater || [])].map((e) => e.url)), sortUrls(expected.pinned.map(url)), 'gesicherte angeheftete Tabs');
   }
 
   for (const [name, items] of Object.entries(expected)) {
