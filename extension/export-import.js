@@ -376,10 +376,17 @@ function projectImport(data, all, plan, mode, settings, extOrigin, adopt) {
   return buildExchange(list, pinned, extOrigin, { ...settings, ...data.settings });
 }
 
+// In Inkognito gibt es keine automatische Sicherung (getAutoBackup): Die Einstellung aus der
+// Datei weder als Änderung nennen noch übernehmen
+function noAutoBackupInIncognito(data) {
+  if (INCOGNITO) delete data.settings.autoBackup;
+}
+
 // Prüft die Datei und beschreibt, was Zusammenführen bzw. Ersetzen ändern würde.
 async function previewImport(text) {
   const extOrigin = chrome.runtime.getURL('');
   const data = parseExchange(text, extOrigin);
+  noAutoBackupInIncognito(data);
   await resumeSwitch();
   const all = await collectAll();
   const plan = planImport(data, all);
@@ -438,6 +445,7 @@ function importEntries(tabs, stamp, { from = tabs, existing = [], join = false }
 async function importExchange(text, mode, confirmed) {
   const extOrigin = chrome.runtime.getURL('');
   const data = parseExchange(text, extOrigin);
+  noAutoBackupInIncognito(data);
   if (mode !== 'merge' && mode !== 'replace') throw new Error(tr('importModeUnknown'));
   if (mode === 'replace' && !confirmed) throw new Error(tr('importReplaceUnconfirmed'));
   await resumeSwitch();

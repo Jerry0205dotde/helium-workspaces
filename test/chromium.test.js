@@ -1173,8 +1173,20 @@ test('Echter Chromium: Für Inkognito zugelassen, eigene Workspaces ohne Spuren 
   assert.deepEqual(reloaded.exp['B privat'].filter((u) => u.startsWith('about:blank#inc-')), ['about:blank#inc-b0']);
   untouched(await b.sw(PROFILE));
 
-  // Mit dem letzten Inkognito-Fenster endet die Sitzung, die nächste beginnt mit dem Profil
-  inc('for (const w of await chrome.windows.getAll()) chrome.windows.remove(w.id);').catch(() => {});
+  // Umbenennen erreicht auch den Titel der Ablage, den KWin liest
+  await inc("const A = (await getConfig()).workspaces.find((w) => w.name === 'A'); await userAction(() => updateWs(A.id, { name: 'A privat' }));");
+  await waitFor(async () => {
+    const r = await inc(STATE_INC);
+    assert.equal(r.wins.find((w) => w.tabs[0].startsWith(stash))?.title, `HWS-Ablage ${token} · A privat`);
+  });
+
+  // Eine Datei aus dem Profil mit automatischer Sicherung ändert in Inkognito daran nichts
+  const preview = await inc("return userAction(() => previewImport(JSON.stringify({ format: 'helium-workspaces', version: 1, settings: { autoBackup: 1 }, workspaces: [{ name: 'A privat', color: '#3b82f6', tabs: [] }] })));");
+  assert.equal(preview.settings.some((x) => x.changed), false, JSON.stringify(preview.settings));
+
+  // Schließen des Hauptfensters per X schließt auch die versteckte Ablage: Die Inkognito-Sitzung
+  // endet, die nächste beginnt mit dem Profil
+  inc('chrome.windows.remove((await scan()).mains[0].id);').catch(() => {});
   await waitFor(() => assert.rejects(inc('return 1;')));
   await openIncognito();
   const fresh = await inc(STATE_INC);
