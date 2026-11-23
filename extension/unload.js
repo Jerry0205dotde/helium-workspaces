@@ -75,12 +75,16 @@ async function restoredLoading() {
 
 // Chromium vergisst dabei die Stummschaltung, deshalb wird sie danach wieder gesetzt. Die
 // neue ID wird gleich nachgezogen, nicht erst über tabs.onReplaced: Eine Aktion, die schon
-// in serial() wartet, liefe sonst noch mit der alten.
+// in serial() wartet, liefe sonst noch mit der alten. Bis sie in stashWins steht, steht die
+// alte ID in 'discarding'. Lädt die Erweiterung in dieser Lücke neu, erkennt repairStashes
+// daran die Ablage, deren letzter gemerkter Tab gerade entladen wurde (#272).
 async function discard(t) {
   if (t.active || t.discarded || !t.url) return;
+  await chrome.storage.local.set({ discarding: t.id });
   const d = await chrome.tabs.discard(t.id).catch((e) => console.warn('[workspaces] Tab nicht entladbar:', t.url, e));
+  if (d && d.id !== t.id) await replaceTabId(t.id, d.id);
+  await chrome.storage.local.remove('discarding');
   if (!d) return;
-  if (d.id !== t.id) await replaceTabId(t.id, d.id);
   if (t.mutedInfo?.muted) await chrome.tabs.update(d.id, { muted: true }).catch(() => {});
 }
 
