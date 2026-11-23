@@ -202,8 +202,12 @@ async function scan() {
   return { stash, mains, dups };
 }
 
-const stashTabsOf = (win) => win.tabs.filter((t) => !isStashTab(t));
-const movableTabsOf = (win) => win.tabs.filter((t) => !t.pinned);
+// Die Tabs, die zu einem Workspace gehören: weder angeheftet noch die Ablage-Seite. Die
+// Ablage-Seite ist nicht angeheftet, weil Helium ab 0.22 angeheftete Tabs mit allen Fenstern
+// teilt: Sie stünde sonst in jedem Fenster, und jedes sähe wie die Ablage aus. Dafür legt
+// Helium die angehefteten Tabs auch in jede Ablage; die bleiben dort liegen (#265).
+const movableTabsOf = (win) => win.tabs.filter((t) => !t.pinned && !isStashTab(t));
+const stashTabsOf = movableTabsOf;
 
 // Ablage (sw) und Hauptfenster (showing), in denen die Tabs von wsId gerade liegen
 const windowsOf = (wsId, s, stash, mains) => ({

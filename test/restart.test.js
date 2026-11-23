@@ -449,7 +449,12 @@ test('Start ohne Sitzungswiederherstellung: zusammen wiederhergestellte Ablage-S
   await ok(env.w.request({ type: 'moveTab', tabId: blank.id, wsId: env.ids.D }));
   // Ablagen von U und D sowie die leere Ablage von S
   assert.equal(b.windows.filter((x) => b.stashOf(x)).length, 3);
-  // Wie im beobachteten Fall steht die Ablage-Seite von U im Startfenster vorn
+  // Wie in älteren Versionen sind die Ablage-Seiten angeheftet (#265). Wie im beobachteten
+  // Fall steht die von U im Startfenster vorn.
+  for (const x of b.windows) {
+    const page = x.tabs.find((t) => t.url.startsWith(`${b.origin}stash.html`));
+    if (page) await b.chrome.tabs.update(page.id, { pinned: true });
+  }
   const stashU = b.windows.find((x) => b.stashOf(x) === env.ids.U);
   b.windows = [stashU, ...b.windows.filter((x) => x !== stashU)];
   b.restart({ restore: 'none', keepPinned: true });

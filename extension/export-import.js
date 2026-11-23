@@ -167,6 +167,16 @@ function planAdopt(data, wins) {
 // Fenster, die übernommen werden können: Hauptfenster und Ablagen
 const adoptable = (all) => [...all.mains, ...all.stashes];
 
+// Eine alte leere Ablage, etwa nach dem Umstieg auf die feste ID (Chromium ersetzt die
+// Ablage-Seite der alten ID durch eine neue Tab-Seite): minimiert, ohne eigene Tabs außer
+// neuen Tab-Seiten. Angeheftete Tabs hat sie nur in Helium ab 0.22, das sie in jedes Fenster
+// legt (#265); sie gehen beim Schließen nicht verloren, weil ein anderes Fenster sie auch hat.
+function oldEmptyStash(w, wins) {
+  if (w.state !== 'minimized' || !movableTabsOf(w).every(isNewTab)) return false;
+  const elsewhere = new Set(wins.filter((x) => x !== w).flatMap((x) => x.tabs.filter((t) => t.pinned).map(urlOf)));
+  return w.tabs.every((t) => !t.pinned || elsewhere.has(urlOf(t)));
+}
+
 // Ein übernommenes Fenster, das danach den Workspace zeigt: weder Ablage noch minimiert
 const showsAdopted = (win) => win.state !== 'minimized' && !win.tabs.some(isStashTab);
 
@@ -309,7 +319,7 @@ async function adoptWindows(data, ids, adopt, stamp) {
     } else if (win.state === 'minimized') {
       delete s.windowWs[win.id];
       await saveSess(s);
-      await moving(() => chrome.tabs.create({ windowId: win.id, url: `${STASH_PAGE}#${id}`, index: 0, pinned: true, active: true }));
+      await moving(() => chrome.tabs.create({ windowId: win.id, url: `${STASH_PAGE}#${id}`, index: 0, active: true }));
     } else {
       s.windowWs[win.id] = id;
       await saveSess(s);
@@ -340,7 +350,14 @@ function projectImport(data, all, plan, mode, settings, extOrigin, adopt) {
     let target = data.workspaces.findIndex((_, i) => !shown.includes(i));
     if (target < 0) target = 0;
     const adopted = new Set(adopt.values());
-    const extraWins = all.mains.filter((w) => !adopted.has(w) && !(w.state === 'minimized' && w.tabs.every(isNewTab))).length;
+    // Wie in importExchange: Ein geschlossenes Fenster bürgt nicht für die übrigen
+    const rest = adoptable(all);
+    let extraWins = 0;
+    for (const w of all.mains) {
+      if (adopted.has(w)) continue;
+      if (oldEmptyStash(w, rest)) rest.splice(rest.indexOf(w), 1);
+      else extraWins++;
+    }
     list = data.workspaces.map((imp, i) => {
       const entries = [...importEntries(imp.tabs, 'i0')];
       const win = adopt.get(i);
@@ -484,15 +501,19 @@ async function importExchange(text, mode, confirmed) {
     await buildMenus();
     await adoptWindows(data, ids, adopt, stamp);
     // Erst die übrigen Fenster zu einem neuen Workspace wechseln, den noch kein übernommenes
-    // Fenster zeigt, dann die alten löschen. Ein minimiertes Fenster nur mit neuen
-    // Tab-Seiten ist eine alte leere Ablage (Chromium ersetzt die Ablage-Seite der alten ID
-    // dann durch eine neue Tab-Seite) und wird geschlossen.
+    // Fenster zeigt, dann die alten löschen. Eine alte leere Ablage wird geschlossen.
     const shown = [...adopt].filter(([, w]) => showsAdopted(w)).map(([i]) => ids[i]);
     const target = ids.find((id) => !shown.includes(id)) ?? ids[0];
     const taken = [...adopt.values()];
+    // Die neuen Tab-Seiten alter leerer Ablagen zählen nicht als geschlossene Tabs
+    let blanks = 0;
+    // Ein geschlossenes Fenster bürgt nicht mehr für die angehefteten Tabs der übrigen
+    const rest = adoptable(all);
     for (const w of all.mains) {
       if (taken.includes(w)) continue;
-      if (w.state === 'minimized' && w.tabs.every(isNewTab)) {
+      if (oldEmptyStash(w, rest)) {
+        rest.splice(rest.indexOf(w), 1);
+        blanks += movableTabsOf(w).length;
         const s = await sess();
         delete s.windowWs[w.id];
         delete s.prevWs[w.id];
@@ -508,7 +529,7 @@ async function importExchange(text, mode, confirmed) {
     await chrome.storage.local.set({ lastWs: shown[0] ?? target });
     res.removed = oldIds.length;
     res.kept = keptIn(adopt);
-    res.closed = all.list.reduce((n, x) => n + x.open, 0) - res.kept;
+    res.closed = all.list.reduce((n, x) => n + x.open, 0) - res.kept - blanks;
   } else {
     for (const m of plan.merge) {
       if (!m.target) {

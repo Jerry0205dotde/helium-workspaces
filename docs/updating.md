@@ -8,6 +8,10 @@ The two steps of a normal update are in the [README](../README.md#updating).
 
 When reloading, Chromium closes all pages of the extension, including the stash markers. The stash windows then show up in the taskbar briefly until the extension marks them again after one or two seconds. The tabs stay where they are.
 
+## Once: before updating to Helium 0.22
+
+Helium 0.22 and later shares pinned tabs between all windows. Older versions of the extension pinned the stash marker, which Helium then puts into every window, so stashes and switching break. Update the extension and reload it in `chrome://extensions` first, and update Helium afterwards. If Helium 0.22 already shows stash markers (`chrome-extension://…/stash.html#…`) as pinned tabs in every window, unpin and close them, then update and reload the extension. If workspaces are mixed up after that, import your export or the newest automatic backup with **Replace**.
+
 ## Once: switching to the fixed extension ID (from version 0.3.0)
 
 Up to version 0.2.23 the extension's ID depended on the path of its folder. Since 0.3.0 the `key` field in `manifest.json` fixes it. On the first reload after updating, the extension therefore gets the new ID `jchklfejnmfphkbcpnhdejmeoncejjbe` once, and Helium treats it as a newly installed extension with empty storage: workspaces, backup, settings and key are missing, and Chromium closes the stash pages. The tabs stay in their windows; the old stashes are now ordinary minimized windows. To get everything back:
