@@ -92,6 +92,7 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
   assert.equal(b.session.data.pendingSwitch, undefined, 'ein Wechsel ist noch nicht abgeschlossen');
   assert.equal(b.local.data.pendingStash, undefined, 'eine Ablage ist noch nicht vollständig aufgebaut');
   assert.equal(b.local.data.pendingMove, undefined, 'ein Tab-Transfer ist noch nicht abgeschlossen');
+  assert.equal(b.local.data.discarding, undefined, 'ein Entladen ist noch nicht abgeschlossen');
   // null schreibt feedInto zwischendurch, es gilt wie ein fehlender Eintrag
   assert.equal(b.local.data.pendingFeed ?? undefined, undefined, 'zurückgestellte Tabs werden noch nachgelegt');
   assert.equal(b.session.data.pendingStart, undefined, 'der Aufbau nach dem Start ist noch nicht abgeschlossen');

@@ -125,7 +125,7 @@ async function snapshot(gone) {
   if (await getPendingStash()) return;
   if (await getPendingMove()) return;
   const { pendingStart } = await chrome.storage.session.get('pendingStart');
-  const { pendingFeed } = await chrome.storage.local.get('pendingFeed');
+  const { pendingFeed, discarding } = await chrome.storage.local.get(['pendingFeed', 'discarding']);
   if (pendingFeed || pendingStart) return; // feedInto, restoreStart
   const at = changes;
   const cfg = await getConfig();
@@ -180,6 +180,8 @@ async function snapshot(gone) {
     await chrome.storage.session.set({ backupError: { since: backupError?.since ?? Date.now(), message: String(e?.message || e) } });
     throw e;
   }
+  // stashWins kennt jetzt die IDs nach dem Entladen (discard)
+  if (discarding !== undefined) await chrome.storage.local.remove('discarding');
   savedChanges = Math.max(savedChanges, at);
   savedUrls = new Map([...mains, ...stash.values()].flatMap((w) => w.tabs.map((t) => [t.id, urlOf(t) || ''])));
   for (let i = closedTabs.length - 1; i >= 0; i--) if (closedTabs[i].at <= savedChanges) closedTabs.splice(i, 1);
