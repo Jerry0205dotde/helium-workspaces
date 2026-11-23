@@ -6,7 +6,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { setup, ok, url, where, interruptEverywhere } = require('./harness');
+const { setup, check, ok, url, where, shows, interruptEverywhere } = require('./harness');
 
 const SPEC = {
   pinned: ['p1'],
@@ -40,15 +40,15 @@ const byName = (env) =>
     },
   });
 
+const MOVED = { ...ALL, A: SPEC.workspaces.A.slice(1), B: [...SPEC.workspaces.B, 'a1'] };
 everywhere('Tab verschieben', {
   make: () => setup(SPEC),
   act: (env) => env.w.send({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: env.ids.B }),
-  outcomes: {
-    unverändert: ALL,
-    verschoben: { ...ALL, A: SPEC.workspaces.A.slice(1), B: [...SPEC.workspaces.B, 'a1'] },
-  },
+  outcomes: { unverändert: ALL, verschoben: MOVED },
+  done: (env) => check(env, MOVED),
 }, { worker: '#268' });
 
+const MERGED = { ...ALL, A: [...SPEC.workspaces.A, 'a4', 'a5'], B: [...SPEC.workspaces.B, 'b3'], pinned: ['p1', 'p2'] };
 everywhere('Import mit Zusammenführen', {
   // Der eigene Export mit weiteren Tabs
   make: async () => {
@@ -60,14 +60,13 @@ everywhere('Import mit Zusammenführen', {
     return Object.assign(env, { text: JSON.stringify(file) });
   },
   act: (env) => env.w.send({ type: 'import', mode: 'merge', text: env.text }),
-  outcomes: {
-    unverändert: ALL,
-    zusammengeführt: { ...ALL, A: [...SPEC.workspaces.A, 'a4', 'a5'], B: [...SPEC.workspaces.B, 'b3'], pinned: ['p1', 'p2'] },
-  },
+  outcomes: { unverändert: ALL, zusammengeführt: MERGED },
+  done: (env) => check(env, MERGED),
 });
 
-// Ersetzen legt erst die neuen Workspaces an und löscht dann die alten: Abgebrochen bleiben
-// alte neben den neuen stehen, jeder mit all seinen Tabs. Gelöschte lassen sich zurückholen.
+// Ersetzen legt erst die neuen Workspaces auf einmal an und löscht dann die alten: Abgebrochen
+// bleiben alte neben allen neuen stehen, jeder mit all seinen Tabs. Gelöschte lassen sich
+// zurückholen.
 const REPLACEMENT = {
   X: ['x1', { url: 'x2', group: 'G', color: 'pink' }, { url: 'x3', group: 'G', color: 'pink' }],
   Y: ['y1'],
@@ -87,29 +86,32 @@ everywhere('Import mit Ersetzen', {
   outcomes: {
     unverändert: ALL,
     'ganz oder teilweise ersetzt': (env) => ({
-      ...Object.fromEntries(Object.entries({ ...SPEC.workspaces, ...REPLACEMENT }).filter(([n]) => n in env.ids)),
+      ...Object.fromEntries(Object.entries(SPEC.workspaces).filter(([n]) => n in env.ids)),
+      ...REPLACEMENT,
       pinned: ['p1', 'p9'],
     }),
   },
+  done: (env) => check(env, { ...REPLACEMENT, pinned: ['p1', 'p9'] }),
 }, { worker: '#271', reload: '#269, #270, #271' });
 
+const DELETED = { A: SPEC.workspaces.A, C: SPEC.workspaces.C, pinned: SPEC.pinned };
 // B hat eine Gruppe, die beim Löschen vor dem Schließen der Ablage aufgelöst wird
 everywhere('Workspace löschen', {
   make: () => setup(SPEC),
   act: (env) => env.w.send({ type: 'delete', wsId: env.ids.B }),
-  outcomes: {
-    unverändert: ALL,
-    gelöscht: { A: SPEC.workspaces.A, C: SPEC.workspaces.C, pinned: SPEC.pinned },
+  outcomes: { unverändert: ALL, gelöscht: DELETED },
+  done: (env) => {
+    assert.deepEqual(env.b.local.data.workspaces.map((x) => x.name), ['A', 'C']);
+    check(env, DELETED);
   },
 }, { worker: '#271', reload: '#271' });
 
+const LINKED = { ...ALL, B: [...SPEC.workspaces.B, 'l1'] };
 everywhere('Link in Workspace öffnen', {
   make: () => setup(SPEC),
   act: (env) => env.b.fire('contextMenus.onClicked', { menuItemId: `link:${env.ids.B}`, linkUrl: url('l1') }, where(env, 'a1').tab),
-  outcomes: {
-    unverändert: ALL,
-    geöffnet: { ...ALL, B: [...SPEC.workspaces.B, 'l1'] },
-  },
+  outcomes: { unverändert: ALL, geöffnet: LINKED },
+  done: (env) => check(env, LINKED),
 }, { worker: '#268' });
 
 // Der Wecker entlädt die Tabs der Ablagen. Sie bekommen dabei neue IDs (tabs.onReplaced).
@@ -122,6 +124,11 @@ everywhere('Ablagen entladen', {
   },
   act: (env) => env.b.fire('alarms.onAlarm', { name: 'unload' }),
   outcomes: { unverändert: ALL },
+  done: (env) => {
+    check(env, ALL);
+    const stashed = env.b.windows.filter((x) => env.b.stashOf(x)).flatMap((x) => x.tabs.slice(1));
+    assert.ok(stashed.length && stashed.every((t) => t.discarded), 'Tabs der Ablagen sind nicht entladen');
+  },
 }, { reload: '#272' });
 
 // Nach einem Start ohne Sitzungswiederherstellung liegt B nur in der Sicherung. Beim Wechsel
@@ -133,6 +140,7 @@ const BIG = {
     B: Array.from({ length: 8 }, (_, i) => (i >= 3 && i < 7 ? { url: `b${i + 1}`, group: 'Mathe', color: 'blue' } : `b${i + 1}`)),
   },
 };
+const BIG_ALL = { ...BIG.workspaces, pinned: BIG.pinned };
 everywhere('Wechsel mit Nachlegen aus der Sicherung', {
   make: async () => {
     const env = await setup(BIG);
@@ -141,5 +149,10 @@ everywhere('Wechsel mit Nachlegen aus der Sicherung', {
     return env;
   },
   act: (env) => env.w.send({ type: 'switch', windowId: env.b.mains()[0].id, wsId: env.ids.B }),
-  outcomes: { vollständig: { ...BIG.workspaces, pinned: BIG.pinned } },
+  outcomes: { vollständig: BIG_ALL },
+  done: (env) => {
+    assert.equal(shows(env, env.b.mains()[0].id), 'B');
+    assert.equal(env.b.local.data.backup[env.ids.B].later, undefined, 'Tabs sind noch zurückgestellt');
+    check(env, BIG_ALL);
+  },
 }, { reload: '#269, #270' });

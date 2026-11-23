@@ -125,6 +125,7 @@ class Browser {
     this.hostMode = 'ok';
     this.holdLoads = false;
     this.heldLoads = [];
+    this.pendingLoads = 0; // gemeldet, aber noch nicht zugestellt (loaded), settle() wartet darauf
     this.popupOpen = false;
     // Native-Messaging-Host (native-host.sh): null = nicht angemeldet, sonst
     // die Funktion, die eine Nachricht beantwortet. Was er bekommen hat, steht in nativeSent.
@@ -365,7 +366,9 @@ class Browser {
   loaded(t) {
     t.loading = true;
     if (this.holdLoads) return void this.heldLoads.push(t);
+    this.pendingLoads++;
     setImmediate(() => {
+      this.pendingLoads--;
       t.loading = false;
       for (const w of this.windows) {
         if (w.tabs.includes(t) && !t.discarded) this.fire('tabs.onUpdated', t.id, { status: 'complete' }, this.tabInfo(t, w));
@@ -981,7 +984,7 @@ class Browser {
   // Fehler und Aufrufliste. Spart den Aufbau, wenn ein Test denselben Stand oft braucht.
   clone() {
     const c = new Browser();
-    const own = new Set(['listeners', 'worker', 'chrome', 'local', 'session', 'faults', 'calls', 'errors', 'nativeHost']);
+    const own = new Set(['listeners', 'worker', 'chrome', 'local', 'session', 'faults', 'calls', 'errors', 'nativeHost', 'pendingLoads']);
     // In einem Aufruf, damit heldLoads dieselben Tabs enthält wie windows
     Object.assign(c, structuredClone(Object.fromEntries(Object.entries(this).filter(([k]) => !own.has(k)))));
     c.local.data = structuredClone(this.local.data);
@@ -1126,6 +1129,7 @@ class Worker {
         continue;
       }
       if (!next || next.t.at > end) {
+        if (this.browser.pendingLoads) continue; // Fertigladen kommt erst im nächsten Durchlauf
         if (end !== Infinity) this.browser.now = Math.max(this.browser.now, end);
         return;
       }

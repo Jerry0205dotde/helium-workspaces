@@ -220,9 +220,10 @@ function fillSession(b, share) {
 // übernimmt bei kind 'worker' ein neuer Worker (storage.session bleibt), bei 'reload' die neu
 // geladene Erweiterung (storage.session ist leer, reconcile.js). Nach dem Abgleich muss der
 // Bestand einem der Zustände in outcomes entsprechen ({ Name: Erwartung wie bei check() oder
-// Funktion env => Erwartung }), meist dem vor oder dem nach der Aktion. Endet die Aktion ohne
-// den n-ten Aufruf, ist jede Stelle geprüft. Gibt die Fehlschläge zurück, je einer pro Zeile.
-async function interruptEverywhere(kind, { make, act, outcomes, opts, max = 2000 }) {
+// Funktion env => Erwartung }), meist dem vor oder dem nach der Aktion; die Workspaces sind
+// dabei genau die der Erwartung. Endet die Aktion ohne den n-ten Aufruf, ist jede Stelle
+// geprüft, und done(env) prüft, dass sie ganz ausgeführt ist. Gibt die Fehlschläge zurück.
+async function interruptEverywhere(kind, { make, act, outcomes, done, opts, max = 2000 }) {
   const base = await make();
   const failures = [];
   for (let n = 1; n <= max; n++) {
@@ -233,23 +234,32 @@ async function interruptEverywhere(kind, { make, act, outcomes, opts, max = 2000
     const f = b.fail('*', { stop: true, after: n - 1 });
     act(env);
     await env.w.settle();
-    if (f.hits) {
-      if (kind === 'reload') b.reloadExtension();
-      else b.startWorker(null);
-      await b.worker.settle();
-    }
-    const errors = [];
-    for (const [name, expected] of Object.entries(outcomes)) {
+    if (!f.hits) {
       try {
-        check(env, typeof expected === 'function' ? expected(env) : expected, opts);
+        assert.ok(n > 1, 'die Aktion ruft keine Chrome-API auf');
+        done(env);
+      } catch (e) {
+        failures.push(`ohne Abbruch: ${e.message.split('\n')[0]}`);
+      }
+      return failures;
+    }
+    if (kind === 'reload') b.reloadExtension();
+    else b.startWorker(null);
+    await b.worker.settle();
+    const errors = [];
+    for (const [name, outcome] of Object.entries(outcomes)) {
+      const expected = typeof outcome === 'function' ? outcome(env) : outcome;
+      try {
+        const names = b.local.data.workspaces.map((x) => nameOf(env, x.id));
+        assert.deepEqual(names.sort(), Object.keys(expected).filter((k) => k !== 'pinned').sort(), 'Workspaces weichen ab');
+        check(env, expected, opts);
         errors.length = 0;
         break;
       } catch (e) {
         errors.push(`${name}: ${e.message.split('\n')[0]}`);
       }
     }
-    if (errors.length) failures.push(`${f.hits ? `${n}. Aufruf (${f.call})` : 'ohne Abbruch'}: ${errors.join(' | ')}`);
-    if (!f.hits) return failures;
+    if (errors.length) failures.push(`${n}. Aufruf (${f.call}): ${errors.join(' | ')}`);
   }
   throw new Error(`interruptEverywhere: nach ${max} Aufrufen noch nicht fertig`);
 }
