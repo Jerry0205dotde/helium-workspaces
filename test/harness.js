@@ -53,7 +53,7 @@ async function setup(spec) {
     await w.settle();
   }
   if (names.length > 1) await ok(w.request({ type: 'switch', windowId: win.id, wsId: ids[names[0]] }));
-  return { b, win: win.id, ids, get w() { return b.worker; } };
+  return { b, win: win.id, ids, get w() { return this.b.worker; } };
 }
 
 async function closeNewTabs(b, windowId) {
@@ -92,7 +92,8 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
   assert.equal(b.session.data.pendingSwitch, undefined, 'ein Wechsel ist noch nicht abgeschlossen');
   assert.equal(b.local.data.pendingStash, undefined, 'eine Ablage ist noch nicht vollständig aufgebaut');
   assert.equal(b.local.data.pendingMove, undefined, 'ein Tab-Transfer ist noch nicht abgeschlossen');
-  assert.equal(b.local.data.pendingFeed, undefined, 'zurückgestellte Tabs werden noch nachgelegt');
+  // null schreibt feedInto zwischendurch, es gilt wie ein fehlender Eintrag
+  assert.equal(b.local.data.pendingFeed ?? undefined, undefined, 'zurückgestellte Tabs werden noch nachgelegt');
   assert.equal(b.session.data.pendingStart, undefined, 'der Aufbau nach dem Start ist noch nicht abgeschlossen');
   assert.equal(w.eval('switching'), 0, 'switching wurde nicht zurückgesetzt');
   // Die Erweiterung lädt nie eine Seite neu (Navigation per tabs.update mit url). Nur die
@@ -213,4 +214,54 @@ function fillSession(b, share) {
   b.session.data.filler = 'x'.repeat(Math.max(0, n));
 }
 
-module.exports = { setup, check, ok, url, where, shows, tabIds, openTabs, closeNewTabs, fillSession, NEWTAB };
+// Bricht eine Aktion an jeder Stelle ab (#247). make() baut den Ausgangsstand einmal auf, für
+// n = 1, 2, … geht es von einer Kopie aus mit einem frisch geweckten Service Worker weiter.
+// act(env) startet die Aktion, beim n-ten chrome.*-Aufruf des Service Workers endet er. Danach
+// übernimmt bei kind 'worker' ein neuer Worker (storage.session bleibt), bei 'reload' die neu
+// geladene Erweiterung (storage.session ist leer, reconcile.js). Nach dem Abgleich muss der
+// Bestand einem der Zustände in outcomes entsprechen ({ Name: Erwartung wie bei check() oder
+// Funktion env => Erwartung }), meist dem vor oder dem nach der Aktion; die Workspaces sind
+// dabei genau die der Erwartung. Endet die Aktion ohne den n-ten Aufruf, ist jede Stelle
+// geprüft, und done(env) prüft, dass sie ganz ausgeführt ist. Gibt die Fehlschläge zurück.
+async function interruptEverywhere(kind, { make, act, outcomes, done, opts, max = 2000 }) {
+  const base = await make();
+  const failures = [];
+  for (let n = 1; n <= max; n++) {
+    // Wie base, aber mit der Kopie des Browsers. Getter wie w und ids lesen this.b.
+    const b = base.b.clone();
+    const env = Object.defineProperties({}, { ...Object.getOwnPropertyDescriptors(base), b: { value: b } });
+    await b.startWorker(null).settle();
+    const f = b.fail('*', { stop: true, after: n - 1 });
+    act(env);
+    await env.w.settle();
+    if (!f.hits) {
+      try {
+        assert.ok(n > 1, 'die Aktion ruft keine Chrome-API auf');
+        done(env);
+      } catch (e) {
+        failures.push(`ohne Abbruch: ${e.message.split('\n')[0]}`);
+      }
+      return failures;
+    }
+    if (kind === 'reload') b.reloadExtension();
+    else b.startWorker(null);
+    await b.worker.settle();
+    const errors = [];
+    for (const [name, outcome] of Object.entries(outcomes)) {
+      const expected = typeof outcome === 'function' ? outcome(env) : outcome;
+      try {
+        const names = b.local.data.workspaces.map((x) => nameOf(env, x.id));
+        assert.deepEqual(names.sort(), Object.keys(expected).filter((k) => k !== 'pinned').sort(), 'Workspaces weichen ab');
+        check(env, expected, opts);
+        errors.length = 0;
+        break;
+      } catch (e) {
+        errors.push(`${name}: ${e.message.split('\n')[0]}`);
+      }
+    }
+    if (errors.length) failures.push(`${n}. Aufruf (${f.call}): ${errors.join(' | ')}`);
+  }
+  throw new Error(`interruptEverywhere: nach ${max} Aufrufen noch nicht fertig`);
+}
+
+module.exports = { setup, check, ok, url, where, shows, tabIds, openTabs, closeNewTabs, fillSession, interruptEverywhere, NEWTAB };

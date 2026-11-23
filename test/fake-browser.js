@@ -125,6 +125,7 @@ class Browser {
     this.hostMode = 'ok';
     this.holdLoads = false;
     this.heldLoads = [];
+    this.pendingLoads = 0; // gemeldet, aber noch nicht zugestellt (loaded), settle() wartet darauf
     this.popupOpen = false;
     // Native-Messaging-Host (native-host.sh): null = nicht angemeldet, sonst
     // die Funktion, die eine Nachricht beantwortet. Was er bekommen hat, steht in nativeSent.
@@ -166,9 +167,11 @@ class Browser {
   // when(...args) wählt Aufrufe aus, after überspringt so viele passende Aufrufe,
   // times begrenzt die Zahl der Fehlschläge, hang lässt den Aufruf nie zurückkehren
   // (wie ein Service Worker, der mitten im Aufruf beendet wird), hold hält die Antwort
-  // (mit dem Stand beim Aufruf) zurück, bis der Test f.release() aufruft.
-  fail(name, { when = () => true, after = 0, times = 1, hang = false, hold = false, message } = {}) {
-    const f = { name, when, skip: after, left: times, hang, hold, message, hits: 0 };
+  // (mit dem Stand beim Aufruf) zurück, bis der Test f.release() aufruft. stop beendet den
+  // Service Worker beim Aufruf, bevor der Browser ihn ausführt. name '*' passt auf jeden
+  // Aufruf des Service Workers, f.call nennt den getroffenen.
+  fail(name, { when = () => true, after = 0, times = 1, hang = false, hold = false, stop = false, message } = {}) {
+    const f = { name, when, skip: after, left: times, hang, hold, stop, message, hits: 0 };
     this.faults.push(f);
     return f;
   }
@@ -181,15 +184,16 @@ class Browser {
     return f;
   }
 
-  matchFault(name, args) {
+  matchFault(name, args, owner) {
     for (const f of this.faults) {
-      if (f.name !== name || f.left <= 0 || !f.when(...args)) continue;
+      if ((f.name === '*' ? !owner : f.name !== name) || f.left <= 0 || !f.when(...args)) continue;
       if (f.skip > 0) {
         f.skip--;
         continue;
       }
       f.left--;
       f.hits++;
+      f.call = name;
       return f;
     }
     return null;
@@ -200,10 +204,11 @@ class Browser {
       await null;
       if (owner?.dead) return new Promise(() => {}); // ein beendeter Worker bekommt keine Antworten mehr
       this.calls.push({ name, args: clone(args) });
-      const f = this.matchFault(name, args);
+      const f = this.matchFault(name, args, owner);
       if (f?.run) f.run(...args);
       else if (f) {
-        if (f.hang) return new Promise(() => {});
+        if (f.stop) owner?.kill();
+        if (f.hang || f.stop) return new Promise(() => {});
         if (f.hold) {
           const v = clone(fn(...args));
           return new Promise((r) => (f.release = () => r(v)));
@@ -361,7 +366,9 @@ class Browser {
   loaded(t) {
     t.loading = true;
     if (this.holdLoads) return void this.heldLoads.push(t);
+    this.pendingLoads++;
     setImmediate(() => {
+      this.pendingLoads--;
       t.loading = false;
       for (const w of this.windows) {
         if (w.tabs.includes(t) && !t.discarded) this.fire('tabs.onUpdated', t.id, { status: 'complete' }, this.tabInfo(t, w));
@@ -973,6 +980,19 @@ class Browser {
 
   // ------------------------------------------------------------ Hilfen für Tests
 
+  // Kopie mit denselben Fenstern, Tabs und Speichern, aber ohne Service Worker, gezielte
+  // Fehler und Aufrufliste. Spart den Aufbau, wenn ein Test denselben Stand oft braucht.
+  clone() {
+    const c = new Browser();
+    const own = new Set(['listeners', 'worker', 'chrome', 'local', 'session', 'faults', 'calls', 'errors', 'nativeHost', 'pendingLoads']);
+    // In einem Aufruf, damit heldLoads dieselben Tabs enthält wie windows
+    Object.assign(c, structuredClone(Object.fromEntries(Object.entries(this).filter(([k]) => !own.has(k)))));
+    c.local.data = structuredClone(this.local.data);
+    c.session.data = structuredClone(this.session.data);
+    c.nativeHost = this.nativeHost;
+    return c;
+  }
+
   // Ablage-Workspace eines Fensters (ID hinter stash.html#) oder null
   stashOf(w) {
     const t = w.tabs.find((x) => x.url.startsWith(this.origin + 'stash.html'));
@@ -1109,6 +1129,7 @@ class Worker {
         continue;
       }
       if (!next || next.t.at > end) {
+        if (this.browser.pendingLoads) continue; // Fertigladen kommt erst im nächsten Durchlauf
         if (end !== Infinity) this.browser.now = Math.max(this.browser.now, end);
         return;
       }
