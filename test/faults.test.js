@@ -257,8 +257,9 @@ test('Eine Gruppe lässt sich nicht anlegen: Tabs werden aufbewahrt und als Grup
 
 // Endet der Worker, nachdem b1 angelegt ist, legt der nächste b2 und b3 an. Mit
 // api = 'tabGroups.update' endet er erst, wenn alle Tabs da sind und die Gruppe noch
-// ohne Titel und Farbe ist.
-async function killedWhileRestoring(api = 'tabs.create') {
+// ohne Titel und Farbe ist. reload: statt eines neuen Workers lädt die Erweiterung neu,
+// storage.session ist dann leer (#269).
+async function killedWhileRestoring(api = 'tabs.create', reload = false) {
   const env = await fromBackup();
   const { b } = env;
   const main = b.mains()[0].id;
@@ -267,7 +268,7 @@ async function killedWhileRestoring(api = 'tabs.create') {
   env.w.send({ type: 'switch', windowId: main, wsId: env.ids.B });
   await env.w.settle();
   assert.equal(b.session.data.pendingSwitch?.restoring, true);
-  const w = b.startWorker(null);
+  const w = reload ? b.reloadExtension() : b.startWorker(null);
   await w.settle();
   assert.equal(shows(env, main), 'B');
   return { env, main, w };
@@ -287,6 +288,32 @@ test('Service Worker endet beim Anlegen aus der Sicherung: die Gruppe bleibt gan
     await ok(w.request({ type: 'switch', windowId: main, wsId: env.ids.A }));
     check(env, ALL);
   }
+});
+
+test('Erweiterung lädt beim Anlegen aus der Sicherung neu: die angelegten Tabs gehören zum Ziel (#269)', async () => {
+  for (const api of ['tabs.create', 'tabGroups.update']) {
+    const { env, main, w } = await killedWhileRestoring(api, true);
+    check(env, ALL);
+    await ok(w.request({ type: 'switch', windowId: main, wsId: env.ids.A }));
+    check(env, ALL);
+  }
+});
+
+test('Erweiterung lädt neu, während die alten Tabs in die neue Ablage gehen: eine Ablage mit allen (#269)', async () => {
+  const env = await fromBackup();
+  const { b } = env;
+  const main = b.mains()[0].id;
+  // a1 ist schon in der neuen Ablage von A, die Gruppe mit a2 und a3 noch nicht
+  b.fail('tabGroups.move', { hang: true, when: (_, o) => o.windowId !== main });
+  env.w.send({ type: 'switch', windowId: main, wsId: env.ids.B });
+  await env.w.settle();
+  const w = b.reloadExtension();
+  await w.settle();
+  assert.equal(shows(env, main), 'B');
+  assert.deepEqual(b.mains().map((x) => x.id), [main], 'die angefangene Ablage ist ein Hauptfenster geworden');
+  check(env, ALL);
+  await ok(w.request({ type: 'switch', windowId: main, wsId: env.ids.A }));
+  check(env, ALL);
 });
 
 test('Service Worker endet beim Anlegen aus der Sicherung nach einem gescheiterten Tab: Zuordnung bleibt richtig (#148)', async () => {

@@ -77,7 +77,8 @@ function assignWindows(wins, s, cfg, entries, guessed = new Set()) {
 // Ablage-Fenster, deren Ablage-Seite fehlt (z. B. weil die Erweiterung neu geladen
 // wurde und Chromium dabei ihre Seiten schließt), wieder zu Ablagen machen.
 async function repairStashes() {
-  const { stashWins, pendingStash, pendingMove, pendingFeed: feeding, discarding } = await chrome.storage.local.get(['stashWins', 'pendingStash', 'pendingMove', 'pendingFeed', 'discarding']);
+  const keys = ['stashWins', 'pendingStash', 'pendingMove', 'pendingFeed', 'discarding', 'pendingSwitch'];
+  const { stashWins, pendingStash, pendingMove, pendingFeed: feeding, discarding, pendingSwitch } = await chrome.storage.local.get(keys);
   if (!stashWins && !pendingStash?.windowId && !pendingMove?.isStash) return false;
   const cfg = await getConfig();
   const s = await sess();
@@ -92,7 +93,9 @@ async function repairStashes() {
     // War die Ablage leer, hat Chromium statt ihrer Ablage-Seite eine neue Tab-Seite
     // geladen, damit das Fenster offen bleibt. Diese gehört nicht in den Workspace.
     const ids = new Set(rec.tabs);
-    const incoming = fromMove ? pendingMove.tabs : [];
+    // Tabs, die ein unterbrochener Transfer oder Wechsel (aus der Sicherung, #269) gerade
+    // in die Ablage bringt; stashWins kennt sie noch nicht
+    const incoming = [...(fromMove ? pendingMove.tabs : []), ...(pendingSwitch?.from === rec.ws ? pendingSwitch.oldTabs : [])];
     const blank = !ids.size && w.tabs.length && w.tabs.every((t) => isNewTab(t) && !incoming.includes(t.id));
     const fed = feeding?.windowId === w.id && feeding.ws === rec.ws;
     // Ein gemerkter Tab wurde gerade entladen und hat eine neue ID, die stashWins noch nicht kennt

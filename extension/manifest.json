@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqMkgKlnF6R+TL/90MPyGkjlhQfLcGDQJA9/FGf9dWhSKAVJ/oN/l7FwTDkNgAYJPXL5zlibA0Q9RRHwei6l3LvwU/siiFlenI0yCMeLz56XhyfY86+kqhJ6SphEOKczBBjH9wn7eqiG4XzhGA+rx+wVF76cprIQjwLvMGMnXwsB1nssLXLF1vZO8ZbMQDRjUTuI7f+QVCnZGn76OWy4GrgGglUdQJavaDL1QwFgiqueNAP89MMrFURgeJd9+IvF7EKFz0vgiD7a6fpfONUGSHxDz8muozjAQLz5MV8vDOD3OLgqdKjkbEvQcz+9H1s0KVzYdIP29a3iuHAn55aHWEwIDAQAB",
   "name": "__MSG_extName__",
-  "version": "0.3.26",
+  "version": "0.3.27",
   "minimum_chrome_version": "102",
   "description": "__MSG_extDescription__",
   "incognito": "split",

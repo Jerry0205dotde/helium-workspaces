@@ -176,9 +176,10 @@ async function replaceTabId(from, to) {
     delete s.tabOrigin[from];
   }
   await saveSess(s);
-  const keys = ['pendingSwitch', 'pendingRetry', 'pendingStart', 'startCopies', 'startSeen', 'startNew', 'startFed'];
-  const { pendingSwitch: p, pendingRetry: r, pendingStart: ps, startCopies, startSeen, startNew = {}, startFed = [] } = await chrome.storage.session.get(keys);
-  if (p) await setPending({ ...p, oldTabs: p.oldTabs.map(swap) });
+  const p = await getPending();
+  if (p?.oldTabs.includes(from)) await setPending({ ...p, oldTabs: p.oldTabs.map(swap) });
+  const keys = ['pendingRetry', 'pendingStart', 'startCopies', 'startSeen', 'startNew', 'startFed'];
+  const { pendingRetry: r, pendingStart: ps, startCopies, startSeen, startNew = {}, startFed = [] } = await chrome.storage.session.get(keys);
   if (r) await chrome.storage.session.set({ pendingRetry: { ...r, open: r.open.map((x) => ({ ...x, id: swap(x.id) })) } });
   if (ps) await chrome.storage.session.set({ pendingStart: { ...ps, known: ps.known.map(swap), blank: swap(ps.blank) } });
   if (startCopies) {

@@ -67,7 +67,7 @@ function startServer() {
 const STATE = `
   const wins = await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] });
   const groups = await chrome.tabGroups.query({});
-  const { workspaces, backup, token } = await chrome.storage.local.get(['workspaces', 'backup', 'token']);
+  const { workspaces, backup, token, pendingSwitch: kept } = await chrome.storage.local.get(['workspaces', 'backup', 'token', 'pendingSwitch']);
   const { windowWs, pendingSwitch } = await chrome.storage.session.get(['windowWs', 'pendingSwitch']);
   return {
     windows: wins.map((w) => ({
@@ -80,7 +80,7 @@ const STATE = `
     windowWs: windowWs || {},
     backup: backup || {},
     token,
-    pending: !!pendingSwitch,
+    pending: !!(pendingSwitch || kept),
   };`;
 
 class Env {
