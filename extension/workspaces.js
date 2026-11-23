@@ -69,14 +69,20 @@ async function deleteWs(id, batch = []) {
     const stash = stashTabsOf(w).map((t) => serTab(t, groups));
     backup[id] = { stash, shown: [], ...(failed?.length ? { failed } : {}), ...(later?.length ? { later: relink(later, stash) } : {}) };
     await chrome.storage.local.set({ backup });
-    const regroup = await ungroupAll(w);
-    // Nur ein schon geschlossenes Fenster gilt als Erfolg. Bliebe die Ablage offen, holte
-    // der nächste Abgleich sie als Workspace „Wiederhergestellt“ zurück.
-    await whenIdle(() => chrome.windows.remove(w.id)).catch(async (err) => {
-      if (GONE.test(err?.message || '')) return;
-      await regroup();
-      throw err;
-    });
+    // Bis die Ablage geschlossen ist, stehen ihre Gruppen in 'pendingDelete'. Bricht das
+    // Löschen dazwischen ab, legt resumeDelete sie wieder an (#271).
+    const regroup = await ungroupAll(w, (groups) => chrome.storage.local.set({ pendingDelete: { windowId: w.id, groups } }));
+    try {
+      // Nur ein schon geschlossenes Fenster gilt als Erfolg. Bliebe die Ablage offen, holte
+      // der nächste Abgleich sie als Workspace „Wiederhergestellt“ zurück.
+      await whenIdle(() => chrome.windows.remove(w.id)).catch(async (err) => {
+        if (GONE.test(err?.message || '')) return;
+        await regroup();
+        throw err;
+      });
+    } finally {
+      await chrome.storage.local.remove('pendingDelete');
+    }
   }
 
   batch.push({ ws: cfg.workspaces[idx], index: idx, backup: backup[id] || { stash: [], shown: [] } });
@@ -86,6 +92,22 @@ async function deleteWs(id, batch = []) {
   delete backup[id];
   await chrome.storage.local.set({ backup });
   if (cfg.lastWs === id) await chrome.storage.local.set({ lastWs: fallback });
+}
+
+// Wurde das Löschen nach dem Aufheben der Gruppen abgebrochen und steht die Ablage noch,
+// bekommt sie ihre Gruppen zurück. Der Workspace bleibt dann, wie er war.
+async function resumeDelete() {
+  const { pendingDelete: p } = await chrome.storage.local.get('pendingDelete');
+  if (!p) return false;
+  const w = (await chrome.windows.getAll({ populate: true })).find((x) => x.id === p.windowId);
+  if (w) {
+    console.info('[workspaces] lege Gruppen nach abgebrochenem Löschen wieder an');
+    const here = new Set(w.tabs.map((t) => t.id));
+    await regroup(w.id, p.groups.map((g) => ({ ...g, tabIds: g.tabIds.filter((id) => here.has(id)) })));
+  }
+  await chrome.storage.local.remove('pendingDelete');
+  // Solange der Vermerk stand, hat snapshot() nichts gesichert: Der Abgleich holt es nach
+  return true;
 }
 
 // Holt die zuletzt gelöschten Workspaces an ihren alten Platz zurück. Ihre Tabs stehen in

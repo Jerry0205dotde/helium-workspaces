@@ -196,6 +196,7 @@ async function feedLater() {
   const failed = new Map();
   if ((await getPending()) || (await getPendingStash()) || (await getPendingMove())) return { failed, pinnedFailed: 0 };
   if ((await chrome.storage.session.get('pendingStart')).pendingStart) return { failed, pinnedFailed: 0 }; // restoreStart setzt fort
+  if ((await chrome.storage.local.get('pendingDelete')).pendingDelete) return { failed, pinnedFailed: 0 }; // resumeDelete zuerst
   const addFailed = (ws, n) => n && failed.set(ws, (failed.get(ws) || 0) + n);
   let pinnedFailed = 0;
   let changed = false;
