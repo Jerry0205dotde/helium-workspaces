@@ -1031,3 +1031,51 @@ test('Echter Chromium: Nach der Erstinstallation übersteht die Erweiterung Been
   assert.ok(workspaces.some((w) => w.id === ws.id && w.name === 'Neu'), 'Workspace aus dem ersten Start fehlt');
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
+
+// Export über die Exportseite der echten Erweiterung (#243): „exportiert“ erst, wenn die Datei
+// gespeichert ist. Ein verweigerter Download meldet einen Fehler statt Erfolg.
+test('Echter Chromium: Export meldet Erfolg erst nach dem Speichern, einen verweigerten Download als Fehler (#243)', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 120000 }, async (t) => {
+  const { server, base } = await startServer();
+  const env = new Env(bin, base);
+  const b = env.browser;
+  t.after(async () => {
+    await b.kill();
+    server.close();
+    fs.rmSync(env.profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  });
+  await env.launch('last');
+  const lang = await b.sw('return chrome.i18n.getUILanguage();');
+  const msgs = messages(lang.startsWith('de') ? 'de' : 'en');
+  const page = `chrome-extension://${b.extId}/transfer.html`;
+  await b.sw('await chrome.tabs.create({ url: args[0] });', page);
+  const inPage = (expression) =>
+    b.withPage(page, async (s) => (await b.send('Runtime.evaluate', { expression, returnByValue: true }, s)).result.value);
+  await waitFor(async () => assert.equal(await inPage('document.readyState'), 'complete'));
+  // Klick auf Exportieren, dann warten, bis die Seite nicht mehr gesperrt ist
+  const exportNow = async () => {
+    await waitFor(async () => assert.equal(await inPage("document.getElementById('export').disabled"), false));
+    await inPage("document.getElementById('export').click()");
+    await waitFor(async () => assert.equal(await inPage("document.getElementById('export').disabled"), false));
+    return inPage("document.getElementById('export-result').textContent");
+  };
+  const downloads = path.join(env.profile, 'Downloads');
+  const files = () => (fs.existsSync(downloads) ? fs.readdirSync(downloads).filter((f) => f.endsWith('.json')) : []);
+  const failed = msgs.exportFailed.message.replace('$1', '');
+
+  // Verweigerter Download: keine Datei, und die Seite sagt das
+  await b.send('Browser.setDownloadBehavior', { behavior: 'deny' });
+  const denied = await exportNow();
+  assert.deepEqual(files(), []);
+  assert.ok(denied.startsWith(failed), `meldet trotz verweigertem Download: ${denied}`);
+
+  // Erlaubter Download: Die Datei liegt in Downloads, erst dann „exportiert“
+  await b.send('Browser.setDownloadBehavior', { behavior: 'default' });
+  const ok = await exportNow();
+  const [file] = files();
+  assert.ok(file, 'keine Datei in Downloads');
+  assert.match(file, /^helium-workspaces-\d{4}-\d\d-\d\d\.json$/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(downloads, file), 'utf8')).format, 'helium-workspaces');
+  const done = new RegExp(`^${msgs.exportDone.message.replace(/[.*+?()[\]\\]/g, '\\$&').replace(/\$\d/g, '.+')}$`);
+  assert.match(ok, done);
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});

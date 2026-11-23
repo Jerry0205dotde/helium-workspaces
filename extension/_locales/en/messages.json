@@ -419,6 +419,15 @@
   "exportFailed": {
     "message": "Export failed: $1"
   },
+  "exportStarted": {
+    "message": "Export started, waiting for the file to be saved …"
+  },
+  "exportCanceled": {
+    "message": "Saving was canceled, no file was created."
+  },
+  "exportInterrupted": {
+    "message": "The file was not saved ($1)."
+  },
   "exportNotImportable": {
     "message": "This file cannot be imported again as it is."
   },

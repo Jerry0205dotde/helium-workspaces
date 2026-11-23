@@ -48,6 +48,40 @@ async function run(statusText, fn) {
 
 // ---------------------------------------------------------------- Export
 
+// Speichert über chrome.downloads und kehrt erst zurück, wenn die Datei liegt (#243). Ein
+// abgebrochener Speicherdialog, ein verweigerter Download oder ein voller Datenträger werfen.
+function save(url, filename) {
+  return new Promise((resolve, reject) => {
+    let id;
+    const early = [];
+    const done = (fn, v) => {
+      chrome.downloads.onChanged.removeListener(changed);
+      fn(v);
+    };
+    const check = (d) => {
+      if (d.id !== id) return;
+      if (d.state?.current === 'complete') done(resolve);
+      else if (d.state?.current === 'interrupted') {
+        const why = d.error?.current;
+        done(reject, new Error(why === 'USER_CANCELED' ? tr('exportCanceled') : tr('exportInterrupted', why || '?')));
+      }
+    };
+    const changed = (d) => (id === undefined ? early.push(d) : check(d));
+    chrome.downloads.onChanged.addListener(changed);
+    chrome.downloads
+      .download({ url, filename })
+      .then(async (i) => {
+        id = i;
+        $('status').textContent = tr('exportStarted');
+        for (const d of early.splice(0)) check(d);
+        // Kann fertig sein, bevor download() antwortet
+        const [item] = await chrome.downloads.search({ id });
+        if (item) check({ id, state: { current: item.state }, error: { current: item.error } });
+      })
+      .catch((e) => done(reject, e));
+  });
+}
+
 $('export').addEventListener('click', () =>
   run(tr('exporting'), async () => {
     $('export-result').textContent = '';
@@ -56,14 +90,12 @@ $('export').addEventListener('click', () =>
     try {
       const data = await send({ type: 'export' });
       const json = formatExchange(data);
-      const blob = new Blob([json], { type: 'application/json' });
-      const a = el('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `helium-workspaces-${data.exported.slice(0, 10)}.json`;
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      const blob = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      try {
+        await save(blob, `helium-workspaces-${data.exported.slice(0, 10)}.json`);
+      } finally {
+        URL.revokeObjectURL(blob);
+      }
       const n = data.workspaces.reduce((s, w) => s + w.tabs.length, 0);
       const wss = plural(data.workspaces.length, 'workspaces');
       $('export-result').textContent = data.pinned.length
