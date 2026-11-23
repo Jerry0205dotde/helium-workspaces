@@ -46,7 +46,23 @@ everywhere('Tab verschieben', {
   act: (env) => env.w.send({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: env.ids.B }),
   outcomes: { unverändert: ALL, verschoben: MOVED },
   done: (env) => check(env, MOVED),
-}, { worker: '#268' });
+});
+
+// In den ersten 20 s nach einem Browserstart ergänzt der Abgleich Tabs, die laut Sicherung
+// fehlen (repairFromBackup). Ein verschobener Tab, den die Sicherung noch im alten Workspace
+// führt, darf dort nicht neu entstehen (#268).
+everywhere('Tab verschieben nach Browserstart', {
+  make: async () => {
+    const env = await setup(SPEC);
+    env.b.restart();
+    await env.b.startWorker('startup').settle();
+    assert.ok(env.b.now <= env.b.session.data.entriesUntil, 'Testfehler: der Start ist schon vorbei');
+    return env;
+  },
+  act: (env) => env.w.send({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: env.ids.B }),
+  outcomes: { unverändert: ALL, verschoben: MOVED },
+  done: (env) => check(env, MOVED),
+});
 
 const MERGED = { ...ALL, A: [...SPEC.workspaces.A, 'a4', 'a5'], B: [...SPEC.workspaces.B, 'b3'], pinned: ['p1', 'p2'] };
 everywhere('Import mit Zusammenführen', {
@@ -115,7 +131,7 @@ everywhere('Link in Workspace öffnen', {
   act: (env) => env.b.fire('contextMenus.onClicked', { menuItemId: `link:${env.ids.B}`, linkUrl: url('l1') }, where(env, 'a1').tab),
   outcomes: { unverändert: ALL, geöffnet: LINKED },
   done: (env) => check(env, LINKED),
-}, { worker: '#268' });
+});
 
 // Der Wecker entlädt die Tabs der Ablagen. Sie bekommen dabei neue IDs (tabs.onReplaced).
 everywhere('Ablagen entladen', {

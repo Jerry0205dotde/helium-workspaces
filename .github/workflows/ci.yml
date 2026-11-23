@@ -38,9 +38,12 @@ jobs:
       # Syntax, Manifest samt erhöhter Version und KWin-Metadaten (test/static.test.js), das Verhalten der
       # Hintergrundlogik mit nachgebildeten Chrome-APIs und dieselben Abläufe in Chrome.
       # Die Abdeckung im Log zeigt Zeilen der Hintergrundlogik, die kein Test ausführt (#246)
-      - run: node --test --experimental-test-coverage test/*.test.js
+      - run: node --test --experimental-test-coverage $(ls test/*.test.js | grep -v '/interrupt\.test\.js$')
         env:
           CHROME: ${{ steps.chrome.outputs.chrome-path }}
+      # Die Abbruchtests starten Tausende Service Worker in je eigenem Kontext. Mit Abdeckung hält V8
+      # die Daten jedes Kontexts fest, der Lauf brauchte über 2 GB und brach ab; ohne sind es 230 MB (#284)
+      - run: node --test test/interrupt.test.js
 
   # Ziel der Erweiterung ist Helium, das sich im Testaufbau anders verhalten kann als Chrome (#241).
   # Nur im wöchentlichen Lauf dieselben Browsertests gegen das aktuelle Helium-Release, damit ein

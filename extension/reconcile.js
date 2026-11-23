@@ -327,9 +327,12 @@ async function reconcile() {
   }
   // Hat Chromium die Sitzung nachträglich wiederhergestellt, enthält die Sicherung womöglich
   // schon die doppelten Tabs. repairFromBackup würde die geschlossenen Kopien dann als
-  // verloren ergänzen; der Snapshot am Ende bringt sie auf den Stand.
+  // verloren ergänzen; der Snapshot am Ende bringt sie auf den Stand. Steht noch eine
+  // Sicherung aus (snapshotDue), ist die alte veraltet: Ein verschobener Tab entstünde im
+  // alten Workspace neu. Der Snapshot am Ende holt sie nach (#268).
+  const { snapshotDue } = await chrome.storage.session.get('snapshotDue');
   if (await dropStartCopies(s, stash)) changed = true;
-  else if (starting && browserStart && (await moving(() => repairFromBackup(cfg, s, stash, mains)))) changed = true;
+  else if (starting && browserStart && !snapshotDue && (await moving(() => repairFromBackup(cfg, s, stash, mains)))) changed = true;
   s.tabOrigin = {};
   await saveSess(s);
   if (await resumeFeed()) changed = true;
@@ -338,7 +341,7 @@ async function reconcile() {
   if (changed) await updateAllIcons();
   await checkSession();
   // Endete der Service Worker mitten im Entladen, kennt stashWins die neue Tab-ID nicht (#272)
-  if (changed || (await chrome.storage.local.get('discarding')).discarding !== undefined) await snapshot();
+  if (changed || snapshotDue || (await chrome.storage.local.get('discarding')).discarding !== undefined) await snapshot();
   await feedLater();
   await syncMute();
 }
