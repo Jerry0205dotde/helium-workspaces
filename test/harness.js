@@ -100,6 +100,7 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
   // null schreibt feedInto zwischendurch, es gilt wie ein fehlender Eintrag
   assert.equal(b.local.data.pendingFeed ?? undefined, undefined, 'zurückgestellte Tabs werden noch nachgelegt');
   assert.equal(b.session.data.pendingStart, undefined, 'der Aufbau nach dem Start ist noch nicht abgeschlossen');
+  assert.equal(b.session.data.snapshotDue, undefined, 'eine Sicherung steht noch aus');
   assert.equal(w.eval('switching'), 0, 'switching wurde nicht zurückgesetzt');
   // Die Erweiterung lädt nie eine Seite neu (Navigation per tabs.update mit url). Nur die
   // Ablage-Seite darf auf einen anderen Workspace zeigen, sie hält keinen Inhalt (#248).

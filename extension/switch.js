@@ -341,6 +341,7 @@ async function moveTabToWs(tabId, wsId, group = false) {
     t.id === tabId || (group && tab.groupId >= 0 ? t.groupId === tab.groupId : tab.highlighted && t.highlighted);
   const ids = new Set(main.tabs.filter(picked).map((t) => t.id));
 
+  await markSnapshotDue();
   let failed = null;
   try {
     await moving(async () => {
@@ -456,6 +457,7 @@ async function openLinkInWs(url, wsId, fromWindowId) {
   const { mains } = await scan();
   const shows = mains.filter((w) => s.windowWs[w.id] === wsId);
   const shownIn = shows.find((w) => w.id === fromWindowId) || shows[0];
+  await markSnapshotDue();
   const tab = await moving(async () => {
     if (shownIn) return chrome.tabs.create({ windowId: shownIn.id, url, active: false });
     const st = await ensureStash(wsId, true);

@@ -54,6 +54,13 @@ async function refreshImage() {
   }
 }
 
+// Eine Aktion, die mit snapshot() endet, merkt das vorher in storage.session ('snapshotDue').
+// Endet der Service Worker, bevor die Sicherung geschrieben ist, holt der Abgleich beim
+// Start des nächsten sie nach (#268). Erst eine gelungene Sicherung löscht den Eintrag.
+async function markSnapshotDue() {
+  await chrome.storage.session.set({ snapshotDue: true });
+}
+
 function scheduleSnapshot() {
   changes++;
   refreshImage();
@@ -188,7 +195,7 @@ async function snapshot(gone) {
   for (let i = closedTabs.length - 1; i >= 0; i--) if (closedTabs[i].at <= savedChanges) closedTabs.splice(i, 1);
   // Während des Speicherns geschlossen: die Sicherung enthält ihn mit dieser Adresse
   for (const c of closedTabs) if (savedUrls.has(c.tabId)) c.url = savedUrls.get(c.tabId);
-  await chrome.storage.session.remove('backupError');
+  await chrome.storage.session.remove(['backupError', 'snapshotDue']);
 }
 
 // ---------------------------------------------------------------- Frühere Stände (#189)
