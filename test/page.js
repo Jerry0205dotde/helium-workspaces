@@ -105,7 +105,8 @@ class Chromium {
 
 // Ersetzt window.chrome in der Seite. Jeder Aufruf geht als JSON an __bridge (Node),
 // die Antwort kommt über __reply zurück. getManifest liefert manifest.json, i18n die deutschen Texte. window.close
-// schließt nicht, sondern merkt sich das.
+// schließt nicht, sondern merkt sich das. downloads.download speichert nichts, Zustand und Fehler
+// des Downloads legt page.download fest.
 const STUB = `(() => {
   const waiting = new Map();
   let seq = 0;
@@ -132,8 +133,15 @@ const STUB = `(() => {
       i18n: { getMessage: ${i18n.pageSource()} },
       tabs: api('tabs', ['query']),
       windows: api('windows', ['getCurrent', 'update', 'create']),
+      downloads: {
+        ...api('downloads', ['download', 'search']),
+        onChanged: { addListener: (l) => downloadListeners.add(l), removeListener: (l) => downloadListeners.delete(l) },
+      },
     },
   });
+  // Der Test meldet eine Änderung eines Downloads wie downloads.onChanged
+  const downloadListeners = new Set();
+  window.__downloadChanged = (delta) => downloadListeners.forEach((l) => l(delta));
   window.__closed = false;
   window.close = () => { window.__closed = true; };
 })();`;
@@ -152,6 +160,8 @@ class Page {
     this.calls = []; // alle anderen API-Aufrufe ('windows.create' usw.)
     this.outstanding = 0;
     this.overrides = {}; // Nachrichtentyp -> Funktion(msg), ersetzt die Hintergrundlogik
+    // Wie downloads.search einen Download meldet: 'complete', 'in_progress' oder 'interrupted' mit error
+    this.download = { state: 'complete' };
   }
 
   send(method, params) {
@@ -214,6 +224,10 @@ class Page {
         return { id: win };
       case 'tabs.query':
         return b.chrome.tabs.query(args[0]);
+      case 'downloads.download':
+        return this.calls.filter((c) => c.method === method).length;
+      case 'downloads.search':
+        return [{ id: args[0].id, error: undefined, ...this.download }];
       default:
         return undefined;
     }

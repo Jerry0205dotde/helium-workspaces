@@ -419,6 +419,15 @@
   "exportFailed": {
     "message": "Export fehlgeschlagen: $1"
   },
+  "exportStarted": {
+    "message": "Export gestartet, wartet auf das Speichern der Datei …"
+  },
+  "exportCanceled": {
+    "message": "Speichern abgebrochen, es wurde keine Datei angelegt."
+  },
+  "exportInterrupted": {
+    "message": "Die Datei wurde nicht gespeichert ($1)."
+  },
   "exportNotImportable": {
     "message": "Diese Datei lässt sich so nicht wieder importieren."
   },

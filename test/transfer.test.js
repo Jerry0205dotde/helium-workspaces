@@ -200,11 +200,51 @@ test('Export meldet, was gespeichert wurde', { skip }, async () => {
   const env = await setup({ pinned: ['p1'], workspaces: { A: ['a1'], B: ['b1', 'b2'] } });
   const p = await browser.open('transfer.html', env);
   try {
-    // Den Download selbst nicht speichern
-    await p.cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' });
     await p.click('#export');
     assert.deepEqual(p.sent.filter((m) => m.type === 'export').length, 1);
+    const [{ args: [{ url, filename }] }] = p.calls.filter((c) => c.method === 'downloads.download');
+    assert.match(filename, /^helium-workspaces-\d{4}-\d\d-\d\d\.json$/);
+    assert.match(url, /^blob:/);
     assert.equal(await p.text('#export-result'), '2 Workspaces mit 3 Tabs und 1 angeheftetem Tab exportiert.');
+    assert.equal(await p.text('#status'), '');
+    // Nach dem Speichern gibt die Seite die Adresse der Datei frei
+    assert.equal(await p.eval(`fetch(${JSON.stringify(url)}).then(() => 'da', () => 'frei')`), 'frei');
+  } finally {
+    await p.close();
+  }
+});
+
+// Nur ein gespeicherter Download gilt als Export (#243)
+test('Abgebrochener oder gescheiterter Download meldet keinen Erfolg, ein offener Speicherdialog wartet', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1', 'b2'] } });
+  const p = await browser.open('transfer.html', env);
+  try {
+    p.download = { state: 'interrupted', error: 'USER_CANCELED' };
+    await p.click('#export');
+    assert.equal(await p.text('#export-result'), 'Export fehlgeschlagen: Speichern abgebrochen, es wurde keine Datei angelegt.');
+
+    p.download = { state: 'interrupted', error: 'FILE_NO_SPACE' };
+    await p.click('#export');
+    assert.equal(await p.text('#export-result'), 'Export fehlgeschlagen: Die Datei wurde nicht gespeichert (FILE_NO_SPACE).');
+
+    // Solange der Speicherdialog offen ist, bleibt der Export offen und die Seite gesperrt
+    p.download = { state: 'in_progress' };
+    await p.eval("document.getElementById('export').click()");
+    const started = 'Export gestartet, wartet auf das Speichern der Datei …';
+    for (let i = 0; (await p.text('#status')) !== started; i++) {
+      if (i > 200) throw new Error(`Status: ${await p.text('#status')}`);
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.equal(await p.text('#export-result'), '');
+    assert.equal(await p.eval("document.getElementById('export').disabled"), true);
+    // Ein Ereignis zu einem anderen Download ändert nichts
+    await p.eval("__downloadChanged({ id: 99, state: { current: 'complete' } })");
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(await p.text('#export-result'), '');
+    await p.eval("__downloadChanged({ id: 3, state: { current: 'complete' } })");
+    await p.idle();
+    assert.equal(await p.text('#export-result'), '2 Workspaces mit 3 Tabs exportiert.');
+    assert.equal(await p.text('#status'), '');
   } finally {
     await p.close();
   }
@@ -324,7 +364,6 @@ test('Überschreitet ein vorhandener Bestand die Grenzen, warnt der manuelle Exp
   ];
   const p = await browser.open('transfer.html', env);
   try {
-    await p.cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' });
     await p.click('#export');
     assert.match(await p.text('#export-result'), /^501 Workspaces mit 1 Tab exportiert\.$/);
     assert.equal(await p.eval('document.getElementById("export-error").hidden'), false);
