@@ -562,6 +562,27 @@ test('Neuladen der Erweiterung: leere Ablage bleibt Ablage statt eines weiteren 
   await cycle(env);
 });
 
+test('Neuladen nach einem Wechsel, bevor ein Snapshot ihn gesichert hat: kein Tausch der Workspaces (#270)', async () => {
+  const env = await setup(SPEC);
+  const { b, ids } = env;
+  const tabs = tabIds(env);
+  // Der Wechsel ist abgeschlossen; beim Setzen der Symbole danach lädt die Erweiterung neu
+  const f = b.fail('action.setIcon', { stop: true });
+  env.w.send({ type: 'switch', windowId: env.win, wsId: ids.B });
+  await env.w.settle();
+  assert.equal(f.hits, 1);
+  assert.equal(b.session.data.pendingSwitch, undefined, 'Wechsel ist nicht abgeschlossen');
+
+  await b.reloadExtension().settle();
+  // Die leere Ablage von B bleibt Ablage, statt mit einer neuen Tab-Seite Hauptfenster zu werden
+  assert.equal(b.mains().length, 1);
+  assert.equal(shows(env, env.win), 'B');
+  assert.deepEqual(b.tabsByUrl(NEWTAB), [], 'neue Tab-Seite ist geblieben');
+  check(env, ALL);
+  assert.deepEqual(tabIds(env), tabs, 'Tabs wurden neu angelegt');
+  await cycle(env, ALL, ['C', 'A', 'B']);
+});
+
 test('Zweimaliges Neuladen hintereinander und danach ein Browserstart', async () => {
   const env = await setup(SPEC);
   let w = env.b.reloadExtension();
