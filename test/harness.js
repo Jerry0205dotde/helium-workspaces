@@ -90,6 +90,7 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
   const { b, w } = env;
   assert.deepEqual(b.errors.map((e) => `${e.name}: ${e.error?.stack || e.error}`), [], 'Fehler in Ereignis-Listenern');
   assert.equal(b.session.data.pendingSwitch, undefined, 'ein Wechsel ist noch nicht abgeschlossen');
+  assert.equal(b.local.data.pendingSwitch, undefined, 'ein Wechsel aus der Sicherung ist noch nicht abgeschlossen');
   assert.equal(b.local.data.pendingStash, undefined, 'eine Ablage ist noch nicht vollständig aufgebaut');
   assert.equal(b.local.data.pendingMove, undefined, 'ein Tab-Transfer ist noch nicht abgeschlossen');
   assert.equal(b.local.data.discarding, undefined, 'ein Entladen ist noch nicht abgeschlossen');

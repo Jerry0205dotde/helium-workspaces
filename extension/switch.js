@@ -96,13 +96,22 @@ async function resumeMove() {
 // neuer Workspace, IDs der alten Tabs). Solange er dort steht, ist der Tab-Bestand im
 // Übergang: snapshot() sichert dann nichts, und finishSwitch() schließt ihn ab – nach
 // einem Fehler, beim nächsten Wechsel oder nach einem Neustart des Service Workers.
+// Entsteht das Ziel aus der Sicherung (local), steht er bis zum Abschluss zusätzlich in
+// storage.local, damit er auch ein Neuladen der Erweiterung übersteht (onStartup verwirft
+// ihn). Sonst ordnete der Abgleich die schon angelegten Tabs dem alten Workspace zu (#269).
 async function getPending() {
-  return (await chrome.storage.session.get('pendingSwitch')).pendingSwitch || null;
+  const { pendingSwitch } = await chrome.storage.session.get('pendingSwitch');
+  return pendingSwitch || (await chrome.storage.local.get('pendingSwitch')).pendingSwitch || null;
 }
 
-async function setPending(p) {
+// was: der Wechsel, den setPending(null) abschließt. Der Vermerk in storage.local geht
+// zuerst und kommt zuletzt: Was ein Abbruch dazwischen übrig lässt, ist nie älter als der
+// in storage.session.
+async function setPending(p, was = null) {
+  if (!p && was?.local) await chrome.storage.local.remove('pendingSwitch');
   if (p) await chrome.storage.session.set({ pendingSwitch: p });
   else await chrome.storage.session.remove('pendingSwitch');
+  if (p?.local) await chrome.storage.local.set({ pendingSwitch: p });
 }
 
 // Merkt im begonnenen Wechsel, dass Eintrag i (e) der Sicherung nicht angelegt werden
@@ -167,12 +176,12 @@ async function switchTo(windowId, targetWs) {
         const { backup } = await getBackup();
         const b = backup[targetWs];
         if (b) {
-          await setPending({ ...p, restoring: true });
+          await setPending({ ...p, restoring: true, local: true });
           const r = await recreate(savedOf(b), windowId, false, false, [], [], noteFailed);
           brought = r.ids;
           await keepFailed(targetWs, r.failed);
           await keepLater(targetWs, r.later, 'saved');
-          await setPending(p);
+          await setPending({ ...p, local: true });
         }
       }
       if (!brought.length) {
@@ -218,7 +227,7 @@ async function finishSwitch() {
     const tabs = main ? movableTabsOf(main) : [];
     const arrived = tabs.filter((t) => !old.has(t.id));
     if (!main || !arrived.length) {
-      await setPending(null);
+      await setPending(null, p);
       return main ? 'back' : 'gone';
     }
 
@@ -259,7 +268,7 @@ async function finishSwitch() {
     s.prevWs[p.windowId] = p.from;
     await saveSess(s);
     await chrome.storage.local.set({ lastWs: p.to });
-    await setPending(null);
+    await setPending(null, p);
     return 'forward';
   });
 }
