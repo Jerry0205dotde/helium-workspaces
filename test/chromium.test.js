@@ -34,6 +34,11 @@ const SPEC = {
 
 const norm = (e) => (typeof e === 'string' ? { name: e } : e);
 
+// Die nicht angehefteten Tabs eines Fensters. In einer Ablage ist der erste die Ablage-Seite.
+// Angeheftete Tabs legt Helium ab 0.22 in jedes Fenster, auch in die Ablagen (#265).
+const unpinned = (w) => w.tabs.filter((t) => !t.pinned);
+const pageOf = (w) => unpinned(w)[0];
+
 // Testseiten von 127.0.0.1. Jeder Abruf einer Testseite wird gezählt (nicht etwa
 // /favicon.ico): Lädt die Erweiterung einen Tab neu, steigt die Zahl.
 const PAGES = new Set([...SPEC.pinned, ...Object.values(SPEC.workspaces).flat()].map((e) => norm(e).name));
@@ -127,16 +132,19 @@ class Env {
     const shown = {};
     const stashed = {};
     for (const w of st.windows) {
-      const first = w.tabs[0];
+      const first = pageOf(w);
       if (first?.url?.startsWith(this.stash)) {
         const name = nameOf(first.url.slice(this.stash.length));
         assert.ok(name, `Ablage ohne Workspace: ${first.url}`);
         assert.ok(!stashed[name], `zwei Ablagen für ${name}`);
-        assert.ok(first.pinned, `Ablage-Seite von ${name} ist nicht angeheftet`);
+        assert.equal(w.tabs.filter((t) => t.url?.startsWith(this.stash)).length, 1, `mehrere Ablage-Seiten in der Ablage von ${name}`);
+        // Die angehefteten Tabs hat eine Ablage nur in Helium ab 0.22, dort alle (#265)
+        const pinned = w.tabs.filter((t) => t.pinned).map(entry);
+        if (pinned.length) assert.deepEqual(pinned, SPEC.pinned.map((n) => this.label(norm(n))), `angeheftete Tabs in der Ablage von ${name}`);
         // An diesem Titel erkennt das KWin-Skript die Ablage
         assert.equal(first.title, `HWS-Ablage ${st.token} · ${name}`, 'Titel der Ablage');
         assert.equal(w.state, 'minimized', `Ablage von ${name} ist nicht minimiert`);
-        stashed[name] = w.tabs.slice(1).map(entry);
+        stashed[name] = unpinned(w).slice(1).map(entry);
       } else {
         const name = nameOf(st.windowWs[w.id]);
         assert.ok(name, `Hauptfenster ${w.id} ist keinem Workspace zugeordnet`);
@@ -163,7 +171,7 @@ class Env {
         assert.ok(!live, `${w.name} hat kein Fenster`);
       }
     }
-    return { main: st.windows.find((w) => !w.tabs[0]?.url?.startsWith(this.stash)), shows: mains[0] };
+    return { main: st.windows.find((w) => !pageOf(w)?.url?.startsWith(this.stash)), shows: mains[0] };
   }
 
   // Fenster und Tabs in Kurzform, für Fehlermeldungen
@@ -171,7 +179,7 @@ class Env {
     const ws = (id) => st.workspaces.find((x) => x.id === id)?.name || id;
     return st.windows
       .map((w) => {
-        const first = w.tabs[0]?.url || '';
+        const first = pageOf(w)?.url || '';
         const head = first.startsWith(this.stash) ? `Ablage ${ws(first.slice(this.stash.length))}` : `Hauptfenster ${ws(st.windowWs[w.id])}`;
         const tabs = w.tabs.map((t) => `${t.pinned ? '📌' : ''}${this.name(t.url)}${t.groupId >= 0 ? `(g${t.groupId})` : ''}${t.status === 'complete' ? '' : `(${t.status}${t.discarded ? ', verworfen' : ''})`}`);
         return `  ${w.id} ${head} [${w.state}]: ${tabs.join(' ')}`;
@@ -384,7 +392,7 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     );
     await waitFor(async () => {
       const tabs = await b.sw('return chrome.tabs.query({ windowId: args[0] });', win);
-      assert.equal(tabs[0]?.url, env.stash + env.ids.B, 'Ablage-Seite von B fehlt');
+      assert.equal(pageOf({ tabs })?.url, env.stash + env.ids.B, 'Ablage-Seite von B fehlt');
     });
     await env.settled({ live: true });
   });
@@ -396,8 +404,8 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     await b.action('(u, ws, w) => openLinkInWs(u, ws, w)', base + 'link', env.ids.C, main.id);
     const id = await waitFor(async () => {
       const st = await env.state();
-      const stash = st.windows.find((w) => w.tabs[0]?.url === env.stash + env.ids.C);
-      assert.deepEqual(stash.tabs.slice(1).map((t) => env.name(t.url)), ['c1', 'c2', 'link']);
+      const stash = st.windows.find((w) => pageOf(w)?.url === env.stash + env.ids.C);
+      assert.deepEqual(unpinned(stash).slice(1).map((t) => env.name(t.url)), ['c1', 'c2', 'link']);
       assert.equal(env.name(st.backup[env.ids.C].stash.at(-1).url), 'link', 'Sicherung von C');
       assert.equal(st.windowWs[main.id], env.ids[shows], 'das Hauptfenster hat gewechselt');
       return stash.tabs.at(-1).id;
@@ -458,14 +466,14 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
       const s = await env.state();
       assert.equal(s.windows.length, 3, 'Ablagen wurden geschlossen');
       for (const w of s.windows) {
-        const [id] = w.tabs[0].url.split('#').slice(1);
+        const [id] = pageOf(w).url.split('#').slice(1);
         const name = s.workspaces.find((x) => x.id === id)?.name;
-        assert.equal(w.tabs[0].url, `chrome-extension://${EXT_ID}/stash.html?shown#${id}`);
-        assert.equal(w.tabs[0].title, `HWS-Ablage · ${name}`, 'Titel der sichtbar gemachten Ablage');
+        assert.equal(pageOf(w).url, `chrome-extension://${EXT_ID}/stash.html?shown#${id}`);
+        assert.equal(pageOf(w).title, `HWS-Ablage · ${name}`, 'Titel der sichtbar gemachten Ablage');
       }
       return s;
     });
-    assert.ok(!st.windows.some((w) => w.tabs[0].title.includes(st.token)), 'Schlüssel noch im Titel');
+    assert.ok(!st.windows.some((w) => pageOf(w).title.includes(st.token)), 'Schlüssel noch im Titel');
     // Der nächste Abgleich baut ein Hauptfenster aus der Sicherung auf und versteckt die Ablagen
     await b.sw('chrome.storage.local.set = realSet; delete globalThis.realSet;');
     await b.sw('await serial(reconcile);');
@@ -496,8 +504,8 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
       if (restore === 'last') {
         // Chromium stellt nur das zuletzt geschlossene Fenster samt Verlauf wieder her: Das
         // ist die Ablage von C, dem zuletzt vor A gezeigten Workspace (#191)
-        const back = r.st.windows.filter((w) => w.tabs[0].url.startsWith(env.stash) && w.tabs.length > 1);
-        assert.deepEqual(back.map((w) => r.st.workspaces.find((x) => `${env.stash}${x.id}` === w.tabs[0].url).name), ['C'], env.describe(r.st));
+        const back = r.st.windows.filter((w) => pageOf(w).url.startsWith(env.stash) && unpinned(w).length > 1);
+        assert.deepEqual(back.map((w) => r.st.workspaces.find((x) => `${env.stash}${x.id}` === pageOf(w).url).name), ['C'], env.describe(r.st));
         assert.equal(await b.historyOf(`${base}c1`), 2, 'c1 hat keinen Verlauf mehr');
       }
       await env.cycle(['B', 'C', 'A']);
@@ -529,7 +537,8 @@ test('Echter Chromium: Umstieg auf die feste Erweiterungs-ID per Export und Erse
   assert.notEqual(b.extId, EXT_ID);
   await build(env, await env.state());
   const file = JSON.stringify(await b.action('() => exportAll()'));
-  const tabIds = (st) => st.windows.flatMap((w) => w.tabs.filter((x) => !x.url.startsWith('chrome-extension:')).map((x) => `${x.id} ${x.url}`)).sort();
+  // Ohne angeheftete Tabs: Deren Kopien in den Ablagen legt Helium ab 0.22 an und schließt sie (#265)
+  const tabIds = (st) => st.windows.flatMap((w) => unpinned(w).filter((x) => !x.url.startsWith('chrome-extension:')).map((x) => `${x.id} ${x.url}`)).sort();
   const before = tabIds(await env.state());
   const loads = new Map(hits);
 
@@ -588,9 +597,10 @@ test('Echter Chromium: Ersetzen stellt Reihenfolge und Gruppen eines übernommen
     main.id,
     base,
   );
-  const tabIds = (st) => st.windows.flatMap((w) => w.tabs.filter((x) => !x.url.startsWith('chrome-extension:')).map((x) => `${x.id} ${x.url}`)).sort();
+  // Ohne angeheftete Tabs: Deren Kopien in den Ablagen legt Helium ab 0.22 an und schließt sie (#265)
+  const tabIds = (st) => st.windows.flatMap((w) => unpinned(w).filter((x) => !x.url.startsWith('chrome-extension:')).map((x) => `${x.id} ${x.url}`)).sort();
   // Ablagen mit Tabs; die leere Ablage des gezeigten A schließt das Ersetzen wie bisher
-  const stashes = (st) => st.windows.filter((w) => w.tabs[0]?.url?.startsWith(env.stash) && w.tabs.length > 1).map((w) => w.id).sort();
+  const stashes = (st) => st.windows.filter((w) => pageOf(w)?.url?.startsWith(env.stash) && unpinned(w).length > 1).map((w) => w.id).sort();
   const changed = (await env.state()).windows.find((w) => w.id === main.id);
   assert.notDeepEqual(changed.tabs.map((x) => `${x.url} ${x.groupId}`), main.tabs.map((x) => `${x.url} ${x.groupId}`), 'Testfehler: nichts geändert');
   const loads = new Map(hits);
@@ -1119,7 +1129,7 @@ test('Echter Chromium: Für Inkognito zugelassen, eigene Workspaces ohne Spuren 
     return {
       incognito: chrome.extension.inIncognitoContext,
       names: (await getConfig()).workspaces.map((w) => w.name),
-      wins: wins.map((w) => ({ incognito: w.incognito, tabs: w.tabs.map((x) => x.url), title: w.tabs[0].title })),
+      wins: wins.map((w) => ({ incognito: w.incognito, tabs: w.tabs.filter((x) => !x.pinned).map((x) => x.url), title: w.tabs.find((x) => !x.pinned)?.title })),
       exp: Object.fromEntries(exp.workspaces.map((w) => [w.name, w.tabs.map((x) => x.url)])),
     };`;
   const first = await inc(STATE_INC);

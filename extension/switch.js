@@ -17,10 +17,10 @@ async function ensureStash(wsId, restoreBackup) {
   if (b) await chrome.storage.local.set({ pendingStash: { ws: wsId } });
   try {
     const win = await chrome.windows.create({ url: `${STASH_PAGE}#${wsId}`, focused: false, state: 'minimized' });
-    const tabId = win.tabs[0].id;
+    // Helium ab 0.22 legt die angehefteten Tabs erst danach dazu, vor die Ablage-Seite (#265)
+    const tabId = (win.tabs.find(isStashTab) || win.tabs[0]).id;
     if (b) await chrome.storage.local.set({ pendingStash: { ws: wsId, windowId: win.id } });
     await rememberStashWin(win.id, wsId, []);
-    await chrome.tabs.update(tabId, { pinned: true });
     if (restoreBackup) {
       if (b) {
         const r = await recreate(savedOf(b), win.id, false, false, [], [], noteStashFailed);
@@ -434,7 +434,7 @@ async function finishMove(focus = false) {
       if (marker) await chrome.tabs.update(marker.id, { active: true });
       if (focus) await chrome.windows.update(p.fromWindowId, { focused: true }).catch(() => {});
       const tabs = await chrome.tabs.query({ windowId: target.id });
-      await rememberStashWin(target.id, p.to, tabs.filter((t) => !isStashTab(t)).map((t) => t.id));
+      await rememberStashWin(target.id, p.to, stashTabsOf({ tabs }).map((t) => t.id));
     }
 
     const s2 = await sess();
@@ -483,6 +483,20 @@ async function showStashTab(tabId) {
   const { lastMain } = await chrome.storage.session.get('lastMain');
   const main = mains.find((w) => w.id === lastMain && s.windowWs[w.id]) || mains.find((w) => s.windowWs[w.id]);
   if (!main) return; // noch kein Hauptfenster zugeordnet: der Abgleich räumt auf
+  const tab = sw.tabs.find((t) => t.id === tabId);
+  if (tab.pinned) {
+    // Eine Kopie eines angehefteten Tabs, die Helium ab 0.22 in jede Ablage legt (#265). Der
+    // Tab gehört allen Workspaces: die Ablage-Seite wieder aktivieren, im Hauptfenster seinen
+    // angehefteten Tab
+    await moving(async () => {
+      await chrome.tabs.update(sw.tabs.find(isStashTab).id, { active: true });
+      const twin = main.tabs.find((t) => t.pinned && urlOf(t) === urlOf(tab));
+      if (twin) await chrome.tabs.update(twin.id, { active: true });
+    });
+    await chrome.windows.update(sw.id, { state: 'minimized' }).catch(() => {});
+    await chrome.windows.update(main.id, { focused: true }).catch(() => {});
+    return;
+  }
   const ws = stashWsOf(sw);
   s.lastTab[ws] = tabId;
   await saveSess(s);

@@ -8,6 +8,10 @@ Die zwei Schritte eines normalen Updates stehen in der [README](../README.de.md#
 
 Beim Neuladen schließt Chromium alle Seiten der Erweiterung, auch die Ablage-Markierungen. Die Ablage-Fenster tauchen dann kurz in der Taskleiste auf, bis die Erweiterung sie nach ein bis zwei Sekunden wieder markiert. Die Tabs bleiben dabei, wo sie sind.
 
+## Einmalig: vor dem Update auf Helium 0.22
+
+Helium ab 0.22 teilt angeheftete Tabs zwischen allen Fenstern. Ältere Versionen der Erweiterung hefteten die Ablage-Markierung an, die Helium dann in jedes Fenster legt; Ablagen und Wechsel funktionieren so nicht mehr. Deshalb zuerst die Erweiterung aktualisieren und unter `chrome://extensions` neu laden, erst danach Helium. Zeigt Helium 0.22 schon in jedem Fenster Ablage-Markierungen (`chrome-extension://…/stash.html#…`) als angeheftete Tabs, diese lösen und schließen, dann die Erweiterung aktualisieren und neu laden. Sind die Workspaces danach durcheinander, den Export oder die neueste automatische Sicherung mit **Ersetzen** importieren.
+
 ## Einmalig: Umstieg auf die feste Erweiterungs-ID (ab Version 0.3.0)
 
 Bis Version 0.2.23 hing die ID der Erweiterung vom Pfad ihres Ordners ab. Seit 0.3.0 legt das Feld `key` in `manifest.json` sie fest. Beim ersten Neuladen danach bekommt sie deshalb einmalig die neue ID `jchklfejnmfphkbcpnhdejmeoncejjbe`, und Helium behandelt sie wie eine neu installierte Erweiterung mit leerem Speicher: Workspaces, Sicherung, Einstellungen und Schlüssel fehlen, und Chromium schließt die Ablage-Seiten. Die Tabs bleiben in ihren Fenstern, die alten Ablagen sind danach normale minimierte Fenster. So kommt alles zurück:

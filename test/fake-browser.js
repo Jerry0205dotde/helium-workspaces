@@ -28,6 +28,13 @@
 //   sobald er aktiv wird. Mit popupOpen = true bleibt er dabei entladen, wie in Helium,
 //   wenn das Popup den Wechsel auslöst (#217); tabs.reload lädt ihn.
 // - Wecker (chrome.alarms) klingeln nur, während ein Test mit advance() Zeit vergehen lässt.
+// - Mit sharedPins = true teilen alle normalen Fenster ihre angehefteten Tabs wie in Helium
+//   ab 0.22 (#265), vereinfacht mit der Adresse als Kennung des Pins: Ein angehefteter Tab
+//   kommt in die Liste pins, und kurz darauf (nach der Antwort des Aufrufs) bekommt jedes
+//   normale Fenster, dem einer der Liste fehlt, eine entladene Kopie, auch ein neues (gleich
+//   nach der Antwort von windows.create, vor dem nächsten Aufruf) oder
+//   wiederhergestelltes Fenster und eins, aus dem der Tab geschlossen wurde. Lösen nimmt den
+//   Pin aus der Liste und schließt seine Kopien in den übrigen Fenstern.
 // - Native Messaging (runtime.sendNativeMessage) geht an nativeHost. installHost() meldet
 //   einen Host wie native-host.sh an: Er nimmt Schlüssel an und schreibt automatische
 //   Sicherungen nach files unter BACKUPS, das einen Neustart und das Entfernen der
@@ -127,6 +134,9 @@ class Browser {
     this.heldLoads = [];
     this.pendingLoads = 0; // gemeldet, aber noch nicht zugestellt (loaded), settle() wartet darauf
     this.popupOpen = false;
+    this.sharedPins = false;
+    this.pins = []; // Adressen der geteilten Pins (sharedPins)
+    this.pendingPins = 0; // angestoßener Abgleich der Pins, settle() wartet darauf
     // Native-Messaging-Host (native-host.sh): null = nicht angemeldet, sonst
     // die Funktion, die eine Nachricht beantwortet. Was er bekommen hat, steht in nativeSent.
     this.nativeHost = null;
@@ -262,6 +272,64 @@ class Browser {
 
   groupInfo(g) {
     return { id: g.id, windowId: g.windowId, title: g.title, color: g.color, collapsed: g.collapsed };
+  }
+
+  // Helium ab 0.22 (sharedPins): t in w wurde angeheftet
+  pinAdded(t, w) {
+    if (!this.sharedPins || w.type !== 'normal') return;
+    if (!this.pins.includes(t.url)) this.pins.push(t.url);
+    this.schedulePins();
+  }
+
+  // t in w wurde gelöst: In den übrigen Fenstern werden seine Kopien gelöst und geschlossen,
+  // außer der letzte Tab eines Fensters
+  pinRemoved(t, w) {
+    if (!this.sharedPins || !this.pins.includes(t.url)) return;
+    this.pins = this.pins.filter((u) => u !== t.url);
+    for (const x of this.windows) {
+      if (x === w || x.type !== 'normal') continue;
+      for (const c of x.tabs.filter((c) => c.pinned && c.url === t.url)) {
+        c.pinned = false;
+        x.tabs.splice(x.tabs.indexOf(c), 1);
+        x.tabs.splice(this.pinnedCount(x), 0, c);
+        this.fire('tabs.onUpdated', c.id, { pinned: false }, this.tabInfo(c, x));
+        if (x.tabs.length > 1) this.removeTab(c.id);
+      }
+    }
+  }
+
+  // Wie Helium nach der Antwort des Aufrufs: Fehlt einem normalen Fenster ein Pin, bekommt
+  // es eine entladene Kopie. Unbekannte angeheftete Tabs (etwa wiederhergestellte) kommen in
+  // die Liste.
+  schedulePins() {
+    if (!this.sharedPins || this.pendingPins) return;
+    this.pendingPins++;
+    setImmediate(() => {
+      this.pendingPins--;
+      this.syncPins();
+    });
+  }
+
+  syncPins() {
+    if (!this.sharedPins) return;
+    const normal = this.windows.filter((w) => w.type === 'normal');
+    // Mit angehefteter Ablage-Seite legten Erweiterung und Helium endlos Tabs an (#265).
+    // Dann hört das Teilen auf, damit der Test scheitert, statt nicht fertig zu werden.
+    if (normal.some((w) => w.tabs.length > 100)) {
+      this.sharedPins = false;
+      this.errors.push({ name: 'sharedPins', error: new Error('mehr als 100 Tabs in einem Fenster') });
+      return;
+    }
+    for (const w of normal) for (const t of w.tabs) if (t.pinned && !this.pins.includes(t.url)) this.pins.push(t.url);
+    for (const w of normal) {
+      for (const u of this.pins) {
+        if (w.tabs.some((t) => t.pinned && t.url === u)) continue;
+        const t = this.newTab(u, true);
+        t.discarded = true;
+        this.insert(w, t);
+        this.fire('tabs.onCreated', this.tabInfo(t, w));
+      }
+    }
   }
 
   pinnedCount(w) {
@@ -424,6 +492,7 @@ class Browser {
     for (const t of w.tabs) this.fire('tabs.onCreated', this.tabInfo(t, w));
     this.fire('tabs.onActivated', { tabId: w.tabs[0].id, windowId: w.id });
     if (focused && state !== 'minimized') this.focus(w);
+    this.schedulePins();
     return w;
   }
 
@@ -434,6 +503,7 @@ class Browser {
     this.fire('tabs.onCreated', this.tabInfo(t, w));
     if (active || w.tabs.length === 1) this.activate(t, w);
     this.loaded(t);
+    if (t.pinned) this.pinAdded(t, w);
     return { t, w };
   }
 
@@ -445,6 +515,7 @@ class Browser {
     this.fire('tabs.onRemoved', t.id, { windowId: w.id, isWindowClosing: closing });
     this.dropEmptyGroup(t.groupId, true);
     this.closeIfEmpty(w);
+    if (t.pinned) this.schedulePins();
   }
 
   removeWindow(id) {
@@ -586,7 +657,14 @@ class Browser {
           if (!w) throw new Error('No last-focused window');
           return b.winInfo(w, populate);
         }),
-        create: api('windows.create', (o = {}) => b.winInfo(b.createWindow(o))),
+        create: api('windows.create', (o = {}) => {
+          const w = b.createWindow(o);
+          const info = b.winInfo(w);
+          // Helium ab 0.22 legt die Pins gleich nach der Antwort ins neue Fenster, noch vor dem
+          // nächsten Aufruf der Erweiterung
+          b.syncPins();
+          return info;
+        }),
         update: api('windows.update', (id, o = {}) => {
           const w = b.findWin(id);
           if (o.state) w.state = o.state;
@@ -639,6 +717,8 @@ class Browser {
             b.fire('tabs.onUpdated', t.id, { pinned: t.pinned }, b.tabInfo(t, w));
             if (from !== to) b.fire('tabs.onMoved', t.id, { windowId: w.id, fromIndex: from, toIndex: to });
             b.dropEmptyGroup(oldGroup);
+            if (t.pinned) b.pinAdded(t, w);
+            else b.pinRemoved(t, w);
           }
           if (o.muted !== undefined) {
             // Ohne owner schaltet der Test wie von Hand im Browser
@@ -852,14 +932,16 @@ class Browser {
     this.pendingRestore = null;
     this.crashed = restore === 'crash' ? saved : null;
     if (restore === 'none' || restore === 'crash') {
-      // Wie Chromium: die angehefteten Tabs aller Fenster in einem einzigen Fenster, also
-      // auch die Ablage-Markierungen
-      const pinned = keepPinned ? saved.flatMap((w) => w.tabs.filter((t) => t.pinned)) : [];
+      // Wie Chromium: die angehefteten Tabs aller Fenster in einem einzigen Fenster, auch
+      // angeheftete Ablage-Markierungen älterer Versionen. Helium ab 0.22 (sharedPins) öffnet
+      // jeden Pin seiner Liste einmal.
+      const pinned = !keepPinned ? [] : this.sharedPins ? this.pins.map((u) => ({ url: u })) : saved.flatMap((w) => w.tabs.filter((t) => t.pinned));
       const w = { id: this.next.win++, type: 'normal', state: 'normal', focused: true, tabs: [] };
       for (const t of pinned) w.tabs.push(this.newTab(t.url, true));
       w.tabs.push(this.newTab(NEWTAB));
       w.tabs.at(-1).active = true;
       this.windows.push(w);
+      this.schedulePins();
       return;
     }
     const kept = saved
@@ -868,6 +950,7 @@ class Browser {
       .filter((w) => w.tabs.length);
     if (restore === 'later') this.pendingRestore = kept;
     else this.restoreWindows(kept, false);
+    this.schedulePins();
   }
 
   snap(w) {
@@ -952,6 +1035,7 @@ class Browser {
         w.focused = true;
       }
     }
+    this.schedulePins();
   }
 
   // Erweiterung unter chrome://extensions neu laden: Chromium schließt dabei ihre Seiten
@@ -984,7 +1068,7 @@ class Browser {
   // Fehler und Aufrufliste. Spart den Aufbau, wenn ein Test denselben Stand oft braucht.
   clone() {
     const c = new Browser();
-    const own = new Set(['listeners', 'worker', 'chrome', 'local', 'session', 'faults', 'calls', 'errors', 'nativeHost', 'pendingLoads']);
+    const own = new Set(['listeners', 'worker', 'chrome', 'local', 'session', 'faults', 'calls', 'errors', 'nativeHost', 'pendingLoads', 'pendingPins']);
     // In einem Aufruf, damit heldLoads dieselben Tabs enthält wie windows
     Object.assign(c, structuredClone(Object.fromEntries(Object.entries(this).filter(([k]) => !own.has(k)))));
     c.local.data = structuredClone(this.local.data);
@@ -1129,7 +1213,7 @@ class Worker {
         continue;
       }
       if (!next || next.t.at > end) {
-        if (this.browser.pendingLoads) continue; // Fertigladen kommt erst im nächsten Durchlauf
+        if (this.browser.pendingLoads || this.browser.pendingPins) continue; // Fertigladen und Pins kommen erst im nächsten Durchlauf
         if (end !== Infinity) this.browser.now = Math.max(this.browser.now, end);
         return;
       }

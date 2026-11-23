@@ -91,23 +91,62 @@ async function repairStashes() {
     const rec = stashWins?.[w.id] || fromStash || fromMove;
     if (!rec || !cfg.workspaces.some((x) => x.id === rec.ws)) continue;
     // War die Ablage leer, hat Chromium statt ihrer Ablage-Seite eine neue Tab-Seite
-    // geladen, damit das Fenster offen bleibt. Diese gehört nicht in den Workspace.
+    // geladen, damit das Fenster offen bleibt. Diese gehört nicht in den Workspace; war die
+    // Ablage-Seite wie in älteren Versionen angeheftet und der einzige Tab, ist sie es auch.
+    // In Helium ab 0.22 bleiben daneben die angehefteten Tabs übrig, die jede Ablage hat (#265).
     const ids = new Set(rec.tabs);
     // Tabs, die ein unterbrochener Transfer oder Wechsel (aus der Sicherung, #269) gerade
     // in die Ablage bringt; stashWins kennt sie noch nicht
     const incoming = [...(fromMove ? pendingMove.tabs : []), ...(pendingSwitch?.from === rec.ws ? pendingSwitch.oldTabs : [])];
-    const blank = !ids.size && w.tabs.length && w.tabs.every((t) => isNewTab(t) && !incoming.includes(t.id));
+    const own = movableTabsOf(w);
+    const blank = !ids.size && own.every((t) => isNewTab(t) && !incoming.includes(t.id));
+    const pinnedBlank = blank && w.tabs.length === 1 && w.tabs[0].pinned && isNewTab(w.tabs[0]) ? w.tabs : [];
     const fed = feeding?.windowId === w.id && feeding.ws === rec.ws;
     // Ein gemerkter Tab wurde gerade entladen und hat eine neue ID, die stashWins noch nicht kennt
     const replaced = ids.has(discarding);
     if (!blank && !fed && !fromStash && !replaced && !w.tabs.some((t) => ids.has(t.id) || incoming.includes(t.id))) continue;
     await moving(async () => {
-      await chrome.tabs.create({ windowId: w.id, url: `${STASH_PAGE}#${rec.ws}`, index: 0, pinned: true, active: true });
-      if (blank) await chrome.tabs.remove(w.tabs.map((t) => t.id)).catch(() => {});
+      await chrome.tabs.create({ windowId: w.id, url: `${STASH_PAGE}#${rec.ws}`, index: 0, active: true });
+      // Erst lösen, sonst legte Helium ab 0.22 eine angeheftete wieder an
+      for (const t of pinnedBlank) await chrome.tabs.update(t.id, { pinned: false }).catch(() => {});
+      const drop = blank ? [...own, ...pinnedBlank] : [];
+      if (drop.length) await chrome.tabs.remove(drop.map((t) => t.id)).catch(() => {});
     });
     repaired = true;
   }
   return repaired;
+}
+
+// Ältere Versionen hefteten die Ablage-Seite an. Helium ab 0.22 teilt angeheftete Tabs
+// mit allen Fenstern und legt eine solche Ablage-Seite deshalb entladen in jedes Fenster;
+// jedes sähe dann wie die Ablage aus (#265). Je Workspace wird eine angeheftete Ablage-Seite
+// gelöst, Helium schließt dabei ihre übrigen Kopien. Das ist die geladene, bevorzugt die
+// aktive in einem minimierten Fenster wie bei einer Ablage. Ist sie weder geladen noch aktiv,
+// ist sie nur eine Kopie aus Heliums Liste der Pins und wird danach geschlossen. shared: nur
+// Workspaces, deren angeheftete Ablage-Seite in mehreren Fenstern steht, wie es Helium macht.
+async function unpinMarks(shared) {
+  const wins = await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] });
+  const pinned = new Map();
+  for (const w of wins) {
+    if (w.incognito !== INCOGNITO) continue;
+    for (const t of w.tabs) {
+      if (!t.pinned || !isStashTab(t)) continue;
+      const ws = urlOf(t).split('#')[1];
+      const rank = (t.status !== 'unloaded' && !t.discarded ? 4 : 0) + (t.active ? 2 : 0) + (w.state === 'minimized' ? 1 : 0);
+      const p = pinned.get(ws) || { wins: new Set() };
+      p.wins.add(w.id);
+      if (!p.t || rank > p.rank) Object.assign(p, { t, rank });
+      pinned.set(ws, p);
+    }
+  }
+  const todo = [...pinned].filter(([, p]) => !shared || p.wins.size > 1);
+  await moving(async () => {
+    for (const [, { t, rank }] of todo) {
+      await chrome.tabs.update(t.id, { pinned: false }).catch(() => {});
+      if (rank < 2) await chrome.tabs.remove(t.id).catch(() => {});
+    }
+  });
+  return todo.length > 0;
 }
 
 let resumeTries = 0;
@@ -125,6 +164,8 @@ async function reconcile() {
   }
   const cfg = await getConfig();
   const s = await sess();
+  // Vor dem Startfenster unten: Kopien von Helium sähen dort wie ein Startfenster aus
+  if (await unpinMarks(true)) changed = true;
   let { stash, mains, dups } = await scan();
 
   // Nach Browserstart oder Neuladen der Erweiterung ist storage.session leer: dann die
@@ -140,28 +181,36 @@ async function reconcile() {
   const starting = Date.now() <= entriesUntil;
 
   // Beim Start ohne Sitzungswiederherstellung legt Chromium die angehefteten Tabs aller
-  // Fenster zusammen in ein neues Fenster, auch die Ablage-Seiten. Ein Fenster mit mehreren
-  // Ablage-Seiten oder mit angehefteten Tabs ist deshalb keine Ablage, die übrigen Tabs der
-  // Ablagen fehlen darin. Ohne die Ablage-Seiten ist es das Startfenster; die Workspaces
-  // kommen aus der Sicherung. War ein Tab in mehreren Hauptfenstern angeheftet, steht er
-  // darin mehrfach: Er bleibt so oft, wie ihn die Sicherung kennt, mindestens einmal.
+  // Fenster zusammen in ein neues Fenster. War ein Tab in mehreren Hauptfenstern angeheftet,
+  // steht er darin mehrfach: Er bleibt so oft, wie ihn die Sicherung kennt, mindestens einmal.
+  // In älteren Versionen waren auch die Ablage-Seiten angeheftet und kamen mit. Ein Fenster mit
+  // mehreren angehefteten Ablage-Seiten oder mit einer und angehefteten Tabs ist deshalb keine
+  // Ablage, die übrigen Tabs der Ablagen fehlen darin. Ohne die Ablage-Seiten ist es das
+  // Startfenster; die Workspaces kommen aus der Sicherung (#265).
   if (starting && browserStart) {
     let merged = false;
-    for (const w of [...stash.values(), ...dups]) {
-      const marks = w.tabs.filter(isStashTab);
+    const keep = new Map();
+    for (const e of (await getBackup()).backupPinned) keep.set(e.url, (keep.get(e.url) || 0) + 1);
+    for (const w of [...stash.values(), ...dups, ...mains]) {
+      const marks = w.tabs.filter((t) => isStashTab(t) && t.pinned);
       const pins = w.tabs.filter((t) => t.pinned && !isStashTab(t));
-      if (marks.length < 2 && !pins.length) continue;
-      const keep = new Map();
-      for (const e of (await getBackup()).backupPinned) keep.set(e.url, (keep.get(e.url) || 0) + 1);
+      const start = marks.length > 1 || (marks.length === 1 && pins.length > 0);
+      // Doppelte Pins nur im Startfenster, also ohne wiederhergestellte Ablagen
+      if (!start && (!mains.includes(w) || stash.size)) continue;
       const seen = new Map();
       const extra = pins.filter((t) => {
         const n = (seen.get(urlOf(t)) || 0) + 1;
         seen.set(urlOf(t), n);
         return n > Math.max(keep.get(urlOf(t)) || 0, 1);
       });
+      if (!start && !extra.length) continue;
       await moving(async () => {
-        if (marks.length === w.tabs.length) await chrome.tabs.create({ windowId: w.id });
-        await chrome.tabs.remove([...marks, ...extra].map((t) => t.id));
+        const marked = start ? w.tabs.filter(isStashTab) : [];
+        if (marked.length === w.tabs.length) await chrome.tabs.create({ windowId: w.id });
+        // Erst lösen: Helium ab 0.22 öffnet beim Start auch die Ablage-Seiten aus seiner Liste
+        // der Pins in einem Fenster und legte sie nach dem Schließen wieder an
+        for (const t of marks) await chrome.tabs.update(t.id, { pinned: false }).catch(() => {});
+        await chrome.tabs.remove([...marked, ...extra].map((t) => t.id));
       });
       merged = true;
     }
@@ -169,6 +218,11 @@ async function reconcile() {
       ({ stash, mains, dups } = await scan());
       changed = true;
     }
+  }
+
+  if (await unpinMarks(false)) {
+    ({ stash, mains, dups } = await scan());
+    changed = true;
   }
 
   // Doppelte Ablagen zusammenführen
@@ -187,7 +241,7 @@ async function reconcile() {
     }
   }
 
-  // Ablage-Fenster: minimiert, Ablage-Tab angeheftet und aktiv (wichtig für den Titel).
+  // Ablage-Fenster: minimiert, Ablage-Tab aktiv (wichtig für den Titel).
   // Ohne Hauptfenster kann Chromium einen beim Start übergebenen Link in eine
   // wiederhergestellte Ablage gelegt haben – diesen merken und gleich sichtbar machen.
   // Eine neue Tab-Seite dort stammt von der Starteinstellung „Neuer-Tab-Seite“ und wird
@@ -198,8 +252,7 @@ async function reconcile() {
     // Nach einer gescheiterten Sicherung beim Schließen sichtbar gemacht (onWindowRemoved)
     if (urlOf(st).includes(`?${SHOWN}#`)) await chrome.tabs.update(st.id, { url: `${STASH_PAGE}#${id}` });
     const act = w.tabs.find((t) => t.active);
-    if (!mains.length && act && !isStashTab(act)) foreign.push(act);
-    if (!st.pinned) await chrome.tabs.update(st.id, { pinned: true });
+    if (!mains.length && act && !act.pinned && !isStashTab(act)) foreign.push(act);
     if (!st.active) await chrome.tabs.update(st.id, { active: true });
     if (w.state !== 'minimized') await chrome.windows.update(w.id, { state: 'minimized' }).catch(() => {});
   }
@@ -215,7 +268,10 @@ async function reconcile() {
       const blank = win.tabs[0].id;
       s.windowWs[win.id] = target;
       await saveSess(s);
-      const p = await recreate(backupPinned, win.id, true);
+      // Angeheftete Tabs in den Ablagen hat nur Helium ab 0.22, es legt sie selbst ins neue
+      // Fenster; ein zweites Mal angelegt, teilte es sie doppelt (#265)
+      const shared = pinnedOf([...stash.values()].map((x) => ({ tabs: x.tabs.filter((t) => !isStashTab(t)) })), new Map());
+      const p = await recreate(missingIn(backupPinned, shared), win.id, true);
       const r = await recreate(backup[target]?.shown || [], win.id);
       await keepFailed(target, [...asPinned(p.failed), ...r.failed]);
       await keepLater(target, r.later, 'shown');

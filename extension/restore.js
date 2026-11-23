@@ -598,7 +598,8 @@ async function repairFromBackup(cfg, s, stash, mains) {
         index = a.index + 1;
       } else {
         windowId = (x < shown.length ? wins[0] || sw : sw || wins[0]).id;
-        index = (await chrome.tabs.query({ windowId })).filter((t) => t.pinned).length;
+        // Hinter die angehefteten Tabs und die Ablage-Seite, die nicht angeheftet ist (#265)
+        index = (await chrome.tabs.query({ windowId })).filter((t) => t.pinned || isStashTab(t)).length;
       }
       const t = await openEntry(saved[x], { windowId, index }, saved, failed);
       if (!t) continue;

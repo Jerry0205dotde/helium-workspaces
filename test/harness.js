@@ -28,9 +28,11 @@ async function openTabs(b, windowId, items) {
 
 // spec: { pinned: ['p1'], workspaces: { A: [...], B: [...] } }. Baut den Zustand über die
 // Erweiterung selbst auf: erster Workspace im vorhandenen Fenster, jeder weitere wird
-// angelegt, angezeigt und befüllt. Am Ende zeigt das Fenster wieder den ersten.
-async function setup(spec) {
+// angelegt, angezeigt und befüllt. Am Ende zeigt das Fenster wieder den ersten. sharedPins:
+// Die Fenster teilen ihre angehefteten Tabs wie in Helium ab 0.22 (fake-browser.js).
+async function setup(spec, { sharedPins = false } = {}) {
   const b = new Browser();
+  b.sharedPins = sharedPins;
   const names = Object.keys(spec.workspaces);
   const win = b.createWindow({ url: NEWTAB });
   for (const p of spec.pinned || []) {
@@ -115,9 +117,14 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
       assert.ok(!stashSeen.has(s), `zwei Ablagen für ${nameOf(env, s)}`);
       stashSeen.add(s);
       assert.ok(wsList.some((x) => x.id === s), `Ablage ohne Workspace: ${s}`);
-      assert.ok(win.tabs[0].url.startsWith(b.origin + 'stash.html'), 'Ablage-Seite ist nicht der erste Tab');
-      assert.ok(win.tabs[0].pinned && win.tabs[0].active, 'Ablage-Seite ist nicht angeheftet und aktiv');
+      // Die Ablage-Seite ist nicht angeheftet (#265), sie steht vor den Tabs des Workspace
+      const page = win.tabs.find((t) => !t.pinned);
+      assert.ok(page?.url.startsWith(b.origin + 'stash.html'), 'Ablage-Seite ist nicht der erste nicht angeheftete Tab');
+      assert.ok(!page.pinned && page.active, 'Ablage-Seite ist angeheftet oder nicht aktiv');
       assert.equal(win.state, 'minimized', 'Ablage-Fenster ist nicht minimiert');
+      // Angeheftete Tabs hat eine Ablage nur in Helium ab 0.22, als Kopien der geteilten Pins
+      const pins = win.tabs.filter((t) => t.pinned).map((t) => t.url);
+      assert.deepEqual(pins, b.sharedPins ? b.pins : [], 'angeheftete Tabs in der Ablage');
       assert.equal(win.tabs.filter((t) => t.url.startsWith(b.origin)).length, 1, 'mehrere Ablage-Seiten in einem Fenster');
     } else {
       assert.ok(wsList.some((x) => x.id === windowWs[win.id]), `Hauptfenster ${win.id} ist keinem Workspace zugeordnet`);
@@ -126,7 +133,7 @@ function check(env, expected, { allowNewTab = true, groups = true } = {}) {
   }
 
   // Jede URL genau einmal
-  const all = b.windows.flatMap((x) => x.tabs.map((t) => t.url)).filter((u) => !isExtra(b, u));
+  const all = b.windows.flatMap((x) => x.tabs.filter((t) => !(t.pinned && b.stashOf(x))).map((t) => t.url)).filter((u) => !isExtra(b, u));
   const want = Object.entries(expected).flatMap(([k, items]) => (k === 'pinned' ? items.map(url) : items.map((i) => norm(i).url)));
   const live = new Set(Object.keys(expected).filter((k) => k !== 'pinned' && isLive(env, k)));
   const wantLive = Object.entries(expected)
@@ -194,7 +201,7 @@ function liveTabs(env, id) {
   const { b } = env;
   const windowWs = b.session.data.windowWs || {};
   return b.windows.flatMap((w) => {
-    if (b.stashOf(w) === id) return w.tabs.filter((t) => !t.url.startsWith(b.origin));
+    if (b.stashOf(w) === id) return w.tabs.filter((t) => !t.pinned && !t.url.startsWith(b.origin));
     if (!b.stashOf(w) && windowWs[w.id] === id) return w.tabs.filter((t) => !t.pinned);
     return [];
   });

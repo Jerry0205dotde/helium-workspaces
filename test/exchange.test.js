@@ -557,7 +557,9 @@ test('Umstieg auf die feste ID: Ersetzen mit dem Export übernimmt Hauptfenster 
   assert.deepEqual(b.windows.map((w) => [w.state, b.stashOf(w)]), [['normal', null], ['minimized', null], ['minimized', null], ['minimized', null]]);
 
   const preview = await request(now, { type: 'importPreview', text: JSON.stringify(file) });
-  assert.deepEqual([preview.current.map((w) => w.open), preview.keep], [[10], 10]);
+  // Die Ablage-Seite ist nicht angeheftet (#265), die neue Tab-Seite an ihrer Stelle auch nicht:
+  // Sie zählt beim Workspace „Standard“ mit, beim Ersetzen aber nicht als geschlossener Tab
+  assert.deepEqual([preview.current.map((w) => w.open), preview.keep], [[11], 10]);
   const res = await importFile(now, file, 'replace', true);
   assert.deepEqual(res, { created: 3, merged: 0, added: 10, skipped: 0, failed: 0, removed: 1, closed: 0, settings: 0, kept: 10, pinned: 0, pinnedSkipped: 2 });
   assert.deepEqual(b.local.data.workspaces, file.workspaces.map(({ id, name, color, emoji }) => ({ id, name, color, emoji })));

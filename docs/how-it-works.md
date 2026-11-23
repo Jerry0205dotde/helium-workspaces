@@ -6,7 +6,7 @@ Every normal window shows exactly one workspace. The tabs of the workspaces that
 
 Three parts work together:
 
-- **The extension** (folder `extension/`) moves the tabs and creates the stash windows. The first, pinned tab of every stash is a page of the extension. It sets the window title to `HWS-Ablage <key> · <workspace name>`.
+- **The extension** (folder `extension/`) moves the tabs and creates the stash windows. The first tab of every stash is a page of the extension. It sets the window title to `HWS-Ablage <key> · <workspace name>`. It is not pinned, because Helium 0.22 and later shares pinned tabs between all windows. For the same reason, every stash there also holds unloaded copies of your pinned tabs in front of it.
 - **The key** is created on the first start of the extension and kept in its storage in the Helium profile. `install.sh` writes it to the KWin settings (`kwinrc`).
 - **The KWin script** (folder `kwin/`) looks for browser windows whose title contains `HWS-Ablage` followed by this key. It removes them from the taskbar, Alt+Tab, the overview and the pager and keeps them minimized. A website therefore cannot pose as a stash, because it does not know the key.
 
