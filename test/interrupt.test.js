@@ -132,7 +132,7 @@ everywhere('Ablagen entladen', {
     const stashed = env.b.windows.filter((x) => env.b.stashOf(x)).flatMap((x) => x.tabs.slice(1));
     assert.ok(stashed.length && stashed.every((t) => t.discarded), 'Tabs der Ablagen sind nicht entladen');
   },
-}, { reload: '#272' });
+});
 
 // Nach einem Start ohne Sitzungswiederherstellung liegt B nur in der Sicherung. Beim Wechsel
 // zu B laden höchstens sechs Tabs zugleich, der Rest wird zurückgestellt und nachgelegt.

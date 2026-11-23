@@ -77,7 +77,7 @@ function assignWindows(wins, s, cfg, entries, guessed = new Set()) {
 // Ablage-Fenster, deren Ablage-Seite fehlt (z. B. weil die Erweiterung neu geladen
 // wurde und Chromium dabei ihre Seiten schließt), wieder zu Ablagen machen.
 async function repairStashes() {
-  const { stashWins, pendingStash, pendingMove, pendingFeed: feeding } = await chrome.storage.local.get(['stashWins', 'pendingStash', 'pendingMove', 'pendingFeed']);
+  const { stashWins, pendingStash, pendingMove, pendingFeed: feeding, discarding } = await chrome.storage.local.get(['stashWins', 'pendingStash', 'pendingMove', 'pendingFeed', 'discarding']);
   if (!stashWins && !pendingStash?.windowId && !pendingMove?.isStash) return false;
   const cfg = await getConfig();
   const s = await sess();
@@ -95,7 +95,9 @@ async function repairStashes() {
     const incoming = fromMove ? pendingMove.tabs : [];
     const blank = !ids.size && w.tabs.length && w.tabs.every((t) => isNewTab(t) && !incoming.includes(t.id));
     const fed = feeding?.windowId === w.id && feeding.ws === rec.ws;
-    if (!blank && !fed && !fromStash && !w.tabs.some((t) => ids.has(t.id) || incoming.includes(t.id))) continue;
+    // Ein gemerkter Tab wurde gerade entladen und hat eine neue ID, die stashWins noch nicht kennt
+    const replaced = ids.has(discarding);
+    if (!blank && !fed && !fromStash && !replaced && !w.tabs.some((t) => ids.has(t.id) || incoming.includes(t.id))) continue;
     await moving(async () => {
       await chrome.tabs.create({ windowId: w.id, url: `${STASH_PAGE}#${rec.ws}`, index: 0, pinned: true, active: true });
       if (blank) await chrome.tabs.remove(w.tabs.map((t) => t.id)).catch(() => {});
