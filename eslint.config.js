@@ -16,7 +16,7 @@ const EXT = path.join(__dirname, 'extension');
 
 // Was eine Umgebung über die Sprache hinaus bereitstellt und die Skripte benutzen. Meldet
 // die Prüfung einen Namen, den es dort wirklich gibt, gehört er hierher.
-const common = ['chrome', 'console', 'setTimeout', 'clearTimeout', 'URL', 'URLSearchParams', 'Blob', 'TextEncoder', 'btoa', 'crypto', 'navigator', 'OffscreenCanvas'];
+const common = ['chrome', 'console', 'setTimeout', 'clearTimeout', 'URL', 'URLSearchParams', 'Blob', 'TextEncoder', 'btoa', 'crypto', 'navigator', 'OffscreenCanvas', 'indexedDB', 'BroadcastChannel'];
 const ENV = {
   worker: [...common, 'importScripts', 'Response', 'CompressionStream'],
   page: [...common, 'document', 'window', 'location', 'CSS'],

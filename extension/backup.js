@@ -23,7 +23,7 @@ let knownGroups = []; // letzte Antwort der Gruppenabfrage
 function remember(wins, groups, replace = false) {
   if (replace) for (const id of image.keys()) if (!isClosing(id)) image.delete(id);
   for (const w of wins) {
-    if (w.incognito || stashWsOf(w) || isClosing(w.id)) continue;
+    if (w.incognito !== INCOGNITO || stashWsOf(w) || isClosing(w.id)) continue;
     const own = (list) => list.filter((g) => g.windowId === w.id).map((g) => [g.id, g]);
     image.set(w.id, { win: w, groups: new Map(groups ? own(groups) : [...own(knownGroups), ...(image.get(w.id)?.groups || [])]) });
   }

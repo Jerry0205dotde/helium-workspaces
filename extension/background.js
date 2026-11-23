@@ -14,6 +14,7 @@
 // Gültigkeitsbereich, und bevor das erste Ereignis kommt, sind alle geladen.
 
 importScripts(
+  'incognito.js',
   'i18n.js',
   'label.js',
   'exchange.js',
@@ -187,7 +188,7 @@ async function stateFor(windowId) {
     unloadChoices: UNLOAD_CHOICES,
     autoBackupError: auto.error,
     // Hinweis auf die automatische Sicherung, solange sie aus ist und es sich lohnt
-    autoHint: !auto.days && cfg.workspaces.length >= 2 && !autoHintOff,
+    autoHint: !INCOGNITO && !auto.days && cfg.workspaces.length >= 2 && !autoHintOff,
   };
 }
 
@@ -292,6 +293,8 @@ chrome.runtime.onStartup.addListener(() =>
 // Bei jedem Start, damit auch eine ältere Installation ohne Neuladen ihren Schlüssel bekommt.
 // Dann gleich an native-host.sh, außerhalb der Reihe: Bis install.sh fertig ist, vergehen Sekunden.
 serial(ensureToken).then(deliverKey);
+// onInstalled und onStartup kommen in der Inkognito-Instanz nicht an
+if (INCOGNITO) serial(buildMenus);
 serial(scheduleUnload);
 serial(scheduleAutoBackup);
 scheduleReconcile();

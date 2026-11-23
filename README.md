@@ -23,7 +23,7 @@ Every normal window shows exactly one workspace. The tabs of the other workspace
 - Tabs in stashes stay loaded. They keep using memory, and videos or music keep playing in the background. With **Mute stashes** in the workspace list they at least play silently. With **Unload stashes after** they are unloaded after a chosen time (see [Unloading stashes](./docs/usage.md#unloading-stashes)).
 - Pinned tabs belong to all workspaces and always stay in the main window.
 - Several windows can show the same workspace, for example after <kbd>Ctrl</kbd>+<kbd>N</kbd>.
-- Incognito windows are not handled.
+- The extension only runs in incognito windows if you allow it under `chrome://extensions` in its details with **Allow in Incognito**. Each incognito session then has its own workspaces: it starts with those of the normal profile, without their tabs, and changes stay within it. Incognito tabs are not backed up, not automatically either, and are gone with the last incognito window.
 - The extension also works without the KWin script, but the stash windows are then visible as minimized windows. The automatic backup needs `install.sh` too.
 
 ## Requirements

@@ -19,7 +19,10 @@ const AUTO_DIR = '~/.local/share/helium-workspaces/backups/';
 const AUTO_TIMEOUT = 60000;
 const HOUR = 3600000;
 
+// In Inkognito nie: Die Sicherung schriebe Inkognito-Tabs auf die Festplatte, in den Ordner des
+// normalen Profils (incognito.js)
 async function getAutoBackup() {
+  if (INCOGNITO) return 0;
   const { autoBackup } = await chrome.storage.local.get('autoBackup');
   return AUTO_CHOICES.includes(autoBackup) ? autoBackup : 0;
 }
@@ -34,6 +37,7 @@ async function scheduleAutoBackup() {
 // Einschalten sichert gleich, damit eine Datei da ist und man sieht, wo sie liegt
 async function setAutoBackup(days) {
   if (!AUTO_CHOICES.includes(days)) throw new Error(tr('autoBackupInvalid'));
+  if (INCOGNITO && days) throw new Error(tr('autoBackupIncognito'));
   await chrome.storage.local.set({ autoBackup: days });
   await scheduleAutoBackup();
   return autoBackupIfDue();

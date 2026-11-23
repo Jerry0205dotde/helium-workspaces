@@ -51,10 +51,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   const wsId = id.slice(kind.length + 1);
   if (!wsId || !Object.hasOwn(MENUS, kind)) return;
   if (kind === 'link') {
-    // Nichts aus privaten Fenstern in die Workspaces (und ihre Sicherung) übernehmen und
-    // keine Seiten der Erweiterung, etwa eine zweite Ablage-Seite
+    // Nichts aus privaten Fenstern in die normalen Workspaces (und ihre Sicherung) übernehmen
+    // und keine Seiten der Erweiterung, etwa eine zweite Ablage-Seite
     const url = info.linkUrl;
-    if (!url || tab?.incognito || isOwnPage(url, chrome.runtime.getURL(''))) return;
+    if (!url || !!tab?.incognito !== INCOGNITO || isOwnPage(url, chrome.runtime.getURL(''))) return;
     userAction(() => openLinkInWs(url, wsId, tab?.windowId));
     return;
   }

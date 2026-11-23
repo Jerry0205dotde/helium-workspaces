@@ -59,7 +59,10 @@ async function setTabIcon(tabId, wsId, src) {
 // Chromium setzt Symbol, Titel und Plakette eines Tabs zurück, sobald er eine Seite
 // übernimmt; die Erweiterung setzt sie erst nach dem Laden neu. Bis dahin gilt die
 // Einstellung ohne tabId: der Workspace des zuletzt fokussierten Fensters (lastWs).
+// Diese Einstellung teilen sich die normale und die Inkognito-Instanz, deshalb setzt sie nur
+// die normale.
 async function setGlobalIcon(src) {
+  if (INCOGNITO) return;
   src ??= await iconSource();
   await setTabIcon(undefined, src.lastWs, src);
 }

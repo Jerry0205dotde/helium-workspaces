@@ -23,7 +23,7 @@ Jedes normale Fenster zeigt genau einen Workspace. Die Tabs der anderen Workspac
 - Tabs in Ablagen bleiben geladen. Sie brauchen weiter Arbeitsspeicher, und Videos oder Musik laufen im Hintergrund weiter. Mit **Ablagen stummschalten** in der Workspace-Liste sind sie dabei wenigstens stumm. Mit **Ablagen entladen nach** werden sie nach einer gewählten Zeit entladen (siehe [Ablagen entladen](./docs/usage.de.md#ablagen-entladen)).
 - Angeheftete Tabs gehören zu allen Workspaces und bleiben immer im Hauptfenster.
 - Mehrere Fenster können denselben Workspace zeigen, etwa nach <kbd>Strg</kbd>+<kbd>N</kbd>.
-- Inkognito-Fenster werden nicht berücksichtigt.
+- In Inkognito-Fenstern läuft die Erweiterung nur, wenn man sie unter `chrome://extensions` bei ihren Details mit **Im Inkognitomodus zulassen** freigibt. Dann hat jede Inkognito-Sitzung eigene Workspaces: Sie beginnt mit denen des normalen Profils, ohne deren Tabs, und Änderungen bleiben in ihr. Inkognito-Tabs werden nicht gesichert, auch nicht automatisch, und sind mit dem letzten Inkognito-Fenster weg.
 - Ohne das KWin-Skript funktioniert die Erweiterung auch, die Ablage-Fenster sind dann aber als minimierte Fenster sichtbar. Auch die automatische Sicherung braucht `install.sh`.
 
 ## Voraussetzungen
