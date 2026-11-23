@@ -91,7 +91,10 @@ everywhere('Import mit Ersetzen', {
       pinned: ['p1', 'p9'],
     }),
   },
-  done: (env) => check(env, { ...REPLACEMENT, pinned: ['p1', 'p9'] }),
+  done: (env) => {
+    assert.deepEqual(env.b.local.data.workspaces.map((x) => x.name), ['X', 'Y']);
+    check(env, { ...REPLACEMENT, pinned: ['p1', 'p9'] });
+  },
 }, { worker: '#271', reload: '#269, #270, #271' });
 
 const DELETED = { A: SPEC.workspaces.A, C: SPEC.workspaces.C, pinned: SPEC.pinned };
