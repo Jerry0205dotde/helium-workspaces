@@ -95,7 +95,7 @@ everywhere('Import mit Ersetzen', {
     assert.deepEqual(env.b.local.data.workspaces.map((x) => x.name), ['X', 'Y']);
     check(env, { ...REPLACEMENT, pinned: ['p1', 'p9'] });
   },
-}, { worker: '#271', reload: '#270, #271' });
+}, { reload: '#270' });
 
 const DELETED = { A: SPEC.workspaces.A, C: SPEC.workspaces.C, pinned: SPEC.pinned };
 // B hat eine Gruppe, die beim Löschen vor dem Schließen der Ablage aufgelöst wird
@@ -107,7 +107,7 @@ everywhere('Workspace löschen', {
     assert.deepEqual(env.b.local.data.workspaces.map((x) => x.name), ['A', 'C']);
     check(env, DELETED);
   },
-}, { worker: '#271', reload: '#271' });
+});
 
 const LINKED = { ...ALL, B: [...SPEC.workspaces.B, 'l1'] };
 everywhere('Link in Workspace öffnen', {

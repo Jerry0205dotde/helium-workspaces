@@ -124,6 +124,7 @@ async function snapshot(gone) {
   if (await getPending()) return;
   if (await getPendingStash()) return;
   if (await getPendingMove()) return;
+  if ((await chrome.storage.local.get('pendingDelete')).pendingDelete) return; // deleteWs
   const { pendingStart } = await chrome.storage.session.get('pendingStart');
   const { pendingFeed, discarding } = await chrome.storage.local.get(['pendingFeed', 'discarding']);
   if (pendingFeed || pendingStart) return; // feedInto, restoreStart

@@ -122,14 +122,16 @@ async function noteFailed(i, e) {
   if (p) await setPending({ ...p, failed: [...(p.failed || []), { i, url: e.url }] });
 }
 
-// Setzt einen unterbrochenen Aufbau nach dem Start (resumeStart), Aufbau einer Ablage,
-// Tab-Transfer, Wechsel, ein unterbrochenes Nachlegen (resumeFeed) oder einen unterbrochenen
-// erneuten Versuch (resumeRetry) fort, bevor etwas anderes die Zuordnung liest.
+// Nimmt ein abgebrochenes Löschen zurück (resumeDelete), setzt einen unterbrochenen Aufbau nach
+// dem Start (resumeStart), Aufbau einer Ablage, Tab-Transfer, Wechsel, ein unterbrochenes
+// Nachlegen (resumeFeed) oder einen unterbrochenen erneuten Versuch (resumeRetry) fort,
+// bevor etwas anderes die Zuordnung liest.
 async function resumeSwitch() {
+  const undeleted = await resumeDelete();
   const started = await resumeStart();
   const stashed = await resumeStash();
   const moved = await resumeMove();
-  const resumed = stashed || moved || started;
+  const resumed = stashed || moved || started || undeleted;
   const p = await getPending();
   if (!p) {
     const fed = !!(await resumeFeed());

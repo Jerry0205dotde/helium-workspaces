@@ -62,6 +62,20 @@ test('Ablage lässt sich beim Löschen nicht schließen: ihre Gruppe ist wieder 
   assert.deepEqual(closed(b), []);
 });
 
+test('Löschen bricht nach dem Aufheben der Gruppen ab, ein Tab der Ablage wird danach entladen: die Gruppe ist wieder da (#271)', async () => {
+  const env = await setup(SPEC);
+  const { b, ids } = env;
+  const stashB = stashOf(env, 'B');
+  b.fail('windows.remove', { when: (id) => id === stashB.id, stop: true });
+  env.w.send({ type: 'delete', wsId: ids.B });
+  await env.w.settle();
+  // Der neue Service Worker zieht die neue ID nach, bevor der Abgleich die Gruppe anlegt
+  const w = b.startWorker(null);
+  b.discardTab(stashB.tabs.find((t) => t.url === 'https://b1.test/').id);
+  await w.settle();
+  check(env, ALL);
+});
+
 test('Letztes Fenster per X: nur die Ablage, die Chromium wiederherstellt, behält ihre Gruppen (#218)', async () => {
   const env = await setup(SPEC);
   const { b, w, win, ids } = env;

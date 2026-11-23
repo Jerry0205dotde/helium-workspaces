@@ -264,27 +264,38 @@ const GONE = /no window with id/i;
 // gespeicherte Gruppe (Menü → Tabgruppen), eine aufgehobene löscht es. Sonst stünde jede
 // Gruppe nach dem Neuanlegen ein weiteres Mal in der Liste (#218). Gibt eine Funktion
 // zurück, die die Gruppen wieder anlegt, falls sich das Fenster nicht schließen lässt.
-async function ungroupAll(w) {
+// before bekommt die Gruppen ({ title, color, collapsed, tabIds }) vor dem Aufheben, damit
+// sie sich auch nach einem Ende des Service Workers mit regroup wieder anlegen lassen.
+async function ungroupAll(w, before = async () => {}) {
   const tabs = w.tabs.filter((t) => t.groupId >= 0);
   const none = async () => {};
   if (!tabs.length) return none;
   try {
-    const groups = await chrome.tabGroups.query({ windowId: w.id });
+    const groups = (await chrome.tabGroups.query({ windowId: w.id })).map((g) => ({
+      title: g.title,
+      color: g.color,
+      collapsed: g.collapsed,
+      tabIds: tabs.filter((t) => t.groupId === g.id).map((t) => t.id),
+    }));
+    await before(groups);
     await whenIdle(() => chrome.tabs.ungroup(tabs.map((t) => t.id)));
-    return async () => {
-      for (const g of groups) {
-        const tabIds = tabs.filter((t) => t.groupId === g.id).map((t) => t.id);
-        try {
-          const gid = await whenIdle(() => chrome.tabs.group({ tabIds, createProperties: { windowId: w.id } }));
-          await whenIdle(() => chrome.tabGroups.update(gid, { title: g.title, color: g.color, collapsed: g.collapsed }));
-        } catch (err) {
-          console.warn('[workspaces] Gruppe wieder anlegen', g.title, err);
-        }
-      }
-    };
+    return () => regroup(w.id, groups);
   } catch (err) {
     console.warn('[workspaces] Gruppen vor dem Schließen', err);
     return none;
+  }
+}
+
+// Legt die Gruppen aus ungroupAll im Fenster windowId wieder an
+async function regroup(windowId, groups) {
+  for (const g of groups) {
+    if (!g.tabIds.length) continue;
+    try {
+      const gid = await whenIdle(() => chrome.tabs.group({ tabIds: g.tabIds, createProperties: { windowId } }));
+      await whenIdle(() => chrome.tabGroups.update(gid, { title: g.title, color: g.color, collapsed: g.collapsed }));
+    } catch (err) {
+      console.warn('[workspaces] Gruppe wieder anlegen', g.title, err);
+    }
   }
 }
 
