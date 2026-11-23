@@ -95,7 +95,7 @@ everywhere('Import mit Ersetzen', {
     assert.deepEqual(env.b.local.data.workspaces.map((x) => x.name), ['X', 'Y']);
     check(env, { ...REPLACEMENT, pinned: ['p1', 'p9'] });
   },
-}, { reload: '#270' });
+});
 
 const DELETED = { A: SPEC.workspaces.A, C: SPEC.workspaces.C, pinned: SPEC.pinned };
 // B hat eine Gruppe, die beim Löschen vor dem Schließen der Ablage aufgelöst wird
@@ -158,4 +158,4 @@ everywhere('Wechsel mit Nachlegen aus der Sicherung', {
     assert.equal(env.b.local.data.backup[env.ids.B].later, undefined, 'Tabs sind noch zurückgestellt');
     check(env, BIG_ALL);
   },
-}, { reload: '#270' });
+});

@@ -269,7 +269,17 @@ async function finishSwitch() {
     s.windowWs[p.windowId] = p.to;
     s.prevWs[p.windowId] = p.from;
     await saveSess(s);
-    await chrome.storage.local.set({ lastWs: p.to });
+    // Die neue Zuordnung steht sonst nur in storage.session, bis der nächste Snapshot läuft.
+    // Lädt die Erweiterung vorher neu, ordnete der Abgleich das Fenster nach backupWindows
+    // dem alten Workspace zu und erkennte die Ablagen an stashWins nicht wieder (#270).
+    const now = await scan();
+    const { stashWins = {}, backupWindows = [] } = await chrome.storage.local.get(['stashWins', 'backupWindows']);
+    for (const [ws, w] of now.stash) if (ws === p.from || ws === p.to) stashWins[w.id] = { ws, tabs: stashTabsOf(w).map((t) => t.id) };
+    const shown = now.mains.find((w) => w.id === p.windowId);
+    const entry = shown && { id: p.windowId, ws: p.to, urls: movableTabsOf(shown).map(urlOf) };
+    const wins = backupWindows.filter((e) => e.id !== p.windowId);
+    if (entry) wins.push(entry);
+    await chrome.storage.local.set({ lastWs: p.to, stashWins, backupWindows: wins });
     await setPending(null, p);
     return 'forward';
   });
