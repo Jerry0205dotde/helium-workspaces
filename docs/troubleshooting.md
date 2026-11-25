@@ -40,7 +40,16 @@ If a window shows "jchklfejnmfphkbcpnhdejmeoncejjbe is blocked – This page has
 1. **Do not close** the stash windows with the error page, their tabs belong to the workspaces.
 2. Quit Helium.
 3. Run `./install.sh` in the repository folder and answer the question with <kbd>Enter</kbd>. It reports "Removed old entries of the extension". This needs `python3`. If Helium is still running, it changes nothing and says so.
-4. Start Helium. The extension loads again with its workspaces, backup and key, and the stashes are hidden again.
+4. Start Helium. The extension loads again with its workspaces, backup and key, and the stashes are hidden again. It has taken over the old entry's shortcuts such as <kbd>Alt</kbd>+<kbd>W</kbd>.
+
+## <kbd>Alt</kbd>+<kbd>W</kbd> does not open the workspace list
+
+Chromium assigns the shortcuts from `manifest.json` only when the extension is installed or updated, and only if they are free. When switching to the fixed ID (from 0.3.0), the old entry still had <kbd>Alt</kbd>+<kbd>W</kbd> and <kbd>Alt</kbd>+<kbd>Q</kbd>, so the extension got none. If an older version of `install.sh` removed the old entry, the shortcuts have been free since then but belong to nobody.
+
+- Set the shortcuts yourself for "Workspaces" in `chrome://extensions/shortcuts`, or
+- click **Reload** on "Workspaces" in `chrome://extensions`. Helium then assigns the free shortcuts that were not changed by hand.
+
+If a shortcut stays empty after **Reload**, another extension has it. It can still be set in `chrome://extensions/shortcuts`. If it does not arrive there when typed, or does not respond afterwards, a Plasma shortcut catches it (System Settings → Keyboard → Shortcuts).
 
 ## The extension is disabled or does not respond
 

@@ -40,7 +40,16 @@ Zeigt ein Fenster nach dem Start „jchklfejnmfphkbcpnhdejmeoncejjbe ist gesperr
 1. Die Ablage-Fenster mit der Fehlerseite **nicht schließen**, ihre Tabs gehören zu den Workspaces.
 2. Helium beenden.
 3. `./install.sh` im Repository-Ordner ausführen und die Frage mit <kbd>Enter</kbd> beantworten. Es meldet „Alte Einträge der Erweiterung entfernt“. Dafür braucht es `python3`. Läuft Helium noch, ändert es nichts und weist darauf hin.
-4. Helium starten. Die Erweiterung lädt wieder mit Workspaces, Sicherung und Schlüssel, die Ablagen werden wieder versteckt.
+4. Helium starten. Die Erweiterung lädt wieder mit Workspaces, Sicherung und Schlüssel, die Ablagen werden wieder versteckt. Tastenkürzel des alten Eintrags wie <kbd>Alt</kbd>+<kbd>W</kbd> hat sie übernommen.
+
+## <kbd>Alt</kbd>+<kbd>W</kbd> öffnet die Workspace-Liste nicht
+
+Chromium vergibt die Tastenkürzel aus `manifest.json` nur beim Installieren oder Aktualisieren der Erweiterung, und nur, wenn sie frei sind. Beim Umstieg auf die feste ID (ab 0.3.0) hatte der alte Eintrag <kbd>Alt</kbd>+<kbd>W</kbd> und <kbd>Alt</kbd>+<kbd>Q</kbd> noch, die Erweiterung ging deshalb leer aus. Hat eine ältere Fassung von `install.sh` den alten Eintrag entfernt, sind die Kürzel seitdem frei, gehören aber niemandem.
+
+- Unter `chrome://extensions/shortcuts` bei „Workspaces“ die Kürzel selbst festlegen, oder
+- in `chrome://extensions` bei „Workspaces“ auf **Neu laden** klicken. Helium vergibt dabei die freien Kürzel nach, die nicht von Hand geändert wurden.
+
+Bleibt ein Kürzel nach **Neu laden** leer, hat es eine andere Erweiterung. Unter `chrome://extensions/shortcuts` lässt es sich trotzdem setzen. Kommt es dort beim Eintippen nicht an oder reagiert es danach nicht, fängt es ein Kurzbefehl von Plasma ab (Systemeinstellungen → Tastatur → Kurzbefehle).
 
 ## Die Erweiterung ist deaktiviert oder reagiert nicht
 
