@@ -49,7 +49,7 @@ Chromium vergibt die Tastenkürzel aus `manifest.json` nur beim Installieren ode
 - Unter `chrome://extensions/shortcuts` bei „Workspaces“ die Kürzel selbst festlegen, oder
 - in `chrome://extensions` bei „Workspaces“ auf **Neu laden** klicken. Helium vergibt dabei die freien Kürzel nach, die nicht von Hand geändert wurden.
 
-Lässt sich ein Kürzel dort nicht setzen, hat es eine andere Erweiterung. Reagiert es trotzdem nicht, belegt es ein Kurzbefehl von Plasma (Systemeinstellungen → Tastatur → Kurzbefehle).
+Bleibt ein Kürzel nach **Neu laden** leer, hat es eine andere Erweiterung. Unter `chrome://extensions/shortcuts` lässt es sich trotzdem setzen. Kommt es dort beim Eintippen nicht an oder reagiert es danach nicht, fängt es ein Kurzbefehl von Plasma ab (Systemeinstellungen → Tastatur → Kurzbefehle).
 
 ## Die Erweiterung ist deaktiviert oder reagiert nicht
 

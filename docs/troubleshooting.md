@@ -49,7 +49,7 @@ Chromium assigns the shortcuts from `manifest.json` only when the extension is i
 - Set the shortcuts yourself for "Workspaces" in `chrome://extensions/shortcuts`, or
 - click **Reload** on "Workspaces" in `chrome://extensions`. Helium then assigns the free shortcuts that were not changed by hand.
 
-If a shortcut cannot be set there, another extension has it. If it still does not respond, a Plasma shortcut takes it (System Settings → Keyboard → Shortcuts).
+If a shortcut stays empty after **Reload**, another extension has it. It can still be set in `chrome://extensions/shortcuts`. If it does not arrive there when typed, or does not respond afterwards, a Plasma shortcut catches it (System Settings → Keyboard → Shortcuts).
 
 ## The extension is disabled or does not respond
 
