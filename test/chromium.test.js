@@ -731,6 +731,10 @@ test('Echter Chromium: Nach dem Update auf die Fassung mit nativeMessaging träg
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
 
+// Die Kürzel, die Chromium der Erweiterung gegeben hat
+const shortcuts = `const all = await chrome.commands.getAll();
+  return Object.fromEntries(['_execute_action', 'last-workspace'].map((n) => [n, all.find((c) => c.name === n).shortcut]));`;
+
 // Nach dem Umstieg auf die feste ID steht der alte Eintrag mit demselben Ordner noch in den
 // Einstellungen. Hat ihn „Entpackte Erweiterung laden“ angelegt (creation_flags 38, über das
 // DevTools-Protokoll kommt ein weiteres Flag dazu, mit dem der Fehler nicht auftritt), lädt
@@ -757,6 +761,8 @@ test('Echter Chromium: install.sh entfernt den alten Eintrag, danach lädt der S
   b.extId = EXT_ID;
   await b.attachWorker();
   const token = await h.token();
+  // Alt+W und Alt+Q hat noch der alte Eintrag, die feste ID geht leer aus
+  assert.deepEqual(await b.sw(shortcuts), { _execute_action: '', 'last-workspace': '' });
   await b.quit();
 
   const file = path.join(b.profile, 'Default', 'Preferences');
@@ -771,6 +777,8 @@ test('Echter Chromium: install.sh entfernt den alten Eintrag, danach lädt der S
 
   await b.launch();
   assert.equal(await h.token(), token, 'Speicher der Erweiterung ist nicht mehr da');
+  // Die Kürzel des alten Eintrags hat jetzt die feste ID
+  assert.deepEqual(await b.sw(shortcuts), { _execute_action: 'Alt+W', 'last-workspace': 'Alt+Q' });
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
 
