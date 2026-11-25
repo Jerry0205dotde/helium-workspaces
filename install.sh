@@ -21,8 +21,8 @@
 # in denen die Erweiterung installiert ist, die aber nicht mit „Dort weitermachen, wo ich
 # aufgehört habe“ starten. Es ändert dort nichts. Steht in einem Profil noch ein Eintrag der
 # Erweiterung mit ihrer alten ID (vor 0.3.0) und demselben Ordner, entfernt install.sh ihn mit
-# python3, sonst lädt der Browser die Erweiterung beim Start nicht. Läuft der Browser, weist
-# es nur darauf hin.
+# python3, sonst lädt der Browser die Erweiterung beim Start nicht. Seine Tastenkürzel übernimmt
+# die feste ID. Läuft der Browser, weist es nur darauf hin.
 # Bevor es etwas ändert, prüft das Skript, ob alle benötigten Programme da sind und KWin erreichbar
 # ist. Für qdbus6 nimmt es auch qdbus-qt6 (Fedora) oder qdbus. ./install.sh --help zeigt diesen Text.
 set -euo pipefail
@@ -309,9 +309,9 @@ done
 # Eintrag mit der alten ID und demselben Ordner. Beim nächsten Start lädt Chromium dann keinen
 # der beiden, die Ablage-Seiten zeigen ERR_BLOCKED_BY_CLIENT. chrome://extensions zeigt keinen
 # davon, Entfernen geht dort also nicht. Läuft der Browser, schreibt er seine Einstellungen beim
-# Beenden zurück, dann nur ein Hinweis. Sonst entfernt python3 die Einträge samt Prüfsummen,
-# angehefteten Symbolen und Tastenkürzeln, alles andere bleibt, wie es ist. Chromium speichert
-# den Ordner mit aufgelösten Symlinks.
+# Beenden zurück, dann nur ein Hinweis. Sonst entfernt python3 die Einträge samt Prüfsummen und
+# angehefteten Symbolen, ihre Tastenkürzel übernimmt die feste ID. Alles andere bleibt, wie es
+# ist. Chromium speichert den Ordner mit aufgelösten Symlinks.
 EXT_DIR="$(cd -P "$DIR" && pwd)/extension"
 EXT_DIR_JSON="${EXT_DIR//\\/\\\\}"
 EXT_DIR_JSON="\"path\":\"${EXT_DIR_JSON//\"/\\\"}\""
@@ -369,8 +369,27 @@ for f, prefs in files.items():
             prefs.get('protection', {}).get('macs', {}).get('extensions', {}).get(macs, {}).pop(i, None)
     if isinstance(ext.get('pinned_extensions'), list):
         ext['pinned_extensions'] = [i for i in ext['pinned_extensions'] if i not in stale]
-    if isinstance(ext.get('commands'), dict):
-        ext['commands'] = {k: v for k, v in ext['commands'].items() if not (isinstance(v, dict) and v.get('extension') in stale)}
+    # Die Tastenkürzel des alten Eintrags gehen an die feste ID. Chromium vergibt die Kürzel aus
+    # dem Manifest nur beim Installieren oder Aktualisieren und nur, wenn sie frei sind. Beim
+    # Umstieg hatte der alte Eintrag sie noch, die feste ID ging leer aus, etwa bei Alt+W.
+    # Ein Befehl, für den die feste ID schon ein Kürzel hat, behält es. Der Schlüssel der Kürzel
+    # ist eindeutig, belegt ist es also nur durch den alten Eintrag. Medientasten tragen die
+    # ID im Schlüssel. extensions.commands hat keine Prüfsumme unter protection.macs.
+    cmds = ext.get('commands')
+    if isinstance(cmds, dict):
+        bound = {v.get('command_name') for v in cmds.values() if isinstance(v, dict) and v.get('extension') == ext_id}
+        kept = {}
+        for k, v in cmds.items():
+            old = v.get('extension') if isinstance(v, dict) else None
+            if old not in stale:
+                kept[k] = v
+                continue
+            name = v.get('command_name')
+            key = k[:-len(old)] + ext_id if k.endswith(':' + old) else k
+            if isinstance(name, str) and name not in bound and (key == k or key not in cmds):
+                kept[key] = dict(v, extension=ext_id)
+                bound.add(name)
+        ext['commands'] = kept
     if json.dumps(prefs, sort_keys=True) != before:
         changed.append((f, prefs))
 # Erst schreiben, wenn alles vorbereitet ist. Neue Datei mit Rechten 0600, auf Platte, dann ersetzen.

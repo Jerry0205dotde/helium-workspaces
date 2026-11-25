@@ -489,7 +489,8 @@ test('Installation findet die Erweiterung auch in Secure Preferences', () => {
 
 // Wie nach dem Umstieg auf die feste ID (vor 0.3.0 per „Entpackte Erweiterung laden“
 // installiert): neben der Erweiterung ein Eintrag mit der alten ID und demselben Ordner, mit
-// Prüfsummen, angeheftetem Symbol und Tastenkürzel. Dazu eine fremde entpackte Erweiterung.
+// Prüfsummen, angeheftetem Symbol und Tastenkürzel. Alt+W hat der alte Eintrag, die feste ID
+// ging beim Umstieg leer aus. Dazu eine fremde entpackte Erweiterung.
 const OLD_ID = 'jeldohdpfhofdjhhbcagheekejmgllgi';
 const OTHER_ID = 'abcdefghijklmnopabcdefghijklmnop';
 const stalePrefs = (extDir) =>
@@ -530,9 +531,31 @@ test('Installation entfernt den alten Eintrag der Erweiterung mit demselben Ordn
   const p = JSON.parse(r.profiles['net.imput.helium/Default']);
   assert.deepEqual(Object.keys(p.extensions.settings), [EXT_ID, OTHER_ID]);
   assert.deepEqual(p.extensions.pinned_extensions, [OTHER_ID, EXT_ID]);
-  assert.deepEqual(Object.keys(p.extensions.commands), ['linux:Alt+Shift+Up']);
+  // Alt+W hatte beim Umstieg noch der alte Eintrag, die feste ID übernimmt es
+  assert.deepEqual(p.extensions.commands, {
+    'linux:Alt+W': { command_name: '_execute_action', extension: EXT_ID },
+    'linux:Alt+Shift+Up': { command_name: 'prev-workspace', extension: EXT_ID },
+  });
   assert.deepEqual(p.protection.macs.extensions, { settings: { [EXT_ID]: 'A', [OTHER_ID]: 'C' }, settings_encrypted_hash: { [EXT_ID]: 'a', [OTHER_ID]: 'c' } });
   assert.deepEqual(p.session, { restore_on_startup: 1 });
+});
+
+test('Ein Kürzel des alten Eintrags geht nicht an die feste ID, wenn sie für den Befehl schon eins hat', { skip: !hasPython && 'python3 fehlt' }, () => {
+  const p = JSON.parse(stalePrefs(path.join(ROOT, 'extension')));
+  Object.assign(p.extensions.commands, {
+    'linux:Alt+Shift+K': { command_name: 'prev-workspace', extension: OLD_ID, global: false },
+    // Medientasten tragen die ID der Erweiterung im Schlüssel
+    [`linux:MediaNextTrack:${OLD_ID}`]: { command_name: 'next-workspace', extension: OLD_ID, global: false },
+    'linux:Alt+Shift+D': { command_name: 'addSite', extension: OTHER_ID, global: false },
+  });
+  const r = run([TOKEN], { profiles: { 'net.imput.helium/Default': JSON.stringify(p) } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.profiles['net.imput.helium/Default']).extensions.commands, {
+    'linux:Alt+W': { command_name: '_execute_action', extension: EXT_ID },
+    'linux:Alt+Shift+Up': { command_name: 'prev-workspace', extension: EXT_ID },
+    [`linux:MediaNextTrack:${EXT_ID}`]: { command_name: 'next-workspace', extension: EXT_ID, global: false },
+    'linux:Alt+Shift+D': { command_name: 'addSite', extension: OTHER_ID, global: false },
+  });
 });
 
 test('Läuft der Browser, bleibt der alte Eintrag und install.sh weist darauf hin', { skip: !hasPython && 'python3 fehlt' }, () => {
