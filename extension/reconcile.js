@@ -105,8 +105,7 @@ async function repairStashes() {
     // Ein gemerkter Tab wurde gerade entladen und hat eine neue ID, die stashWins noch nicht kennt
     const replaced = ids.has(discarding);
     // Ein Link wird gerade in die Ablage geöffnet (openLinkInWs), stashWins kennt seinen Tab noch nicht
-    const linked = rec.link !== undefined && own.some((t) => urlOf(t) === rec.link);
-    if (!blank && !fed && !fromStash && !replaced && !linked && !w.tabs.some((t) => ids.has(t.id) || incoming.includes(t.id))) continue;
+    if (!blank && !fed && !fromStash && !replaced && !rec.link && !w.tabs.some((t) => ids.has(t.id) || incoming.includes(t.id))) continue;
     await moving(async () => {
       await chrome.tabs.create({ windowId: w.id, url: `${STASH_PAGE}#${rec.ws}`, index: 0, active: true });
       // Erst lösen, sonst legte Helium ab 0.22 eine angeheftete wieder an
