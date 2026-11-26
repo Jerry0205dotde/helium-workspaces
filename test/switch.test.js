@@ -543,9 +543,11 @@ test('Wechsel mit vielen Tabs: Menüs einmal danach angepasst, Sicherung nur ein
     assert.equal(backups(from), 1, 'Sicherung mehr als einmal geschrieben');
   }
   perTab.left = 0;
-  // Endet eine eigene Verschiebung ohne snapshot(), sichert die verzögerte Sicherung sie
+  // Mehrere Tab-Ereignisse über eine eigene Verschiebung verteilt frischen das Abbild erst an
+  // ihrem Ende einmal auf. Endet sie ohne snapshot(), sichert die verzögerte Sicherung sie
   let from = env.b.calls.length;
-  await w.eval('moving(async () => scheduleSnapshot())');
+  await w.eval('moving(async () => { for (let i = 0; i < 3; i++) { scheduleSnapshot(); await chrome.storage.session.get(); } })');
+  assert.equal(count(from, 'windows.getAll'), 1);
   await w.advance(5000);
   assert.equal(backups(from), 1);
   // Der gesetzte Stand folgt dem aktiven Tab: in der Gruppe ist „Gruppe verschieben“ sichtbar
