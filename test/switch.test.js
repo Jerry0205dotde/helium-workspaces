@@ -513,6 +513,7 @@ test('Popup: Endet der Service Worker nach der Antwort, holt der Abgleich die Si
   assert.deepEqual(urls(b.local.data.backup[ids.B].shown), SPEC.workspaces.B.map((x) => url(x.url ?? x)));
   assert.deepEqual(urls(b.local.data.backup[ids.A].stash), SPEC.workspaces.A.map((x) => url(x.url ?? x)));
   check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
+});
 
 test('Wechsel mit vielen Tabs: Menüs einmal danach angepasst, Sicherung nur einmal geschrieben (#299)', async () => {
   const many = (p) => Array.from({ length: 40 }, (_, i) => `${p}${i}`);
