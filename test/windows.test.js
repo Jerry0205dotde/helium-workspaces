@@ -104,6 +104,25 @@ test('Alle Tabs bis auf eine neue Tab-Seite geschlossen und sofort weg: sie komm
   check(env, { ...ALL, E: [] });
 });
 
+test('Service Worker endet gleich nach dem Schließen der neuen Tab-Seite: die Sicherung des leeren Workspace bleibt leer (#288)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  ids.E = (await ok(w.request({ type: 'create', name: 'E' }))).id;
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.E }));
+  const blank = b.tabsByUrl(NEWTAB)[0].id;
+  let removed = false;
+  b.during('tabs.remove', () => (removed = true), { when: (id) => [id].flat().includes(blank) });
+  const f = b.fail('storage.local.get', { when: () => removed, stop: true });
+  w.send({ type: 'switch', windowId: win, wsId: ids.A });
+  await w.settle();
+  assert.equal(f.hits, 1);
+  await b.startWorker(null).settle();
+  assert.equal(shows(env, win), 'A');
+  assert.deepEqual(b.tabsByUrl(NEWTAB), []);
+  assert.deepEqual(b.local.data.backup[ids.E], { stash: [], shown: [] });
+  check(env, { ...ALL, E: [] }, { allowNewTab: false });
+});
+
 test('Popup: beim eigenen Workspace steht die Tab-Zahl, auch wenn ein zweites Fenster ihn zeigt (#220)', async () => {
   const env = await setup(SPEC);
   const { w, win, ids } = env;

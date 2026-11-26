@@ -253,7 +253,6 @@ async function finishSwitch() {
     // Adresse, steht sie schon in pendingUrl, und der Tab bleibt.
     const blank = (t) => isNewTab(t) && (!t.pendingUrl || isNewTab({ url: t.pendingUrl }));
     const blanks = tabs.filter((t) => old.has(t.id) && blank(t));
-    if (blanks.length) await chrome.tabs.remove(blanks.map((t) => t.id)).catch(() => {}); // schon geschlossen
     const oldLeft = tabs.filter((t) => old.has(t.id) && !blank(t));
     if (oldLeft.length) {
       const st = await ensureStash(p.from, false);
@@ -265,13 +264,16 @@ async function finishSwitch() {
     } else if (
       (!p.oldTabs.length || blanks.length) &&
       !stash.has(p.from) &&
-      !mains.some((w) => w.id !== p.windowId && s.windowWs[w.id] === p.from)
+      // Ein noch nicht zugeordnetes Fenster (nach dem Neuladen der Erweiterung) kann ihn zeigen
+      !mains.some((w) => w.id !== p.windowId && (s.windowWs[w.id] ?? p.from) === p.from)
     ) {
       // Nichts mehr da, und nichts sonst hält den Workspace: snapshot() ließe sonst den
-      // alten Stand samt der gerade geschlossenen leeren Seite stehen (#288). Noch nicht
+      // alten Stand samt der gleich geschlossenen leeren Seite stehen (#288). Noch nicht
       // angelegte Einträge bleiben, auch wenn bisher nur die leere Seite entstand.
       await clearBackup(p.from, true);
     }
+    // Erst danach: Endet der Service Worker vorher, findet der erneute Lauf sie noch
+    if (blanks.length) await chrome.tabs.remove(blanks.map((t) => t.id)).catch(() => {}); // schon geschlossen
 
     s.windowWs[p.windowId] = p.to;
     s.prevWs[p.windowId] = p.from;
