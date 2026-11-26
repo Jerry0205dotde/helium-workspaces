@@ -178,7 +178,7 @@ class Chromium {
         (x) =>
           x.type === 'service_worker' &&
           x.targetId !== old &&
-          x.url === `chrome-extension://${this.extId}/background.js` &&
+          x.url.split('?')[0] === `chrome-extension://${this.extId}/background.js` &&
           (!this.context || x.browserContextId === this.context),
       );
       if (!t) throw new Error('Service Worker der Erweiterung nicht gefunden');
@@ -201,7 +201,7 @@ class Chromium {
   async incognitoSw(body, ...args) {
     const { targetInfos } = await this.send('Target.getTargets');
     const url = `chrome-extension://${this.extId}/background.js`;
-    const t = targetInfos.find((x) => x.type === 'service_worker' && x.url === url && x.browserContextId !== this.context);
+    const t = targetInfos.find((x) => x.type === 'service_worker' && x.url.split('?')[0] === url && x.browserContextId !== this.context);
     if (!t) throw new Error('kein Service Worker der Inkognito-Instanz');
     if (this.incognito?.targetId !== t.targetId) {
       const { sessionId } = await this.send('Target.attachToTarget', { targetId: t.targetId, flatten: true });

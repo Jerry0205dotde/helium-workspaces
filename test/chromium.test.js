@@ -1050,6 +1050,38 @@ test('Echter Chromium: Nach der Erstinstallation übersteht die Erweiterung Been
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
 
+// Wie ./install.sh --update (git pull) und danach nur ein Neustart, ohne Neuladen in
+// chrome://extensions: Chromium führte die zwischengespeicherten Skripte des Service Workers
+// weiter aus, nur das Manifest war neu. Mit Helium 0.22 lief so noch eine Fassung, die
+// Ablage-Seiten anheftete, und legte endlos Fenster an (#310). Mit der Version im Pfad des
+// Service Workers lädt der Neustart den neuen Code.
+test('Echter Chromium: Nach einem Update ohne Neuladen läuft nach dem Neustart der neue Code (#310)', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 120000 }, async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-update-'));
+  const ext = path.join(root, 'extension');
+  // Die ältere Fassung: niedrigere Version, erkennbar an einer Zeile in einem importierten Skript
+  fs.cpSync(EXT, ext, { recursive: true });
+  const m = JSON.parse(fs.readFileSync(path.join(EXT, 'manifest.json'), 'utf8'));
+  const old = '0.0.1';
+  fs.writeFileSync(path.join(ext, 'manifest.json'), JSON.stringify({ ...m, version: old, background: { service_worker: m.background.service_worker.replace(m.version, old) } }));
+  fs.appendFileSync(path.join(ext, 'core.js'), '\nself.hwsOldCode = true;\n');
+  const b = new Chromium(bin, path.join(root, 'profile'), ext);
+  t.after(async () => {
+    await b.kill();
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  });
+  await b.launch();
+  assert.deepEqual(await b.sw('return [chrome.runtime.getManifest().version, self.hwsOldCode];'), [old, true]);
+  await b.quit();
+  // Speichern beim Beenden scheitert harmlos („The browser is shutting down“), es zählt der zweite Start
+  b.errors.length = 0;
+
+  fs.rmSync(ext, { recursive: true });
+  fs.cpSync(EXT, ext, { recursive: true });
+  await b.launch();
+  assert.deepEqual(await b.sw('return [chrome.runtime.getManifest().version, typeof self.hwsOldCode];'), [m.version, 'undefined'], 'es läuft noch der alte Code');
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});
+
 // Export über die Exportseite der echten Erweiterung (#243): „exportiert“ erst, wenn die Datei
 // gespeichert ist. Ein verweigerter Download meldet einen Fehler statt Erfolg.
 test('Echter Chromium: Export meldet Erfolg erst nach dem Speichern, einen verweigerten Download als Fehler (#243)', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 120000 }, async (t) => {

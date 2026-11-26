@@ -22,7 +22,7 @@ Workspaces auf ein anderes Gerät bringt der [Export](./usage.de.md#exportieren-
 
 ## Google Chrome und Chromium
 
-Die Erweiterung läuft auch in Google Chrome und Chromium. Sie wird dort genauso unter `chrome://extensions` installiert, und die [Starteinstellung](../README.de.md#voraussetzungen) gilt dort ebenso. Sie braucht Version 102 oder neuer, ältere Versionen lehnen die Installation ab. Dabei sind zwei Teile zu unterscheiden:
+Die Erweiterung läuft auch in Google Chrome und Chromium. Sie wird dort genauso unter `chrome://extensions` installiert, und die [Starteinstellung](../README.de.md#voraussetzungen) gilt dort ebenso. Sie braucht Version 139 oder neuer, ältere Versionen lehnen die Installation ab. Dabei sind zwei Teile zu unterscheiden:
 
 - **Erweiterung:** Workspaces anlegen, umbenennen, wechseln und löschen, Tabs verschieben, angeheftete Tabs und die Tastenkürzel. Das funktioniert wie in Helium. Getestet mit Google Chrome 157.0.8103.78 und Chromium 160.0.8158.0.
 - **Desktop-Integration:** Das KWin-Skript versteckt nur Ablage-Fenster von Browsern, die es an ihrer Fensterklasse (X11) bzw. App-ID (Wayland) erkennt: `helium`, `google-chrome`, `chromium` und `chromium-browser`. Getestet mit Google Chrome 157.0.8103.78 und Chromium 157.0.8103.38 unter KWin 6.8.2, als native Wayland-Fenster und als X11-Fenster über XWayland. Andere Browser wie Brave, Vivaldi oder Edge erkennt es erst, wenn sie in der Liste stehen, siehe unten. Bis dahin bleiben ihre Ablage-Fenster als minimierte Fenster sichtbar.

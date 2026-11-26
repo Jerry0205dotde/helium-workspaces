@@ -39,7 +39,12 @@ test('manifest.json ist gültig und verweist nur auf vorhandene Dateien', () => 
   assert.equal(m.manifest_version, 3);
   assert.match(m.name, /\S/);
   assert.match(m.version, /^\d+(\.\d+){0,3}$/);
-  assert.ok(exists(EXT, m.background.service_worker), 'Service Worker fehlt');
+  // Nach git pull führt Chromium sonst auch nach einem Neustart die zwischengespeicherten
+  // Skripte des Service Workers weiter aus, bis die Erweiterung neu geladen wird; nur das
+  // Manifest ist neu. Ein neuer Pfad mit der Version lädt sie neu (#310).
+  assert.equal(m.background.service_worker, `background.js?v=${m.version}`, 'Pfad des Service Workers ohne die Version');
+  const sw = m.background.service_worker.split('?')[0];
+  assert.ok(exists(EXT, sw), 'Service Worker fehlt');
   assert.ok(exists(EXT, m.action.default_popup), 'Popup fehlt');
   for (const icons of [m.icons, m.action.default_icon]) {
     for (const [size, f] of Object.entries(icons)) {
@@ -57,7 +62,7 @@ test('manifest.json ist gültig und verweist nur auf vorhandene Dateien', () => 
     assert.match(c.description || '', /\S/, `Befehl ${name} ohne Beschreibung`);
   }
   // Was background.js per importScripts lädt, muss es geben
-  const bg = fs.readFileSync(path.join(EXT, m.background.service_worker), 'utf8');
+  const bg = fs.readFileSync(path.join(EXT, sw), 'utf8');
   for (const [, list] of bg.matchAll(/importScripts\(([^)]*)\)/g)) {
     for (const [, f] of list.matchAll(/'([^']+)'/g)) assert.ok(exists(EXT, f), `importScripts: ${f} fehlt`);
   }
@@ -97,6 +102,8 @@ test('manifest.json nennt eine Mindestversion, die alle benutzten Schnittstellen
   for (const [api, v] of Object.entries(since)) {
     if (code.includes(api)) assert.ok(min >= v, `${api} gibt es erst ab Chrome ${v}, minimum_chrome_version ist ${min}`);
   }
+  // Einen Pfad mit ?v= für den Service Worker (#310) lehnt Chrome bis 138 als fehlende Datei ab
+  if (m.background.service_worker.includes('?')) assert.ok(min >= 139, `Pfad mit ? geht erst ab Chrome 139, minimum_chrome_version ist ${min}`);
 });
 
 test('HTML-Seiten der Erweiterung laden nur vorhandene Skripte und Stile', () => {

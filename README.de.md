@@ -28,7 +28,7 @@ Jedes normale Fenster zeigt genau einen Workspace. Die Tabs der anderen Workspac
 
 ## Voraussetzungen
 
-- [Helium](https://github.com/imputnet/helium-linux) unter Linux. Getestet mit Helium 0.21. Google Chrome und Chromium ab Version 102 gehen auch, andere Browser wie Brave müssen erst in die Liste des KWin-Skripts, siehe [Google Chrome, Chromium und andere Browser](./docs/how-it-works.de.md#google-chrome-und-chromium).
+- [Helium](https://github.com/imputnet/helium-linux) unter Linux. Getestet mit Helium 0.21. Google Chrome und Chromium ab Version 139 gehen auch, andere Browser wie Brave müssen erst in die Liste des KWin-Skripts, siehe [Google Chrome, Chromium und andere Browser](./docs/how-it-works.de.md#google-chrome-und-chromium).
 - KDE Plasma 6 mit KWin 6, unter Wayland oder X11. Andere Desktops verstecken die Ablage-Fenster nicht.
 - Für `install.sh`: `bash`, `sed`, `tr` und `git` sowie `kpackagetool6`, `kreadconfig6`, `kwriteconfig6` und `qdbus6`. Bei Arch heißen die Pakete `coreutils`, `kpackage`, `kconfig` und `qt6-tools`. Statt `qdbus6` nimmt `install.sh` auch `qdbus-qt6` (so bei Fedora) oder `qdbus`. Fehlt etwas, nennt `install.sh` die Programme und bricht ab, bevor es etwas ändert. `python3` braucht es nur, um einen alten Eintrag der Erweiterung aus der Zeit vor 0.3.0 zu entfernen (siehe [Probleme beheben](./docs/troubleshooting.de.md#nach-einem-neustart-ist-die-erweiterung-weg-und-ablagen-zeigen-err_blocked_by_client)).
 - Eine laufende Plasma-Sitzung. `install.sh` lädt das Skript über den D-Bus dieser Sitzung direkt in KWin. Am sichersten in einem Terminal innerhalb der Sitzung starten.
@@ -72,7 +72,7 @@ Wer von Version 0.2.23 oder älter aktualisiert, braucht vorher einen Export: si
    ```
 
    Das führt `git pull --ff-only` aus und richtet das KWin-Skript ohne Rückfrage neu ein. Schlüssel und Browserliste bleiben. Beim Update auf 0.3.13 oder neuer meldet es dabei auch `native-host.sh` an, das danach neue Schlüssel selbst einträgt. Ab 0.3.14 schreibt `native-host.sh` auch die automatischen Sicherungen, nach `~/.local/share/helium-workspaces/backups/` statt nach Downloads.
-2. In `chrome://extensions` bei „Workspaces“ auf **Neu laden** (Kreispfeil) klicken. Ein Neustart von Helium reicht nicht, danach kann noch die alte Hintergrundlogik laufen. `install.sh` nennt am Ende die neue Version, das Popup zeigt sie unten rechts.
+2. In `chrome://extensions` bei „Workspaces“ auf **Neu laden** (Kreispfeil) klicken oder Helium neu starten. Seit 0.3.32 steht die Version im Pfad der Hintergrundlogik in `manifest.json`, deshalb lädt auch ein Neustart die neue; vorher lief danach noch die alte weiter. `install.sh` nennt am Ende die neue Version, das Popup zeigt sie unten rechts.
 
 Die Erweiterung zum Aktualisieren nicht entfernen und neu hinzufügen. Beim Entfernen löscht Helium alle Workspaces und die Sicherung. Nur ein Export bleibt dann übrig, von Hand oder automatisch (siehe [Exportieren und importieren](./docs/usage.de.md#exportieren-und-importieren)).
 
