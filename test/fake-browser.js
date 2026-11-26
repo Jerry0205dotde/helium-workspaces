@@ -133,6 +133,9 @@ class Browser {
     this.errors = []; // Ausnahmen in Ereignis-Listenern
     this.worker = null;
     this.menus = [];
+    // Kontext "tab" für das Kontextmenü eines Tabs in der Tab-Leiste, erst ab Chrome 150.
+    // false wie ein älterer Browser, der ihn nicht kennt und beim Anlegen ablehnt
+    this.tabContext = true;
     this.alarms = new Map(); // Name → { name, scheduledTime, periodInMinutes }
     this.files = new Map(); // Pfad → Inhalt, Dateien auf der Festplatte
     this.hostMode = 'ok';
@@ -889,7 +892,13 @@ class Browser {
         setBadgeBackgroundColor: api('action.setBadgeBackgroundColor', onTab((a, d) => (a.badgeColor = d.color))),
       },
       contextMenus: {
+        // Wie in Chrome als Aufzählung der erlaubten Kontexte
+        ContextType: Object.fromEntries(
+          ['all', 'page', 'frame', 'selection', 'link', 'editable', 'image', 'video', 'audio', 'launcher', 'browser_action', 'page_action', 'action', ...(b.tabContext ? ['tab'] : [])].map((c) => [c.toUpperCase(), c]),
+        ),
         create: (o) => {
+          const bad = o.contexts?.find((c) => c === 'tab' && !b.tabContext);
+          if (bad) throw new Error(`Invalid value for argument 1. Property 'contexts': Item 0 is not a valid enum value.`);
           b.menus.push(clone(o));
           return o.id;
         },

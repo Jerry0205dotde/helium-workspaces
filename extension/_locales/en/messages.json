@@ -587,6 +587,9 @@
   "menuMoveMarked": {
     "message": "Move $1 selected tabs to workspace"
   },
+  "menuTabMove": {
+    "message": "Move to workspace"
+  },
   "menuGroup": {
     "message": "Move group to workspace"
   },

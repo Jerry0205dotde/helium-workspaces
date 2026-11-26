@@ -3,11 +3,19 @@
 
 const MENUS = { link: tr('menuLink'), move: tr('menuMove'), group: tr('menuGroup') };
 
+// Rechtsklick auf einen Tab in der Tab-Leiste, erst ab Chrome 150; ältere Versionen lehnen den
+// unbekannten Kontext ab (#309). Eigene Einträge, weil der rechtsgeklickte Tab nicht der aktive
+// sein muss, nach dem updateMenus Titel und Gruppe richtet: Der Titel nennt keine Anzahl, und
+// „Gruppe in Workspace verschieben“ steht immer da und tut außerhalb einer Gruppe nichts.
+// Für den Kopf einer Gruppe gibt es keinen Kontext
+const TAB_CONTEXT = chrome.contextMenus.ContextType?.TAB;
+if (TAB_CONTEXT) Object.assign(MENUS, { tabMove: tr('menuTabMove'), tabGroup: tr('menuGroup') });
+
 // Auf Links, Bildern, Videos und markiertem Text ebenso wie auf einer freien Stelle der
 // Seite und am Symbol der Erweiterung; verschoben wird immer der Tab, nicht der Link.
 // Den Link selbst öffnet nur „Link in Workspace öffnen“, das es nur auf Links gibt.
 const CONTEXTS = ['page', 'frame', 'selection', 'link', 'editable', 'image', 'video', 'audio', 'action'];
-const contextsOf = (kind) => (kind === 'link' ? ['link'] : CONTEXTS);
+const contextsOf = (kind) => (kind === 'link' ? ['link'] : kind.startsWith('tab') ? [TAB_CONTEXT] : CONTEXTS);
 
 async function buildMenus() {
   const cfg = await getConfig();
@@ -60,5 +68,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     userAction(() => openLinkInWs(url, wsId, tab?.windowId));
     return;
   }
-  if (tab) userAction(() => moveTabToWs(tab.id, wsId, kind === 'group'));
+  const group = kind === 'group' || kind === 'tabGroup';
+  if (kind === 'tabGroup' && !(tab?.groupId >= 0)) return;
+  if (tab) userAction(() => moveTabToWs(tab.id, wsId, group));
 });
