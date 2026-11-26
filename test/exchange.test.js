@@ -1262,3 +1262,32 @@ test('Unterbrochenes Zusammenführen nach einem gescheiterten Tab und sofortiges
   check(env2, { A: ['a1', 'a3', 'a4'], pinned: [] });
   assert.deepEqual(env2.b.local.data.backup[env2.ids.A].failed.map((e) => e.url), [url('a2')]);
 });
+
+// Ersetzen löscht die alten Workspaces gemeinsam: Menüs und Sicherung werden nicht für jeden
+// einzeln neu geschrieben, der Aufwand wächst nicht mit ihrer Zahl (#303)
+test('Ersetzen baut Menüs und Sicherung unabhängig von der Zahl der alten Workspaces gleich oft neu (#303)', async () => {
+  const measure = async (n) => {
+    const names = Array.from({ length: n }, (_, i) => `W${i}`);
+    const env = await setup({ workspaces: Object.fromEntries(names.map((name, i) => [name, [`w${i}a`, `w${i}b`]])) });
+    const { b } = env;
+    const from = b.calls.length;
+    const res = await importFile(env, fileOf([{ name: 'Neu', color: '#abcdef', tabs: [tab('n1')] }]), 'replace', true);
+    assert.equal(res.removed, n);
+    const calls = b.calls.slice(from);
+    const now = envOf(b);
+    assert.deepEqual(b.local.data.workspaces.map((w) => w.name), ['Neu']);
+    assert.deepEqual(b.local.data.deleted.map((d) => d.ws.name), names);
+    check(now, { Neu: ['n1'], pinned: [] });
+    await request(now, { type: 'undoDelete' });
+    assert.deepEqual(b.local.data.workspaces.map((w) => w.name), [...names, 'Neu']);
+    check(now, { ...Object.fromEntries(names.map((name, i) => [name, [`w${i}a`, `w${i}b`]])), Neu: ['n1'], pinned: [] });
+    return {
+      // Jeder Aufbau entfernt zuerst den Eintrag „Link in Workspace öffnen“
+      menus: calls.filter((c) => c.name === 'contextMenus.remove' && c.args[0] === 'link').length,
+      backup: calls.filter((c) => c.name === 'storage.local.set' && 'backup' in c.args[0]).length,
+    };
+  };
+  const few = await measure(3);
+  assert.deepEqual(await measure(20), few);
+  assert.equal(few.menus, 2, 'Menüs öfter als vor und nach dem Löschen neu gebaut');
+});

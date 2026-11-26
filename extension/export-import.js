@@ -524,8 +524,7 @@ async function importExchange(text, mode, confirmed) {
       }
     }
     // Alle alten Workspaces lassen sich gemeinsam zurückholen
-    const deleted = [];
-    for (const id of oldIds) await deleteWs(id, deleted);
+    await deleteWorkspaces(oldIds);
     await chrome.storage.local.set({ lastWs: shown[0] ?? target });
     res.removed = oldIds.length;
     res.kept = keptIn(adopt);

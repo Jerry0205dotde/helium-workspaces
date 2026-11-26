@@ -43,32 +43,53 @@ async function reorderWs(ids) {
 }
 
 // Ein gelöschter Workspace bleibt samt seinen Tabs in 'deleted' (storage.local), bis zum
-// nächsten Löschen, bis „Rückgängig“ oder bis zum Browserstart. Beim Ersetzen per Import
-// sammelt batch alle gelöschten Workspaces, damit sich der ganze Vorgang zurücknehmen lässt.
-async function deleteWs(id, batch = []) {
+// nächsten Löschen, bis „Rückgängig“ oder bis zum Browserstart.
+async function deleteWs(id) {
+  await deleteWorkspaces([id]);
+}
+
+// Löscht mehrere Workspaces in einem Zug, beim Ersetzen per Import alle alten: 'deleted' sammelt
+// sie, damit sich der ganze Vorgang zurücknehmen lässt. Sicherung, Liste und Menüs werden nur
+// einmal geschrieben, nicht für jeden Workspace (#303). Einer bleibt immer übrig.
+async function deleteWorkspaces(ids) {
   await resumeSwitch();
   const cfg = await getConfig();
-  if (cfg.workspaces.length < 2) return;
-  const idx = cfg.workspaces.findIndex((w) => w.id === id);
-  if (idx < 0) return;
-  const fallback = cfg.workspaces[idx === 0 ? 1 : idx - 1].id;
+  const gone = new Set();
+  for (const id of ids) {
+    if (cfg.workspaces.length - gone.size < 2) break;
+    if (cfg.workspaces.some((w) => w.id === id)) gone.add(id);
+  }
+  if (!gone.size) return;
+  // Der nächste davor, der bleibt, sonst der erste danach
+  const fallbackOf = (id) => {
+    const idx = cfg.workspaces.findIndex((w) => w.id === id);
+    const keep = (w) => !gone.has(w.id);
+    return (cfg.workspaces.slice(0, idx).findLast(keep) || cfg.workspaces.slice(idx).find(keep)).id;
+  };
 
-  // Fenster, die diesen Workspace zeigen, vorher wegwechseln
+  // Fenster, die einen davon zeigen, vorher wegwechseln
   const s = await sess();
   for (const [winId, ws] of Object.entries(s.windowWs)) {
-    if (ws === id) await switchTo(Number(winId), fallback);
+    if (gone.has(ws)) await switchTo(Number(winId), fallbackOf(ws));
   }
   const { stash } = await scan();
-  const w = stash.get(id);
   const { backup } = await getBackup();
-  // Die Sicherung kann der Ablage bis zu zwei Sekunden hinterherhinken: ihren Stand vor dem
+  // Die Sicherung kann den Ablagen bis zu zwei Sekunden hinterherhinken: ihren Stand vor dem
   // Schließen sichern. Nicht wiederhergestellte Einträge bleiben dabei erhalten.
-  if (w) {
+  const wins = [...gone].map((id) => [id, stash.get(id)]).filter(([, w]) => w);
+  if (wins.length) {
     const groups = new Map((await chrome.tabGroups.query({})).map((g) => [g.id, g]));
-    const { failed, later } = backup[id] || {};
-    const stash = stashTabsOf(w).map((t) => serTab(t, groups));
-    backup[id] = { stash, shown: [], ...(failed?.length ? { failed } : {}), ...(later?.length ? { later: relink(later, stash) } : {}) };
+    for (const [id, w] of wins) {
+      const { failed, later } = backup[id] || {};
+      const tabs = stashTabsOf(w).map((t) => serTab(t, groups));
+      backup[id] = { stash: tabs, shown: [], ...(failed?.length ? { failed } : {}), ...(later?.length ? { later: relink(later, tabs) } : {}) };
+    }
     await setLocal({ backup });
+  }
+  // Scheitert eine Ablage, bleiben ihr Workspace und die noch nicht geschlossenen bestehen
+  const done = [...gone].filter((id) => !stash.has(id));
+  let error;
+  for (const [id, w] of wins) {
     // Bis die Ablage geschlossen ist, stehen ihre Gruppen in 'pendingDelete'. Bricht das
     // Löschen dazwischen ab, legt resumeDelete sie wieder an (#271).
     const regroup = await ungroupAll(w, (groups) => chrome.storage.local.set({ pendingDelete: { windowId: w.id, groups } }));
@@ -80,18 +101,30 @@ async function deleteWs(id, batch = []) {
         await regroup();
         throw err;
       });
+      done.push(id);
+    } catch (err) {
+      error = err;
+      break;
     } finally {
       await chrome.storage.local.remove('pendingDelete');
     }
   }
 
-  batch.push({ ws: cfg.workspaces[idx], index: idx, backup: backup[id] || { stash: [], shown: [] } });
-  await chrome.storage.local.set({ deleted: batch });
-  cfg.workspaces.splice(idx, 1);
-  await saveWorkspaces(cfg.workspaces);
-  delete backup[id];
-  await setLocal({ backup });
-  if (cfg.lastWs === id) await chrome.storage.local.set({ lastWs: fallback });
+  if (done.length) {
+    // In der ursprünglichen Reihenfolge, jeder mit seinem Platz in der Liste, wie sie vor ihm aussah
+    const deleted = [];
+    const workspaces = [...cfg.workspaces];
+    for (const ws of cfg.workspaces.filter((w) => done.includes(w.id))) {
+      const index = workspaces.indexOf(ws);
+      deleted.push({ ws, index, backup: backup[ws.id] || { stash: [], shown: [] } });
+      workspaces.splice(index, 1);
+      delete backup[ws.id];
+    }
+    const lastWs = done.includes(cfg.lastWs) ? { lastWs: fallbackOf(cfg.lastWs) } : {};
+    await setLocal({ deleted, workspaces, backup, ...lastWs });
+    await buildMenus();
+  }
+  if (error) throw error;
 }
 
 // Wurde das Löschen nach dem Aufheben der Gruppen abgebrochen und steht die Ablage noch,
