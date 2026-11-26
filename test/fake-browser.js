@@ -23,6 +23,11 @@
 // - Ein neu angelegter Tab meldet kurz darauf status 'complete' (geladen), bis dahin hat er
 //   status 'loading'. Mit holdLoads = true erst bei releaseLoads(), etwa um den Worker
 //   dazwischen neu zu starten; mit loadOnly(n) laden nur die ersten n zurückgehaltenen fertig.
+//   Ebenso nach tabs.update mit neuer Adresse.
+// - Symbol, Titel und Plakette (chrome.action) mit tabId stehen am Tab (action), ohne tabId
+//   in globalAction. Wie in Chromium bleiben sie, wenn der Tab das Fenster wechselt, und sind
+//   weg, sobald er eine Seite fertig geladen hat, entladen wird (neue ID) oder die
+//   Erweiterung neu geladen wird.
 // - tabs.discard gibt dem Tab eine neue ID (tabs.onReplaced) und hebt seine
 //   Stummschaltung auf, wie Helium 0.21.3 mit Chromium 157. Ein entladener Tab lädt neu,
 //   sobald er aktiv wird. Mit popupOpen = true bleibt er dabei entladen, wie in Helium,
@@ -124,6 +129,7 @@ class Browser {
     this.listeners = new Map(); // gehören zum laufenden Service Worker
     this.faults = [];
     this.calls = [];
+    this.globalAction = {}; // Symbol, Titel und Plakette für Tabs ohne eigene
     this.errors = []; // Ausnahmen in Ereignis-Listenern
     this.worker = null;
     this.menus = [];
@@ -438,6 +444,7 @@ class Browser {
     setImmediate(() => {
       this.pendingLoads--;
       t.loading = false;
+      delete t.action; // Chromium verwirft die Werte, sobald die Seite übernommen ist
       for (const w of this.windows) {
         if (w.tabs.includes(t) && !t.discarded) this.fire('tabs.onUpdated', t.id, { status: 'complete' }, this.tabInfo(t, w));
       }
@@ -454,6 +461,7 @@ class Browser {
   loadOnly(n) {
     for (const t of this.heldLoads.splice(0, n)) {
       t.loading = false;
+      delete t.action;
       for (const w of this.windows) if (w.tabs.includes(t) && !t.discarded) this.fire('tabs.onUpdated', t.id, { status: 'complete' }, this.tabInfo(t, w));
     }
   }
@@ -471,6 +479,7 @@ class Browser {
     if (t.discarded) return this.tabInfo(t, w);
     t.id = this.next.tab++;
     t.discarded = true;
+    delete t.action; // gehört zur alten ID
     t.audible = false;
     t.mutedInfo = { muted: false };
     this.fire('tabs.onReplaced', t.id, id);
@@ -617,13 +626,18 @@ class Browser {
         return b.nativeHost(msg);
       }),
     };
-    // Die Symbol-Aufrufe scheitern wie in Chromium für einen Tab, den es nicht mehr gibt
-    const onTab = (d) => {
-      if (d?.tabId !== undefined) b.findTab(d.tabId);
+    // Die Symbol-Aufrufe scheitern wie in Chromium für einen Tab, den es nicht mehr gibt.
+    // Die Werte stehen am Tab (action) oder ohne tabId in globalAction.
+    const onTab = (set) => (d) => {
+      const target = d?.tabId === undefined ? b.globalAction : (b.findTab(d.tabId).t.action ??= {});
+      set(target, d);
     };
     // Wie in Chromium: Mit Promise lehnt setIcon bei einem Fehler nicht ab, sondern meldet
     // ihn als „Unchecked runtime.lastError“. Mit Callback steht er in runtime.lastError.
-    const setIcon = api('action.setIcon', onTab);
+    const setIcon = api(
+      'action.setIcon',
+      onTab((a, d) => (a.icon = { color: d.imageData[16].color, label: d.imageData[16].label })),
+    );
     return {
       runtime,
       i18n: { getMessage: (key, subs) => i18n.getMessage(DE, key, subs) },
@@ -705,6 +719,7 @@ class Browser {
             t.url = o.url;
             t.title = o.url;
             b.fire('tabs.onUpdated', t.id, { url: o.url }, b.tabInfo(t, w));
+            b.loaded(t);
           }
           if (o.pinned !== undefined && !!o.pinned !== t.pinned) {
             const from = w.tabs.indexOf(t);
@@ -869,9 +884,9 @@ class Browser {
             },
           );
         },
-        setTitle: api('action.setTitle', onTab),
-        setBadgeText: api('action.setBadgeText', onTab),
-        setBadgeBackgroundColor: api('action.setBadgeBackgroundColor', onTab),
+        setTitle: api('action.setTitle', onTab((a, d) => (a.title = d.title))),
+        setBadgeText: api('action.setBadgeText', onTab((a, d) => (a.badge = d.text))),
+        setBadgeBackgroundColor: api('action.setBadgeBackgroundColor', onTab((a, d) => (a.badgeColor = d.color))),
       },
       contextMenus: {
         create: (o) => {
@@ -935,6 +950,7 @@ class Browser {
     this.groups = new Map();
     this.session.clear();
     this.alarms.clear();
+    this.globalAction = {};
     this.lastClosed = null;
     this.pendingRestore = null;
     this.crashed = restore === 'crash' ? saved : null;
@@ -1062,6 +1078,8 @@ class Browser {
       }
     }
     this.session.clear();
+    this.globalAction = {};
+    for (const w of this.windows) for (const t of w.tabs) delete t.action;
     if (newId) {
       this.origin = `chrome-extension://${newId}/`;
       this.local.clear();
@@ -1111,14 +1129,18 @@ class FakeCanvas {
     this.height = h;
   }
 
+  // getImageData nennt Hintergrundfarbe und Zeichen, damit Tests das Symbol erkennen
   getContext() {
     const noop = () => {};
+    let color, label;
     return {
       beginPath: noop,
       roundRect: noop,
-      fill: noop,
-      fillText: noop,
-      getImageData: (x, y, w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
+      fill() {
+        color ??= this.fillStyle;
+      },
+      fillText: (text) => (label = text),
+      getImageData: (x, y, w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4), color, label }),
     };
   }
 }

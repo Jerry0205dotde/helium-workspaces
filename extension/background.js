@@ -102,6 +102,7 @@ chrome.tabs.onCreated.addListener(async (tab) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId, info) => {
+  forgetTabIcon(tabId);
   if (info.isWindowClosing) {
     if (!isClosing(info.windowId)) closing.set(info.windowId, Date.now());
     return;
@@ -116,6 +117,9 @@ chrome.tabs.onRemoved.addListener((tabId, info) => {
     .catch(() => scheduleReconcile());
 });
 chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
+  // Chromium setzt Symbol, Titel und Plakette eines Tabs beim Laden einer Seite zurück,
+  // auch in einer Ablage. Verworfen, bevor etwas anderes wartet
+  if (info.status || info.url) forgetTabIcon(tabId);
   if (info.url || info.pinned !== undefined || info.groupId !== undefined) scheduleSnapshot();
   if (info.audible === false) noteSilent(tabId);
   if (info.status === 'complete' && (await unloadLaterTake(tabId))) {
@@ -130,6 +134,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
 });
 chrome.tabs.onMoved.addListener(() => scheduleSnapshot());
 chrome.tabs.onReplaced.addListener((added, removed) => {
+  forgetTabIcon(removed);
   serial(() => replaceTabId(removed, added));
   scheduleSnapshot(); // stashWins kennt sonst die alte ID
 });

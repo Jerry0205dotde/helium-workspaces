@@ -327,6 +327,72 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
     assert.deepEqual(after.st.windows.flatMap((w) => w.tabs.map((x) => `${x.id} ${x.url}`)).sort(), tabIds, 'Tabs wurden ersetzt');
   });
 
+  await step('Symbole: der Wechsel setzt nur angeheftete Tabs neu, Laden in der Ablage verwirft sie (#296)', async () => {
+    const lang = await b.sw('return chrome.i18n.getUILanguage();');
+    const title = messages(lang.startsWith('de') ? 'de' : 'en').iconTitle.message.replace('$1', 'A');
+    // Die eigenen Titel der Tabs im Hauptfenster: Ohne eigenen liefert getTitle den Titel ohne
+    // tabId, der dafür kurz auf GLOBAL steht
+    const titles = async () => {
+      const { main } = await env.settled();
+      return b.sw(
+        `await chrome.action.setTitle({ title: 'GLOBAL' });
+         try {
+           return await Promise.all((await chrome.tabs.query({ windowId: args[0] })).map(async (t) => ({ id: t.id, url: t.url, pinned: t.pinned, title: await chrome.action.getTitle({ tabId: t.id }) })));
+         } finally {
+           forgetTabIcon(undefined);
+           await setGlobalIcon();
+         }`,
+        main.id,
+      );
+    };
+    // Zählt, für welche Tabs die Erweiterung den Titel setzt
+    const counted = async () => {
+      const ids = await b.sw('const r = titleSets.filter((id) => id !== null); titleSets.length = 0; return r;');
+      return [...new Set(ids)].sort();
+    };
+    await b.sw(`
+      globalThis.titleSets = [];
+      globalThis.realSetTitle = chrome.action.setTitle;
+      chrome.action.setTitle = (d) => (titleSets.push(d.tabId ?? null), realSetTitle.call(chrome.action, d));`);
+    try {
+      await env.switchTo('B');
+      await b.sw('titleSets.length = 0;');
+      await env.switchTo('A');
+      const tabs = await titles();
+      for (const t of tabs) assert.equal(t.title, title, `Titel von ${t.url}`);
+      const pinned = tabs.filter((t) => t.pinned).map((t) => t.id).sort();
+      assert.deepEqual(await counted(), pinned, 'Titel nicht nur bei den angehefteten Tabs gesetzt');
+
+      // a1 lädt in der Ablage neu: Chromium verwirft dabei den Titel des Tabs, der Wechsel
+      // zurück setzt ihn neu
+      await env.switchTo('B');
+      const a1 = await b.sw(
+        `const t = (await chrome.tabs.query({})).find((x) => x.url === args[0]);
+         await chrome.tabs.reload(t.id);
+         return t.id;`,
+        base + 'a1',
+      );
+      await waitFor(async () => {
+        const r = await b.sw(
+          `await chrome.action.setTitle({ title: 'GLOBAL' });
+           const r = { status: (await chrome.tabs.get(args[0])).status, title: await chrome.action.getTitle({ tabId: args[0] }) };
+           forgetTabIcon(undefined);
+           await setGlobalIcon();
+           return r;`,
+          a1,
+        );
+        assert.equal(r.status, 'complete', 'a1 lädt noch');
+        assert.equal(r.title, 'GLOBAL', 'Chromium hat den Titel beim Laden nicht verworfen');
+      });
+      await b.sw('titleSets.length = 0;');
+      await env.switchTo('A');
+      for (const t of await titles()) assert.equal(t.title, title, `Titel von ${t.url} nach dem Laden in der Ablage`);
+      assert.deepEqual(await counted(), [...pinned, a1].sort(), 'Titel nicht nur bei den angehefteten Tabs und a1 gesetzt');
+    } finally {
+      await b.sw('chrome.action.setTitle = realSetTitle; delete globalThis.realSetTitle; delete globalThis.titleSets;');
+    }
+  });
+
   await step('Strg+N und Wechsel: die leere neue Tab-Seite kommt nicht in die Ablage (#219)', async () => {
     await env.settled({ live: true });
     const win2 = await b.sw('return (await chrome.windows.create({ focused: true })).id;');

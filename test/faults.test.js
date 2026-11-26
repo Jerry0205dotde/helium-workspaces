@@ -201,7 +201,8 @@ test('Plakette für fehlende Tabs: alle Tabs aktualisiert, Konfiguration und Sic
   await ok(env.w.request({ type: 'switch', windowId: main, wsId: env.ids.B }));
   await env.w.settle();
   const from = b.calls.length;
-  await env.w.eval('updateAllIcons()');
+  // Wie nach einem Neustart des Service Workers, sonst setzt er nur, was abweicht (#296)
+  await env.w.eval('tabIconSet.clear(); updateAllIcons()');
   const calls = b.calls.slice(from);
   const reads = (key) => calls.filter((c) => c.name === 'storage.local.get' && [c.args[0]].flat().includes(key)).length;
   assert.equal(reads('workspaces'), 1);
