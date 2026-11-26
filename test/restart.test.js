@@ -613,6 +613,31 @@ test('Neustart nur des Service Workers ändert nichts', async () => {
   await cycle(env);
 });
 
+// Der Service Worker startet auch bei jedem Ereignis nach etwa 30 s Ruhe, mit „Ablagen entladen
+// nach“ jede Minute. Nach den ersten 20 s und ohne unterbrochene Aktion gleicht er dann nicht ab;
+// steht ein Vermerk wie snapshotDue, schon (#301).
+test('Neustart nur des Service Workers nach dem Start und ohne offene Aktion gleicht nicht ab (#301)', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  await ok(env.w.request({ type: 'switch', windowId: env.win, wsId: env.ids.B }));
+  await env.w.advance(30000);
+  assert.ok(b.now > b.session.data.entriesUntil, 'Testfehler: der Start ist noch nicht vorbei');
+  const scans = (from) => b.calls.slice(from).filter((c) => c.name === 'windows.getAll').length;
+  let from = b.calls.length;
+  let w = b.startWorker(null);
+  await w.settle();
+  assert.equal(scans(from), 0, 'Abgleich ohne Anlass');
+  check(env, ALL);
+  b.session.data.snapshotDue = true;
+  from = b.calls.length;
+  w = b.startWorker(null);
+  await w.settle();
+  assert.ok(scans(from) > 0, 'kein Abgleich trotz snapshotDue');
+  assert.equal(b.session.data.snapshotDue, undefined);
+  check(env, ALL);
+  await cycle(env);
+});
+
 test('Tastenkürzel direkt nach dem Neuladen nutzt den Workspace des Fensters, nicht den zuletzt benutzten', async () => {
   const env = await setup(SPEC);
   const { b, ids } = env;
