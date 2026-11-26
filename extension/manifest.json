@@ -9,7 +9,7 @@
   "default_locale": "en",
   "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
   "permissions": ["tabs", "tabGroups", "storage", "unlimitedStorage", "contextMenus", "alarms", "nativeMessaging", "downloads"],
-  "background": { "service_worker": "background.js?v=0.3.32" },
+  "background": { "service_worker": "background.js?v=0.3.33" },
   "action": {
     "default_popup": "popup.html",
     "default_title": "__MSG_extName__",
