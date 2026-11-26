@@ -283,11 +283,17 @@ function render(focus) {
     row.addEventListener('dragend', () => li.classList.remove('dragging'));
     li.addEventListener('dragover', (e) => {
       e.preventDefault();
-      const after = e.offsetY > li.offsetHeight / 2;
+      // Am li messen: offsetY bezöge sich auf das Kind unter dem Zeiger (Name, Knopf) (#292)
+      const { top, height } = li.getBoundingClientRect();
+      const after = e.clientY > top + height / 2;
       li.classList.toggle('drop-after', after);
       li.classList.toggle('drop-before', !after);
     });
-    li.addEventListener('dragleave', () => li.classList.remove('drop-after', 'drop-before'));
+    // Beim Wechsel zwischen Kindern desselben li bleibt die Marke, sonst flackert sie (#292)
+    li.addEventListener('dragleave', (e) => {
+      if (li.contains(e.relatedTarget)) return;
+      li.classList.remove('drop-after', 'drop-before');
+    });
     li.addEventListener('drop', (e) => {
       e.preventDefault();
       const from = e.dataTransfer.getData('text/plain');
