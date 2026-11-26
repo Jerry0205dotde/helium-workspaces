@@ -11,7 +11,9 @@ const contextsOf = (kind) => (kind === 'link' ? ['link'] : CONTEXTS);
 
 async function buildMenus() {
   const cfg = await getConfig();
-  await chrome.contextMenus.removeAll();
+  // Nur die eigenen Wurzeleinträge samt Untereinträgen: removeAll() entfernt auch die
+  // Einträge der anderen Instanz, Profil oder Inkognito (#287)
+  await Promise.all(Object.keys(MENUS).map((kind) => chrome.contextMenus.remove(kind).catch(() => {})));
   for (const [kind, title] of Object.entries(MENUS)) {
     chrome.contextMenus.create({ id: kind, title, contexts: contextsOf(kind), visible: kind !== 'group' });
     for (const ws of cfg.workspaces) {

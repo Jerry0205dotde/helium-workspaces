@@ -883,6 +883,13 @@ class Browser {
           if (!m) throw new Error(`Cannot find menu item with id ${id}`);
           Object.assign(m, clone(o));
         }),
+        // Mit dem Eintrag gehen seine Untereinträge
+        remove: api('contextMenus.remove', (id) => {
+          if (!b.menus.some((x) => x.id === id)) throw new Error(`Cannot find menu item with id ${id}`);
+          const gone = new Set([id]);
+          for (const m of b.menus) if (gone.has(m.parentId)) gone.add(m.id);
+          b.menus = b.menus.filter((x) => !gone.has(x.id));
+        }),
         removeAll: api('contextMenus.removeAll', () => {
           b.menus = [];
         }),
