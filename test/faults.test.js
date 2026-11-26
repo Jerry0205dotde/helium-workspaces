@@ -643,18 +643,28 @@ test('Sicherung scheitert beim Schließen des letzten Fensters: ein späterer Ab
     assert.equal(b.windows.length, 3, 'Hauptfenster aus der Sicherung aufgebaut');
     for (const name of ['A', 'B', 'C']) assert.equal(stashOf(env, name)?.tabs[0].url, `${b.origin}stash.html?shown#${ids[name]}`, `Ablage von ${name} ist wieder versteckt`);
   };
+  // Eine sichtbar gemachte Ablage geöffnet: der Abgleich minimiert sie nicht wieder
+  stashOf(env, 'B').state = 'normal';
   w.eval('scheduleReconcile()');
   await w.settle();
   shown();
+  assert.equal(stashOf(env, 'B').state, 'normal', 'geöffnete Ablage wieder minimiert');
   // Der Service Worker endet und startet wieder, das Speichern scheitert weiter
   await b.startWorker(null).settle();
   shown();
 
-  // Ein neues Fenster zeigt den Workspace des geschlossenen, die Ablagen sind wieder versteckt
-  set.left = 0;
+  // Ein neues Fenster zeigt den Workspace des geschlossenen, die Ablagen sind wieder versteckt.
+  // Das gilt auch, wenn lastWs mit dem Speichern nicht mehr nachkam und das Speichern beim
+  // Öffnen weiter scheitert.
+  b.local.data.lastWs = ids.B;
   const main = (await b.chrome.windows.create({ focused: true })).id;
   await b.worker.settle();
   assert.equal(shows(env, main), 'A');
+  assert.equal(b.session.data.pendingStart, undefined, 'Aufbau im neuen Fenster nicht abgeschlossen');
+  // Die nächste Änderung sichert wieder
+  set.left = 0;
+  b.worker.eval('scheduleSnapshot()');
+  await b.worker.settle();
   b.calls = b.calls.filter((c) => !(c.name === 'tabs.update' && (c.args[1]?.url === nav.url || c.args[1]?.url?.startsWith(`${b.origin}stash.html`))));
   check(env, { ...ALL, B: [...SPEC.workspaces.B.slice(0, 2), 'b4'] });
   for (const name of ['A', 'B', 'C']) assert.equal(stashOf(env, name)?.tabs[0].url ?? `${b.origin}stash.html#${ids[name]}`, `${b.origin}stash.html#${ids[name]}`);

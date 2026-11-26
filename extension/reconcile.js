@@ -254,8 +254,10 @@ async function reconcile() {
   const shown = keepShown && !mains.length;
   const foreign = [];
   for (const [id, w] of stash) {
+    // Sichtbar gemachte Ablagen bleiben, wie sie sind, auch wenn man eine davon öffnet
+    if (shown) continue;
     const st = w.tabs.find(isStashTab);
-    if (!shown && urlOf(st).includes(`?${SHOWN}#`)) await chrome.tabs.update(st.id, { url: `${STASH_PAGE}#${id}` });
+    if (urlOf(st).includes(`?${SHOWN}#`)) await chrome.tabs.update(st.id, { url: `${STASH_PAGE}#${id}` });
     const act = w.tabs.find((t) => t.active);
     if (!mains.length && act && !act.pinned && !isStashTab(act)) foreign.push(act);
     if (!st.active) await chrome.tabs.update(st.id, { active: true });
@@ -309,6 +311,10 @@ async function reconcile() {
   if (fresh.length) {
     const pool = [...entries, ...closed];
     for (const [id, ws] of assignWindows(fresh, s, cfg, pool, guessed)) s.windowWs[id] = ws;
+    // Ein neues Fenster nach der gescheiterten Sicherung zeigt den Workspace des geschlossenen
+    // (keepShown), auch wenn lastWs mit dem Speichern nicht mehr nachkam. Sonst sicherte der
+    // Snapshot dessen leere Ablage über seine Tabs.
+    if (cfg.workspaces.some((w) => w.id === keepShown)) for (const id of guessed) s.windowWs[id] = keepShown;
     entries = pool.filter((e) => !e.closed);
     closed = pool.filter((e) => e.closed);
     changed = true;
@@ -613,7 +619,7 @@ async function onWindowRemoved(winId) {
         // Ohne Sicherung gingen die Tabs der Ablagen verloren. Sie bleiben deshalb offen
         // und verlieren den Schlüssel im Titel, damit das KWin-Skript sie wieder in die
         // Taskleiste bringt. Bis ein Fenster aufgeht, lässt reconcile sie so (keepShown).
-        await chrome.storage.session.set({ keepShown: true }).catch(() => {});
+        await chrome.storage.session.set({ keepShown: ws }).catch(() => {});
         for (const [id, w] of stash) {
           const st = w.tabs.find(isStashTab);
           await chrome.tabs.update(st.id, { url: `${STASH_PAGE}?${SHOWN}#${id}` }).catch(() => {});

@@ -152,6 +152,8 @@ async function keepFailed(wsId, failed) {
 async function keepLater(wsId, later, from = null) {
   if (!later.length && from !== 'saved') return;
   const { backup } = await getBackup();
+  // Nichts zu ändern: nicht speichern, auch wenn die Speichergrenze voll ist (#290)
+  if (!later.length && !backup[wsId]?.later?.length) return;
   const more = addLater(backup, wsId, later, from);
   await chrome.storage.local.set({ backup });
   if (more) feedSoon();
