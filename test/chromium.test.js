@@ -1245,3 +1245,47 @@ test('Echter Chromium: Für Inkognito zugelassen, eigene Workspaces ohne Spuren 
   untouched(await b.sw(PROFILE));
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
+
+// Inkognito-Instanz und Profil bauen ihre Kontextmenüs, ohne die der anderen zu löschen (#287).
+// contextMenus.removeAll() entfernt in Chromium die Einträge beider Instanzen.
+test('Echter Chromium: Kontextmenüs von Profil und Inkognito bleiben nebeneinander erhalten (#287)', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 120000 }, async (t) => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-menus-'));
+  const b = new Chromium(bin, profile, EXT);
+  t.after(async () => {
+    await b.kill();
+    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  });
+  await b.launch({ incognito: true });
+  const inc = (body, ...args) => b.incognitoSw(body, ...args);
+  // Die Einträge, die zu den eigenen Workspaces fehlen. Nur lesen: getConfig() legt bei leerem
+  // Speicher selbst einen Workspace an, an buildMenus vorbei.
+  const MISSING = `
+    const { workspaces } = await chrome.storage.local.get('workspaces');
+    if (!workspaces?.length) return ['workspaces'];
+    const missing = [];
+    for (const ws of [null, ...workspaces]) {
+      for (const kind of ['link', 'move', 'group']) {
+        const id = ws ? kind + ':' + ws.id : kind;
+        await chrome.contextMenus.update(id, {}).catch(() => missing.push(id));
+      }
+    }
+    return missing;`;
+  const complete = (sw, what) => waitFor(async () => assert.deepEqual(await sw(MISSING), [], what));
+  await complete((x) => b.sw(x), 'Profil vor dem Inkognito-Fenster');
+
+  await b.sw("await chrome.windows.create({ incognito: true, url: 'about:blank#inc' });");
+  await waitFor(() => inc('return 1;'));
+  await complete(inc, 'Inkognito');
+  assert.deepEqual(await b.sw(MISSING), [], 'Profil nach dem Öffnen des Inkognito-Fensters');
+
+  // Neuer Workspace im Profil baut dessen Menüs neu, die der Inkognito-Instanz bleiben
+  await b.sw("await userAction(() => createWs('B'));");
+  await complete((x) => b.sw(x), 'Profil nach dem neuen Workspace');
+  assert.deepEqual(await inc(MISSING), [], 'Inkognito nach dem neuen Workspace im Profil');
+
+  // Und umgekehrt
+  await inc("await userAction(() => createWs('C'));");
+  await complete(inc, 'Inkognito nach dem neuen Workspace');
+  assert.deepEqual(await b.sw(MISSING), [], 'Profil nach dem neuen Workspace in Inkognito');
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});
