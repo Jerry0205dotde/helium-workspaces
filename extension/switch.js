@@ -262,8 +262,15 @@ async function finishSwitch() {
       const { stashedAt = {} } = await chrome.storage.session.get('stashedAt');
       await chrome.storage.session.set({ stashedAt: { ...stashedAt, [p.from]: Date.now() } });
       if (st.created) await chrome.windows.update(p.windowId, { focused: true }).catch(() => {});
-    } else if (!p.oldTabs.length) {
-      await clearBackup(p.from);
+    } else if (
+      (!p.oldTabs.length || blanks.length) &&
+      !stash.has(p.from) &&
+      !mains.some((w) => w.id !== p.windowId && s.windowWs[w.id] === p.from)
+    ) {
+      // Nichts mehr da, und nichts sonst hält den Workspace: snapshot() ließe sonst den
+      // alten Stand samt der gerade geschlossenen leeren Seite stehen (#288). Noch nicht
+      // angelegte Einträge bleiben, auch wenn bisher nur die leere Seite entstand.
+      await clearBackup(p.from, true);
     }
 
     s.windowWs[p.windowId] = p.to;

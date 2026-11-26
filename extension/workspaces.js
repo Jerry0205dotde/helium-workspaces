@@ -149,11 +149,12 @@ async function undoDelete() {
   return first;
 }
 
-async function clearBackup(wsId) {
+async function clearBackup(wsId, keepLater = false) {
   const { backup } = await getBackup();
   // Fehlgeschlagene Einträge waren nie in einem Fenster und bleiben für einen erneuten
   // Versuch. Zurückgestellte gehen mit den Tabs, hinter denen sie angelegt worden wären.
-  const failed = backup[wsId]?.failed;
-  backup[wsId] = { stash: [], shown: [], ...(failed?.length ? { failed } : {}) };
+  // Mit keepLater bleiben sie: Dort ist nicht zu erkennen, ob es die Tabs davor je gab.
+  const { failed, later } = backup[wsId] || {};
+  backup[wsId] = { stash: [], shown: [], ...(failed?.length ? { failed } : {}), ...(keepLater && later?.length ? { later } : {}) };
   await chrome.storage.local.set({ backup });
 }

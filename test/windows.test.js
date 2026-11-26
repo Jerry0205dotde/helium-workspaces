@@ -76,9 +76,30 @@ test('Wechsel weg von einem leeren Workspace: seine neue Tab-Seite wird geschlos
   await ok(w.request({ type: 'switch', windowId: win, wsId: env.ids.A }));
   assert.deepEqual(b.tabsByUrl(NEWTAB), []);
   assert.equal(b.windows.some((x) => b.stashOf(x) === env.ids.E), false, 'Ablage für den leeren Workspace entstanden');
+  // Die Sicherung vergisst die geschlossene Seite, das Popup zeigt 0 Tabs (#288)
+  assert.deepEqual(b.local.data.backup[env.ids.E], { stash: [], shown: [] });
+  const st = await ok(w.request({ type: 'state', windowId: win }));
+  assert.equal(st.workspaces.find((x) => x.id === env.ids.E).count, 0);
   check(env, { ...ALL, E: [] });
   // Zurück zu E: wieder genau eine neue Tab-Seite
   await ok(w.request({ type: 'switch', windowId: win, wsId: env.ids.E }));
+  assert.equal(b.tabsByUrl(NEWTAB).length, 1);
+  check(env, { ...ALL, E: [] });
+});
+
+test('Alle Tabs bis auf eine neue Tab-Seite geschlossen und sofort weg: sie kommen nicht wieder (#288)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  // E hatte noch nie eine Ablage
+  ids.E = (await ok(w.request({ type: 'create', name: 'E' }))).id;
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.E }));
+  await openTabs(b, win, ['e1', 'e2']);
+  await w.settle();
+  await b.chrome.tabs.remove(['e1', 'e2'].map((u) => where(env, u).tab.id));
+  // Vor der verzögerten Sicherung weg
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.A }));
+  assert.deepEqual(b.local.data.backup[ids.E], { stash: [], shown: [] });
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.E }));
   assert.equal(b.tabsByUrl(NEWTAB).length, 1);
   check(env, { ...ALL, E: [] });
 });
