@@ -409,14 +409,15 @@ test('Ziehen setzt die Marke nach der Hälfte des Eintrags, auch über dem Namen
   const { A, B, C } = env.ids;
   const page = await browser.open('popup.html', env);
   const li = (id) => `#list li[data-id="${id}"]`;
-  // Etwas unter der Mitte des Eintrags, waagerecht über dem Kind sel
-  const below = (id, sel) => page.eval(`(() => {
+  // dy Pixel unter der Mitte des Eintrags, waagerecht über dem Kind sel
+  const point = (id, sel, dy) => page.eval(`(() => {
     const l = document.querySelector('${li(id)}').getBoundingClientRect();
     const k = document.querySelector('${li(id)} ${sel}').getBoundingClientRect();
-    const y = l.top + l.height / 2 + 3;
-    if (y >= k.bottom) throw new Error('Punkt liegt nicht über ${sel}');
+    const y = l.top + l.height / 2 + ${dy};
+    if (y <= k.top || y >= k.bottom) throw new Error('Punkt liegt nicht über ${sel}');
     return [k.x + k.width / 2, y];
   })()`);
+  const below = (id, sel) => point(id, sel, 3);
   const data = { items: [{ mimeType: 'text/plain', data: A }], dragOperationsMask: 1 };
   // Wechselt das Ziel, löst Chromium nur dragenter und dragleave aus, dragover erst bei der
   // nächsten Bewegung. Die Maus bewegt sich dauernd, hier ein zweites dragOver an derselben Stelle
@@ -426,7 +427,9 @@ test('Ziehen setzt die Marke nach der Hälfte des Eintrags, auch über dem Namen
   };
   const marks = (id) => page.eval(`[...document.querySelector('${li(id)}').classList].filter((c) => c.startsWith('drop-'))`);
   try {
-    await drag('dragEnter', await below(B, '.name'));
+    await drag('dragEnter', await point(B, '.name', -3));
+    await drag('dragOver', await point(B, '.name', -3));
+    assert.deepEqual(await marks(B), ['drop-before']);
     await drag('dragOver', await below(B, '.name'));
     assert.deepEqual(await marks(B), ['drop-after']);
     // Jede Änderung der Klassen von B mitschreiben, um ein Wegnehmen und Neusetzen zu sehen
