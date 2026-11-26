@@ -113,6 +113,18 @@ everywhere('Import mit Ersetzen', {
   },
 });
 
+// Das Popup bekommt die Antwort vor der Sicherung (#297): Endet der Service Worker danach,
+// holt der Abgleich sie nach
+everywhere('Wechsel über das Popup', {
+  make: () => setup(SPEC),
+  act: (env) => env.w.send({ type: 'show', windowId: env.win, wsId: env.ids.B }),
+  outcomes: { 'unverändert oder gewechselt': ALL },
+  done: (env) => {
+    assert.equal(shows(env, env.win), 'B');
+    check(env, ALL);
+  },
+}, { reload: 'Neuladen mitten im Verschieben (#322)' });
+
 const DELETED = { A: SPEC.workspaces.A, C: SPEC.workspaces.C, pinned: SPEC.pinned };
 // B hat eine Gruppe, die beim Löschen vor dem Schließen der Ablage aufgelöst wird
 everywhere('Workspace löschen', {

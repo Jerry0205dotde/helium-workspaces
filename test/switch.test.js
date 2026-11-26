@@ -395,3 +395,52 @@ test('Tab in einen Workspace in einem anderen Fenster verschieben: er trägt des
   assertIcons(env, win2, 'B');
   assertIcons(env, win, 'A');
 });
+
+// Das Popup schließt erst mit der Antwort. Sie kommt, sobald die Tabs gewechselt sind, nicht
+// erst nach Symbolen, Sicherung und Stummschalten; die laufen danach weiter (#297)
+test('Popup: Die Antwort auf einen Wechsel wartet nicht auf die Sicherung (#297)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await w.settle();
+  const held = b.fail('storage.local.set', { hold: true, when: (o) => 'backup' in o && !b.session.data.pendingSwitch });
+  let reply = null;
+  w.send({ type: 'show', windowId: win, wsId: ids.B }).then((r) => (reply = r));
+  await w.settle();
+  assert.equal(held.hits, 1, 'die Sicherung wurde nicht geschrieben');
+  assert.equal(reply?.ok, true, 'keine Antwort, solange die Sicherung aussteht');
+  assert.equal(shows(env, win), 'B');
+  assert.equal(b.session.data.snapshotDue, true, 'die ausstehende Sicherung ist nicht vermerkt');
+  held.release();
+  await w.settle();
+  assert.equal(b.session.data.snapshotDue, undefined);
+  check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
+  assertIcons(env, win, 'B');
+});
+
+test('Popup: Ein gescheiterter Wechsel meldet weiter seinen Fehler (#297)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  b.fail('tabs.move', { times: Infinity });
+  const r = await w.request({ type: 'show', windowId: win, wsId: ids.B });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /tabs\.move gescheitert/);
+  assert.equal(shows(env, win), 'A');
+});
+
+test('Popup: Endet der Service Worker nach der Antwort, holt der Abgleich die Sicherung nach (#297)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await w.settle();
+  b.fail('storage.local.set', { stop: true, when: (o) => 'backup' in o && !b.session.data.pendingSwitch });
+  let reply = null;
+  w.send({ type: 'show', windowId: win, wsId: ids.B }).then((r) => (reply = r));
+  await w.settle();
+  assert.equal(reply?.ok, true);
+  assert.ok(w.dead, 'Testfehler: der Service Worker lief bis zur Sicherung durch');
+  assert.deepEqual(b.local.data.backup[ids.B].shown, [], 'Testfehler: die Sicherung ist schon geschrieben');
+  await b.startWorker(null).settle();
+  const urls = (e) => e.map((x) => x.url);
+  assert.deepEqual(urls(b.local.data.backup[ids.B].shown), SPEC.workspaces.B.map((x) => url(x.url ?? x)));
+  assert.deepEqual(urls(b.local.data.backup[ids.A].stash), SPEC.workspaces.A.map((x) => url(x.url ?? x)));
+  check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
+});

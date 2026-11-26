@@ -145,12 +145,14 @@ async function resumeSwitch() {
   return true;
 }
 
-async function switchTo(windowId, targetWs) {
-  await resumeSwitch();
+// shown() meldet, dass der Wechsel zu sehen ist (userActionShown). read: der schon nach
+// resumeSwitch() gelesene Laufzeitzustand s und Fensterbestand found (showWs)
+async function switchTo(windowId, targetWs, shown = () => {}, read = null) {
+  if (!read) await resumeSwitch();
   const cfg = await getConfig();
   if (!cfg.workspaces.some((w) => w.id === targetWs)) return;
-  const s = await sess();
-  const { stash, mains } = await scan();
+  const s = read?.s ?? (await sess());
+  const { stash, mains } = read?.found ?? (await scan());
   const main = mains.find((w) => w.id === windowId);
   if (!main) return;
   const cur = s.windowWs[windowId] || cfg.lastWs;
@@ -203,7 +205,11 @@ async function switchTo(windowId, targetWs) {
   // 2. Alte Tabs in die Ablage des alten Workspace (nach einem Fehler nur, was davon übrig ist)
   let done;
   try {
+    // Endet der Service Worker nach dem Abschluss, aber vor snapshot() (etwa nach der frühen
+    // Antwort ans Popup), holt der Abgleich die Sicherung nach
+    await markSnapshotDue();
     done = await finishSwitch();
+    if (!failed || done === 'forward') shown();
   } catch (err) {
     scheduleReconcile(); // erneut versuchen, bis dahin keine Snapshots
     throw err;
@@ -300,13 +306,13 @@ async function finishSwitch() {
 // Fenster nach vorn, statt dass das aktuelle Fenster wechselt und nur eine leere Seite
 // zeigt, weil die Tabs drüben bleiben (#190). Denselben Workspace in zwei Fenstern gibt es
 // weiter über Strg+N und die Tastenkürzel.
-async function showWs(windowId, wsId) {
+async function showWs(windowId, wsId, shown) {
   await resumeSwitch();
   const s = await sess();
-  const { mains } = await scan();
-  const other = s.windowWs[windowId] !== wsId && mains.find((w) => w.id !== windowId && s.windowWs[w.id] === wsId);
+  const found = await scan();
+  const other = s.windowWs[windowId] !== wsId && found.mains.find((w) => w.id !== windowId && s.windowWs[w.id] === wsId);
   if (other) await chrome.windows.update(other.id, { focused: true });
-  else await switchTo(windowId, wsId);
+  else await switchTo(windowId, wsId, shown, { s, found });
 }
 
 async function switchRelative(windowId, step) {
