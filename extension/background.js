@@ -137,6 +137,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
 chrome.tabs.onMoved.addListener(() => scheduleSnapshot());
 chrome.tabs.onReplaced.addListener((added, removed) => {
   forgetTabIcon(removed);
+  if (ownDiscards.has(removed)) return serial(() => replacedWhileDiscarding(removed, added));
   serial(() => replaceTabId(removed, added));
   scheduleSnapshot(); // stashWins kennt sonst die alte ID
 });

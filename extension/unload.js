@@ -85,14 +85,34 @@ async function restoredLoading() {
 // in serial() wartet, liefe sonst noch mit der alten. Bis sie in stashWins steht, steht die
 // alte ID in 'discarding'. Lädt die Erweiterung in dieser Lücke neu, erkennt repairStashes
 // daran die Ablage, deren letzter gemerkter Tab gerade entladen wurde (#272).
+// true, wenn der Tab entladen wurde
 async function discard(t) {
-  if (t.active || t.discarded || !t.url) return;
+  if (t.active || t.discarded || !t.url) return false;
   await chrome.storage.local.set({ discarding: t.id });
+  ownDiscards.set(t.id, null);
   const d = await chrome.tabs.discard(t.id).catch((e) => console.warn('[workspaces] Tab nicht entladbar:', t.url, e));
-  if (d && d.id !== t.id) await replaceTabId(t.id, d.id);
+  if (d && d.id !== t.id) {
+    ownDiscards.set(t.id, d.id);
+    await replaceTabId(t.id, d.id);
+  } else ownDiscards.delete(t.id);
   await chrome.storage.local.remove('discarding');
-  if (!d) return;
+  if (!d) return false;
   if (t.mutedInfo?.muted) await chrome.tabs.update(d.id, { muted: true }).catch(() => {});
+  return true;
+}
+
+// Alte ID → neue ID der Tabs, die discard() entlädt (null, solange tabs.discard läuft).
+// Für sie zieht tabs.onReplaced die ID nicht ein zweites Mal nach und sichert nicht je Tab;
+// das tut der Aufrufer von discard() einmal mit scheduleSnapshot (#302). Ob das Ereignis zu
+// discard() gehört, steht erst fest, wenn tabs.discard fertig ist, deshalb entscheidet es
+// sich in der Warteschlange: Hat Chromium den Tab vorher selbst entladen, scheitert
+// tabs.discard, und die neue ID wird hier nachgezogen.
+const ownDiscards = new Map();
+
+async function replacedWhileDiscarding(from, to) {
+  if (ownDiscards.get(from) === to) return void ownDiscards.delete(from);
+  await replaceTabId(from, to);
+  scheduleSnapshot();
 }
 
 // Ein entladener Tab lädt sonst neu, sobald er aktiv wird. Wechselt das Popup den
@@ -105,7 +125,7 @@ async function loadIfDiscarded(tabId) {
 async function unloadRestored(tabId) {
   if (await getPending()) return;
   const t = await chrome.tabs.get(tabId).catch(() => null);
-  if (t) await discard(t);
+  if (t && (await discard(t))) scheduleSnapshot();
 }
 
 // Option „Ablagen entladen nach“: Minuten, 0 = nie
@@ -175,32 +195,44 @@ async function unloadStashes() {
   // silentPending je Tab neu lesen: Es kann sich während des Entladens noch füllen
   const heard = (t) => !t.mutedInfo?.muted && (t.audible || recent(silentPending[t.id] ?? silentSince[t.id] ?? -Infinity));
   const next = {};
+  let unloaded = false;
   for (const [ws, w] of stash) {
     next[ws] = stashedAt[ws] ?? now;
     if (recent(next[ws])) continue;
-    for (const t of stashTabsOf(w)) if (!heard(t) && !recent(arrivedAt[t.id] ?? -Infinity)) await discard(t);
+    for (const t of stashTabsOf(w)) if (!heard(t) && !recent(arrivedAt[t.id] ?? -Infinity) && (await discard(t))) unloaded = true;
   }
+  if (unloaded) scheduleSnapshot();
   // Ältere Zeitpunkte verschonen niemanden mehr
   const fresh = (o) => Object.fromEntries(Object.entries(o).filter(([, at]) => recent(at)));
   await chrome.storage.session.set({ stashedAt: next, silentSince: fresh({ ...silentSince, ...silentPending }), arrivedAt: fresh(arrivedAt) });
 }
 
-// Ein Tab hat durch Entladen eine neue ID bekommen: gemerkte IDs nachziehen. Ein zweiter
-// Aufruf für dasselbe Paar ändert nichts mehr.
+// Ein Tab hat durch Entladen eine neue ID bekommen: gemerkte IDs nachziehen. Gespeichert
+// wird nur, was die alte ID enthielt; ein zweiter Aufruf für dasselbe Paar ändert nichts mehr.
 async function replaceTabId(from, to) {
   const swap = (id) => (id === from ? to : id);
   if (ownTabs.delete(from)) ownTabs.add(to);
-  const s = await sess();
-  for (const [ws, id] of Object.entries(s.lastTab)) s.lastTab[ws] = swap(id);
-  if (from in s.tabOrigin) {
-    s.tabOrigin[to] = s.tabOrigin[from];
-    delete s.tabOrigin[from];
+  const sessionKeys = ['lastTab', 'tabOrigin', 'pendingSwitch', 'pendingRetry', 'pendingStart', 'startCopies', 'startSeen', 'startNew', 'startFed'];
+  const localKeys = ['pendingSwitch', 'stashMuted', 'pendingFeed', 'stashWins', 'pendingMove', 'pendingDelete'];
+  const [{ lastTab = {}, tabOrigin = {}, pendingSwitch, pendingRetry: r, pendingStart: ps, startCopies, startSeen, startNew = {}, startFed = [] }, local] = await Promise.all([
+    chrome.storage.session.get(sessionKeys),
+    chrome.storage.local.get(localKeys),
+  ]);
+  const changed = {};
+  for (const [ws, id] of Object.entries(lastTab)) {
+    if (id !== from) continue;
+    lastTab[ws] = to;
+    changed.lastTab = lastTab;
   }
-  await saveSess(s);
-  const p = await getPending();
+  if (from in tabOrigin) {
+    tabOrigin[to] = tabOrigin[from];
+    delete tabOrigin[from];
+    changed.tabOrigin = tabOrigin;
+  }
+  if (Object.keys(changed).length) await chrome.storage.session.set(changed);
+  // wie getPending()
+  const p = pendingSwitch || local.pendingSwitch || null;
   if (p?.oldTabs.includes(from)) await setPending({ ...p, oldTabs: p.oldTabs.map(swap) });
-  const keys = ['pendingRetry', 'pendingStart', 'startCopies', 'startSeen', 'startNew', 'startFed'];
-  const { pendingRetry: r, pendingStart: ps, startCopies, startSeen, startNew = {}, startFed = [] } = await chrome.storage.session.get(keys);
   if (r) await chrome.storage.session.set({ pendingRetry: { ...r, open: r.open.map((x) => ({ ...x, id: swap(x.id) })) } });
   if (ps) await chrome.storage.session.set({ pendingStart: { ...ps, known: ps.known.map(swap), blank: swap(ps.blank) } });
   if (startCopies) {
@@ -211,7 +243,7 @@ async function replaceTabId(from, to) {
       startNew: Object.fromEntries(Object.entries(startNew).map(([id, at]) => [swap(+id), at])),
     });
   }
-  const { stashMuted, pendingFeed: f, stashWins, pendingMove, pendingDelete: d } = await chrome.storage.local.get(['stashMuted', 'pendingFeed', 'stashWins', 'pendingMove', 'pendingDelete']);
+  const { stashMuted, pendingFeed: f, stashWins, pendingMove, pendingDelete: d } = local;
   if (stashMuted?.includes(from)) await chrome.storage.local.set({ stashMuted: stashMuted.map(swap) });
   if (f?.known.includes(from)) await chrome.storage.local.set({ pendingFeed: { ...f, known: f.known.map(swap) } });
   if (stashWins) {
