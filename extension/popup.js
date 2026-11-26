@@ -575,10 +575,11 @@ function moveSelection(e) {
 function start() {
   return run(tr('loading'), tr('loadFailed'), async () => {
     if (windowId === undefined) {
-      const win = await chrome.windows.getCurrent();
-      const tabs = await chrome.tabs.query({ highlighted: true, windowId: win.id });
+      // Eine Abfrage statt erst des Fensters, dann seiner Tabs (#305): Markiert ist immer
+      // mindestens der aktive Tab
+      const tabs = await chrome.tabs.query({ highlighted: true, currentWindow: true });
       const tab = tabs.find((t) => t.active);
-      windowId = win.id;
+      windowId = tabs[0]?.windowId ?? (await chrome.windows.getCurrent()).id;
       activeTabId = tab?.id;
       if (tab) marked = tabs.length;
     }

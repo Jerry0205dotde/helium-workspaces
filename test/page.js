@@ -227,8 +227,11 @@ class Page {
     switch (method) {
       case 'windows.getCurrent':
         return { id: win };
-      case 'tabs.query':
-        return b.chrome.tabs.query(args[0]);
+      case 'tabs.query': {
+        // currentWindow ist das Fenster des Popups
+        const { currentWindow, ...q } = args[0] || {};
+        return b.chrome.tabs.query(currentWindow ? { ...q, windowId: win } : q);
+      }
       case 'downloads.download':
         return this.calls.filter((c) => c.method === method).length;
       case 'downloads.search':

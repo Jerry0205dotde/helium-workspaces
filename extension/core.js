@@ -120,6 +120,17 @@ const checkSession = () => sessionUsage().catch((e) => console.warn('[workspaces
 // beim Aufbau zurückgestellten (keepLater)
 const savedOf = (b) => [...(b?.shown || []), ...(b?.stash || []), ...(b?.later || [])];
 
+// Vermerke begonnener Aktionen (pendingSwitch und die anderen, siehe dort). snapshot() und
+// resumeSwitch() lesen sie vor jeder Aktion und Sicherung, gebündelt in einem Zugriff je
+// Speicher statt einzeln nacheinander (#305).
+async function getMarks() {
+  const [local, session] = await Promise.all([
+    chrome.storage.local.get(['pendingSwitch', 'pendingStash', 'pendingMove', 'pendingDelete', 'pendingFeed', 'discarding']),
+    chrome.storage.session.get(['pendingSwitch', 'pendingStart', 'pendingRetry']),
+  ]);
+  return { local, session };
+}
+
 async function getBackup() {
   const { backup, backupPinned, pinnedLater } = await chrome.storage.local.get(['backup', 'backupPinned', 'pinnedLater']);
   return { backup: backup || {}, backupPinned: backupPinned || [], pinnedLater: pinnedLater || [] };

@@ -127,6 +127,10 @@ async function noteFailed(i, e) {
 // Nachlegen (resumeFeed) oder einen unterbrochenen erneuten Versuch (resumeRetry) fort,
 // bevor etwas anderes die Zuordnung liest.
 async function resumeSwitch() {
+  // Steht nichts an, wie meist, genügt ein Blick auf alle Vermerke zugleich
+  const { local, session } = await getMarks();
+  const due = [local.pendingDelete, session.pendingStart, local.pendingStash, local.pendingMove, session.pendingSwitch, local.pendingSwitch, local.pendingFeed, session.pendingRetry];
+  if (!due.some(Boolean)) return false;
   const undeleted = await resumeDelete();
   const started = await resumeStart();
   const stashed = await resumeStash();

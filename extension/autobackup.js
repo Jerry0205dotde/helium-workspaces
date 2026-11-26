@@ -120,8 +120,10 @@ async function autoBackupFailed(e) {
 // Stand für die Exportseite und das Popup. dir ist der Ordner der letzten Sicherung, vor der
 // ersten der, in den sie ohne XDG_DATA_HOME käme.
 async function autoBackupState() {
-  const { autoBackupAt, autoBackupFile, autoBackupError, token } = await chrome.storage.local.get(['autoBackupAt', 'autoBackupFile', 'autoBackupError', 'token']);
-  const days = await getAutoBackup();
+  const [{ autoBackupAt, autoBackupFile, autoBackupError, token }, days] = await Promise.all([
+    chrome.storage.local.get(['autoBackupAt', 'autoBackupFile', 'autoBackupError', 'token']),
+    getAutoBackup(),
+  ]);
   const dir = autoBackupFile ? autoBackupFile.replace(/[^/]*$/, '') : `${AUTO_DIR}${token || ''}${token ? '/' : ''}`;
   const last = autoBackupAt ? { at: autoBackupAt, file: autoBackupFile || '' } : null;
   return { days, choices: AUTO_CHOICES, keep: AUTO_KEEP, dir, last, error: days ? autoBackupError || null : null };
