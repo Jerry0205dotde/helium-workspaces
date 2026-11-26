@@ -159,11 +159,18 @@ chrome.commands.onCommand.addListener(async (cmd, tab) => {
 // ---------------------------------------------------------------- Nachrichten (Popup, Export und Import)
 
 async function stateFor(windowId) {
-  const cfg = await getConfig();
-  const s = await sess();
-  const { stash, mains } = await scan();
-  const { backup } = await getBackup();
-  const { muteStash, deleted, autoHintOff } = await chrome.storage.local.get(['muteStash', 'deleted', 'autoHintOff']);
+  // Alles nur gelesen: gleichzeitig statt nacheinander, das Popup wartet darauf (#305)
+  const [cfg, s, { stash, mains }, { backup }, { muteStash, deleted, autoHintOff }, { backupError }, auto, storage, unloadAfter] = await Promise.all([
+    getConfig(),
+    sess(),
+    scan(),
+    getBackup(),
+    chrome.storage.local.get(['muteStash', 'deleted', 'autoHintOff']),
+    chrome.storage.session.get('backupError'),
+    autoBackupState(),
+    sessionUsage(),
+    getUnloadAfter(),
+  ]);
   const list = cfg.workspaces.map((ws) => {
     const { sw, showing } = windowsOf(ws.id, s, stash, mains);
     let count;
@@ -180,8 +187,6 @@ async function stateFor(windowId) {
     const elsewhere = s.windowWs[windowId] !== ws.id && showing.some((w) => w.id !== windowId);
     return { ...ws, count, failed, audible, silenced, elsewhere };
   });
-  const { backupError } = await chrome.storage.session.get('backupError');
-  const auto = await autoBackupState();
   return {
     workspaces: list,
     // Zuletzt gelöscht, für „Rückgängig“
@@ -189,9 +194,9 @@ async function stateFor(windowId) {
     current: s.windowWs[windowId] || null,
     colors: COLORS,
     backupError: backupError || null,
-    storage: await sessionUsage(),
+    storage,
     muteStash: !!muteStash,
-    unloadAfter: await getUnloadAfter(),
+    unloadAfter,
     unloadChoices: UNLOAD_CHOICES,
     autoBackupError: auto.error,
     // Hinweis auf die automatische Sicherung, solange sie aus ist und es sich lohnt

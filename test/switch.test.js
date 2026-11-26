@@ -444,3 +444,27 @@ test('Popup: Endet der Service Worker nach der Antwort, holt der Abgleich die Si
   assert.deepEqual(urls(b.local.data.backup[ids.A].stash), SPEC.workspaces.A.map((x) => url(x.url ?? x)));
   check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
 });
+
+// Vermerke begonnener Aktionen: snapshot() und resumeSwitch() lesen sie in einem Zugriff je
+// Speicher, nicht einzeln nacheinander (#305)
+const MARKS = new Set(['pendingSwitch', 'pendingStash', 'pendingMove', 'pendingDelete', 'pendingFeed', 'discarding', 'pendingStart', 'pendingRetry']);
+const markReads = (env, from) =>
+  env.b.calls
+    .slice(from)
+    .filter((c) => /^storage\.(local|session)\.get$/.test(c.name) && [c.args[0]].flat().some((k) => MARKS.has(k)))
+    .map((c) => c.name);
+
+test('Sicherung und Aktionen lesen die Vermerke gebündelt (#305)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await w.settle();
+  let from = b.calls.length;
+  await b.chrome.tabs.update(where(env, 'a1').tab.id, { url: url('a9') });
+  await w.settle();
+  assert.deepEqual(markReads(env, from).sort(), ['storage.local.get', 'storage.session.get']);
+  assert.equal(b.local.data.backup[ids.A].shown[0].url, url('a9'));
+  // Ein Klick im Popup auf den gezeigten Workspace
+  from = b.calls.length;
+  await ok(w.request({ type: 'show', windowId: win, wsId: ids.A }));
+  assert.deepEqual(markReads(env, from).sort(), ['storage.local.get', 'storage.session.get']);
+});

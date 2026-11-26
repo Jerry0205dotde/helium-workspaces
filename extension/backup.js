@@ -128,14 +128,12 @@ async function rememberStashWin(windowId, wsId, tabIds) {
 // letzte Hauptfenster aus dem Abbild ({ win, groups, ws }), das noch mitgesichert wird.
 // Gibt zurück, ob gesichert wurde; scheitert das Speichern, wirft es.
 async function snapshot(gone) {
-  // Wechsel, Tab-Transfer, Aufbau einer Ablage oder nach dem Start noch nicht abgeschlossen
-  if (await getPending()) return false;
-  if (await getPendingStash()) return false;
-  if (await getPendingMove()) return false;
-  if ((await chrome.storage.local.get('pendingDelete')).pendingDelete) return false; // deleteWs
-  const { pendingStart } = await chrome.storage.session.get('pendingStart');
-  const { pendingFeed, discarding } = await chrome.storage.local.get(['pendingFeed', 'discarding']);
-  if (pendingFeed || pendingStart) return false; // feedInto, restoreStart
+  // Wechsel, Tab-Transfer, Aufbau einer Ablage, Löschen (deleteWs), Nachlegen (feedInto)
+  // oder nach dem Start (restoreStart) noch nicht abgeschlossen
+  const { local, session } = await getMarks();
+  if (session.pendingSwitch || local.pendingSwitch || local.pendingStash || local.pendingMove) return false;
+  if (local.pendingDelete || local.pendingFeed || session.pendingStart) return false;
+  const { discarding } = local;
   const at = changes;
   const cfg = await getConfig();
   const s = await sess();
