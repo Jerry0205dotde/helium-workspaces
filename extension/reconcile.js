@@ -337,10 +337,12 @@ async function reconcile() {
   // schon die doppelten Tabs. repairFromBackup würde die geschlossenen Kopien dann als
   // verloren ergänzen; der Snapshot am Ende bringt sie auf den Stand. Steht noch eine
   // Sicherung aus (snapshotDue), ist die alte veraltet: Ein verschobener Tab entstünde im
-  // alten Workspace neu. Der Snapshot am Ende holt sie nach (#268).
+  // alten Workspace neu. Der Snapshot am Ende holt sie nach (#268). Sind die Ablagen nach
+  // einer gescheiterten Sicherung sichtbar (shown), fehlen die Tabs des geschlossenen
+  // Fensters nur, bis ein neues Fenster sie bekommt; ergänzt kämen sie doppelt (#290).
   const { snapshotDue } = await chrome.storage.session.get('snapshotDue');
   if (await dropStartCopies(s, stash)) changed = true;
-  else if (starting && browserStart && !snapshotDue && (await moving(() => repairFromBackup(cfg, s, stash, mains)))) changed = true;
+  else if (starting && browserStart && !snapshotDue && !shown && (await moving(() => repairFromBackup(cfg, s, stash, mains)))) changed = true;
   s.tabOrigin = {};
   await saveSess(s);
   if (await resumeFeed()) changed = true;

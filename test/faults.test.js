@@ -661,6 +661,31 @@ test('Sicherung scheitert beim Schließen des letzten Fensters: ein späterer Ab
   assert.equal(b.session.data.keepShown, undefined);
 });
 
+// Kurz nach dem Browserstart ergänzt der Abgleich verlorene Tabs aus der Sicherung. Die Tabs
+// des geschlossenen Fensters kämen dabei in seine Ablage und mit dem neuen Fenster doppelt.
+test('Sicherung scheitert beim Schließen kurz nach dem Browserstart: das neue Fenster bekommt die Tabs nur einmal', async () => {
+  const env = await setup(SPEC);
+  const { b, ids } = env;
+  b.restart();
+  await b.startWorker('startup').settle();
+  const win = b.windows.find((x) => !b.stashOf(x)).id;
+  const set = b.fail('storage.local.set', { times: Infinity });
+  await b.chrome.tabs.update(where(env, 'a4').tab.id, { url: url('a5') });
+  await b.worker.advance(10);
+  await b.closeWindowByX(win);
+  b.worker.eval('scheduleReconcile()');
+  await b.worker.settle();
+  assert.equal(b.windows.length, 3, 'Hauptfenster aus der Sicherung aufgebaut');
+  assert.deepEqual(stashOf(env, 'A').tabs.map((t) => t.url), [`${b.origin}stash.html?shown#${ids.A}`], 'Tabs von A in seiner Ablage ergänzt');
+
+  set.left = 0;
+  const main = (await b.chrome.windows.create({ focused: true })).id;
+  await b.worker.settle();
+  assert.equal(shows(env, main), 'A');
+  b.calls = b.calls.filter((c) => !(c.name === 'tabs.update' && (c.args[1]?.url === url('a5') || c.args[1]?.url?.startsWith(`${b.origin}stash.html`))));
+  check(env, ALL);
+});
+
 // Sichert snapshot() wegen eines unterbrochenen Ablaufs nichts, ohne zu werfen, gingen mit
 // den Ablagen ebenso die Änderungen seit der letzten Sicherung verloren (#290)
 test('Sicherung beim Schließen des letzten Fensters ausgesetzt: Ablagen bleiben offen und sichtbar', async () => {
