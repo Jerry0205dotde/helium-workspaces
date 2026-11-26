@@ -122,23 +122,27 @@ const STUB = `(() => {
     else w.reject(new Error(value));
   };
   const api = (ns, names) => Object.fromEntries(names.map((n) => [n, (...a) => call(ns + '.' + n, a)]));
-  Object.defineProperty(window, 'chrome', {
-    configurable: true,
-    value: {
-      runtime: {
-        ...api('runtime', ['sendMessage']),
-        getURL: (p) => 'chrome-extension://test/' + p,
-        getManifest: () => (${fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8').trim()}),
-      },
-      i18n: { getMessage: ${i18n.pageSource()} },
-      tabs: api('tabs', ['query']),
-      windows: api('windows', ['getCurrent', 'update', 'create']),
-      downloads: {
-        ...api('downloads', ['download', 'search']),
-        onChanged: { addListener: (l) => downloadListeners.add(l), removeListener: (l) => downloadListeners.delete(l) },
-      },
+  const stub = {
+    runtime: {
+      ...api('runtime', ['sendMessage']),
+      getURL: (p) => 'chrome-extension://test/' + p,
+      getManifest: () => (${fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8').trim()}),
     },
-  });
+    i18n: { getMessage: ${i18n.pageSource()} },
+    tabs: api('tabs', ['query']),
+    windows: api('windows', ['getCurrent', 'update', 'create']),
+    downloads: {
+      ...api('downloads', ['download', 'search']),
+      onChanged: { addListener: (l) => downloadListeners.add(l), removeListener: (l) => downloadListeners.delete(l) },
+    },
+  };
+  // In Chrome for Testing 151 ist window.chrome auf file://-Seiten nicht konfigurierbar, aber
+  // beschreibbar; defineProperty wirft dort (#295)
+  try {
+    Object.defineProperty(window, 'chrome', { configurable: true, value: stub });
+  } catch {
+    window.chrome = stub;
+  }
   // Der Test meldet eine Änderung eines Downloads wie downloads.onChanged
   const downloadListeners = new Set();
   window.__downloadChanged = (delta) => downloadListeners.forEach((l) => l(delta));
