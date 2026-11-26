@@ -474,9 +474,14 @@ test('Echter Chromium: Wechsel, Neuladen, Neustart und Schließen per X', { skip
       return s;
     });
     assert.ok(!st.windows.some((w) => pageOf(w).title.includes(st.token)), 'Schlüssel noch im Titel');
-    // Der nächste Abgleich baut ein Hauptfenster aus der Sicherung auf und versteckt die Ablagen
-    await b.sw('chrome.storage.local.set = realSet; delete globalThis.realSet;');
+    // Ein späterer Abgleich lässt sie so, statt aus der veralteten Sicherung ein Hauptfenster
+    // aufzubauen (#290). Erst ein neues Fenster zeigt den Workspace wieder und versteckt sie.
     await b.sw('await serial(reconcile);');
+    const again = await env.state();
+    assert.equal(again.windows.length, 3, 'Hauptfenster aus der Sicherung aufgebaut');
+    for (const w of again.windows) assert.match(pageOf(w).url, /stash\.html\?shown#/, 'Ablage wieder versteckt');
+    await b.sw('chrome.storage.local.set = realSet; delete globalThis.realSet;');
+    await b.sw('await chrome.windows.create({ focused: true });');
     const r = await env.settled({ live: true });
     assert.equal(r.shows, 'A');
   });

@@ -126,15 +126,16 @@ async function rememberStashWin(windowId, wsId, tabIds) {
 // Sichert den Inhalt aller Workspaces, falls ein Fenster verloren geht
 // (z. B. wenn das Hauptfenster per X geschlossen wird). gone: das gerade geschlossene
 // letzte Hauptfenster aus dem Abbild ({ win, groups, ws }), das noch mitgesichert wird.
+// Gibt zurück, ob gesichert wurde; scheitert das Speichern, wirft es.
 async function snapshot(gone) {
   // Wechsel, Tab-Transfer, Aufbau einer Ablage oder nach dem Start noch nicht abgeschlossen
-  if (await getPending()) return;
-  if (await getPendingStash()) return;
-  if (await getPendingMove()) return;
-  if ((await chrome.storage.local.get('pendingDelete')).pendingDelete) return; // deleteWs
+  if (await getPending()) return false;
+  if (await getPendingStash()) return false;
+  if (await getPendingMove()) return false;
+  if ((await chrome.storage.local.get('pendingDelete')).pendingDelete) return false; // deleteWs
   const { pendingStart } = await chrome.storage.session.get('pendingStart');
   const { pendingFeed, discarding } = await chrome.storage.local.get(['pendingFeed', 'discarding']);
-  if (pendingFeed || pendingStart) return; // feedInto, restoreStart
+  if (pendingFeed || pendingStart) return false; // feedInto, restoreStart
   const at = changes;
   const cfg = await getConfig();
   const s = await sess();
@@ -149,7 +150,7 @@ async function snapshot(gone) {
   }
   // Ohne (zugeordnete) Hauptfenster ist der Zustand im Übergang (Start, Beenden,
   // neues Fenster): alte Sicherung behalten, reconcile sichert danach.
-  if (!mains.length || mains.some((w) => !s.windowWs[w.id])) return;
+  if (!mains.length || mains.some((w) => !s.windowWs[w.id])) return false;
   if (!gone) remember(live, groupList, true);
   const { backup } = await getBackup();
   const groups = new Map([...(gone?.groups || []), ...imageGroups, ...groupList.map((g) => [g.id, g])]);
@@ -195,7 +196,8 @@ async function snapshot(gone) {
   for (let i = closedTabs.length - 1; i >= 0; i--) if (closedTabs[i].at <= savedChanges) closedTabs.splice(i, 1);
   // Während des Speicherns geschlossen: die Sicherung enthält ihn mit dieser Adresse
   for (const c of closedTabs) if (savedUrls.has(c.tabId)) c.url = savedUrls.get(c.tabId);
-  await chrome.storage.session.remove(['backupError', 'snapshotDue']);
+  await chrome.storage.session.remove(['backupError', 'snapshotDue', 'keepShown']);
+  return true;
 }
 
 // ---------------------------------------------------------------- Frühere Stände (#189)
