@@ -28,7 +28,7 @@ Jedes normale Fenster zeigt genau einen Workspace. Die Tabs der anderen Workspac
 
 ## Voraussetzungen
 
-- [Helium](https://github.com/imputnet/helium-linux) unter Linux. Getestet mit Helium 0.21. Google Chrome und Chromium ab Version 139 gehen auch, andere Browser wie Brave müssen erst in die Liste des KWin-Skripts, siehe [Google Chrome, Chromium und andere Browser](./docs/how-it-works.de.md#google-chrome-und-chromium).
+- [Helium](https://github.com/imputnet/helium-linux) unter Linux. Getestet mit Helium 0.22. Google Chrome und Chromium gehen auch, laut Manifest ab Version 139; regelmäßig getestet wird aber nur gegen das aktuelle Chrome Stable. Andere Browser wie Brave müssen erst in die Liste des KWin-Skripts, siehe [Google Chrome, Chromium und andere Browser](./docs/how-it-works.de.md#google-chrome-und-chromium).
 - KDE Plasma 6 mit KWin 6, unter Wayland oder X11. Andere Desktops verstecken die Ablage-Fenster nicht.
 - Für `install.sh`: `bash`, `sed`, `tr` und `git` sowie `kpackagetool6`, `kreadconfig6`, `kwriteconfig6` und `qdbus6`. Bei Arch heißen die Pakete `coreutils`, `kpackage`, `kconfig` und `qt6-tools`. Statt `qdbus6` nimmt `install.sh` auch `qdbus-qt6` (so bei Fedora) oder `qdbus`. Fehlt etwas, nennt `install.sh` die Programme und bricht ab, bevor es etwas ändert. `python3` braucht es nur, um einen alten Eintrag der Erweiterung aus der Zeit vor 0.3.0 zu entfernen (siehe [Probleme beheben](./docs/troubleshooting.de.md#nach-einem-neustart-ist-die-erweiterung-weg-und-ablagen-zeigen-err_blocked_by_client)).
 - Eine laufende Plasma-Sitzung. `install.sh` lädt das Skript über den D-Bus dieser Sitzung direkt in KWin. Am sichersten in einem Terminal innerhalb der Sitzung starten.

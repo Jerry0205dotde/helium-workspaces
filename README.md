@@ -28,7 +28,7 @@ Every normal window shows exactly one workspace. The tabs of the other workspace
 
 ## Requirements
 
-- [Helium](https://github.com/imputnet/helium-linux) on Linux. Tested with Helium 0.21. Google Chrome and Chromium 139 or newer work too; other browsers such as Brave first have to be added to the KWin script's list, see [Google Chrome, Chromium and other browsers](./docs/how-it-works.md#google-chrome-and-chromium).
+- [Helium](https://github.com/imputnet/helium-linux) on Linux. Tested with Helium 0.22. Google Chrome and Chromium work too, from version 139 as set in the manifest; regular tests only cover the current Chrome Stable. Other browsers such as Brave first have to be added to the KWin script's list, see [Google Chrome, Chromium and other browsers](./docs/how-it-works.md#google-chrome-and-chromium).
 - KDE Plasma 6 with KWin 6, on Wayland or X11. Other desktops do not hide the stash windows.
 - For `install.sh`: `bash`, `sed`, `tr` and `git` as well as `kpackagetool6`, `kreadconfig6`, `kwriteconfig6` and `qdbus6`. On Arch the packages are called `coreutils`, `kpackage`, `kconfig` and `qt6-tools`. Instead of `qdbus6`, `install.sh` also accepts `qdbus-qt6` (as on Fedora) or `qdbus`. If anything is missing, `install.sh` lists the programs and stops before it changes anything. `python3` is only needed to remove an old entry of the extension from before 0.3.0 (see [Troubleshooting](./docs/troubleshooting.md#after-a-restart-the-extension-is-gone-and-stashes-show-err_blocked_by_client)).
 - A running Plasma session. `install.sh` loads the script straight into KWin over the D-Bus of that session. The safest way is to run it in a terminal inside the session.
