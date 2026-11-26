@@ -587,7 +587,7 @@ async function dropStartCopies(s, stash) {
   if (b?.later) {
     b.later = b.later.filter((e) => !take(`${startWs} ${e.url}`));
     if (!b.later.length) delete b.later;
-    await chrome.storage.local.set({ backup });
+    await setLocal({ backup });
   }
   console.info('[workspaces] Kopien aus der Sicherung geschlossen, Chromium hat die Sitzung wiederhergestellt');
   return true;

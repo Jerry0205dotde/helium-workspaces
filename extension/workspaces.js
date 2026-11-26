@@ -68,7 +68,7 @@ async function deleteWs(id, batch = []) {
     const { failed, later } = backup[id] || {};
     const stash = stashTabsOf(w).map((t) => serTab(t, groups));
     backup[id] = { stash, shown: [], ...(failed?.length ? { failed } : {}), ...(later?.length ? { later: relink(later, stash) } : {}) };
-    await chrome.storage.local.set({ backup });
+    await setLocal({ backup });
     // Bis die Ablage geschlossen ist, stehen ihre Gruppen in 'pendingDelete'. Bricht das
     // Löschen dazwischen ab, legt resumeDelete sie wieder an (#271).
     const regroup = await ungroupAll(w, (groups) => chrome.storage.local.set({ pendingDelete: { windowId: w.id, groups } }));
@@ -90,7 +90,7 @@ async function deleteWs(id, batch = []) {
   cfg.workspaces.splice(idx, 1);
   await saveWorkspaces(cfg.workspaces);
   delete backup[id];
-  await chrome.storage.local.set({ backup });
+  await setLocal({ backup });
   if (cfg.lastWs === id) await chrome.storage.local.set({ lastWs: fallback });
 }
 
@@ -143,7 +143,7 @@ async function undoDelete() {
     backup[d.ws.id] = d.backup;
     first = d.ws.id;
   }
-  await chrome.storage.local.set({ backup });
+  await setLocal({ backup });
   await saveWorkspaces(cfg.workspaces);
   await chrome.storage.local.remove('deleted');
   return first;
@@ -156,5 +156,5 @@ async function clearBackup(wsId, keepLater = false) {
   // Mit keepLater bleiben sie: Dort ist nicht zu erkennen, ob es die Tabs davor je gab.
   const { failed, later } = backup[wsId] || {};
   backup[wsId] = { stash: [], shown: [], ...(failed?.length ? { failed } : {}), ...(keepLater && later?.length ? { later } : {}) };
-  await chrome.storage.local.set({ backup });
+  await setLocal({ backup });
 }

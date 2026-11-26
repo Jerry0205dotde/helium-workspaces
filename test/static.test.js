@@ -115,6 +115,17 @@ test('HTML-Seiten der Erweiterung laden nur vorhandene Skripte und Stile', () =>
   }
 });
 
+// Die Symbole lesen die Zahl gescheiterter Tabs nicht aus dem Speicher, sondern übernehmen sie
+// beim Speichern (setLocal in core.js, #304). Ein Speichern daran vorbei ließe die Plakette veralten.
+test('Die Sicherung wird nur über setLocal gespeichert', () => {
+  for (const f of files(EXT, '.js')) {
+    const js = fs.readFileSync(f, 'utf8');
+    for (const [call] of js.matchAll(/storage\.local\.set\(\{[^}]*\bbackup\b[^}]*\}/g)) {
+      assert.fail(`${path.basename(f)}: ${call} statt setLocal`);
+    }
+  }
+});
+
 test('Übersetzungen: beide Sprachen haben dieselben Texte, alle benutzten Schlüssel gibt es', () => {
   const m = readJson(path.join(EXT, 'manifest.json'));
   const loc = (l) => readJson(path.join(EXT, '_locales', l, 'messages.json'));

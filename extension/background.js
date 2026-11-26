@@ -38,18 +38,24 @@ chrome.windows.onCreated.addListener(() => scheduleReconcile(), { windowTypes: [
 chrome.windows.onRemoved.addListener((id) => serial(() => onWindowRemoved(id)), { windowTypes: ['normal'] });
 
 // Beim Beenden kommen noch Fokuswechsel, deren Speichern dann scheitert. Das ist harmlos.
-chrome.windows.onFocusChanged.addListener(async (winId) => {
+// In der Reihe, damit ein Wechsel, der sein Fenster wieder fokussiert, schon fertig ist und
+// sein neuer Workspace gilt. Gespeichert wird nur, was sich geändert hat: Alt+Tab zurück ins
+// selbe Fenster schreibt nichts (#304).
+chrome.windows.onFocusChanged.addListener((winId) => {
   if (winId === chrome.windows.WINDOW_ID_NONE) return;
-  try {
-    const s = await sess();
-    const ws = s.windowWs[winId];
-    if (!ws) return;
-    await chrome.storage.local.set({ lastWs: ws });
-    await chrome.storage.session.set({ lastMain: winId });
-    await setGlobalIcon();
-  } catch (e) {
-    console.warn('[workspaces] Fokuswechsel nicht gespeichert', e);
-  }
+  serial(async () => {
+    try {
+      const { windowWs, lastMain } = await chrome.storage.session.get(['windowWs', 'lastMain']);
+      const ws = windowWs?.[winId];
+      if (!ws) return;
+      if (lastMain !== winId) await chrome.storage.session.set({ lastMain: winId });
+      if ((await chrome.storage.local.get('lastWs')).lastWs === ws) return;
+      await chrome.storage.local.set({ lastWs: ws });
+      await setGlobalIcon();
+    } catch (e) {
+      console.warn('[workspaces] Fokuswechsel nicht gespeichert', e);
+    }
+  });
 });
 
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {

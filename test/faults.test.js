@@ -202,7 +202,7 @@ test('Plakette für fehlende Tabs: alle Tabs aktualisiert, Konfiguration und Sic
   await env.w.settle();
   const from = b.calls.length;
   // Wie nach einem Neustart des Service Workers, sonst setzt er nur, was abweicht (#296)
-  await env.w.eval('tabIconSet.clear(); updateAllIcons()');
+  await env.w.eval('tabIconSet.clear(); failedCache = null; updateAllIcons()');
   const calls = b.calls.slice(from);
   const reads = (key) => calls.filter((c) => c.name === 'storage.local.get' && [c.args[0]].flat().includes(key)).length;
   assert.equal(reads('workspaces'), 1);
@@ -215,6 +215,61 @@ test('Plakette für fehlende Tabs: alle Tabs aktualisiert, Konfiguration und Sic
     assert.equal(badges.get(t.id)?.text, '1');
     assert.equal(titles.get(t.id)?.title, 'Workspace: B – 1 Tab nicht wiederhergestellt');
   }
+});
+
+test('Fokuswechsel und Laden einer Seite lesen die Sicherung nur nach einer Änderung, Fokus ins selbe Fenster schreibt nichts (#304)', async () => {
+  const env = await fromBackup();
+  const { b } = env;
+  const main = b.mains()[0].id;
+  b.fail('tabs.create', { when: (o) => o.url === url('b2') });
+  await ok(env.w.request({ type: 'switch', windowId: main, wsId: env.ids.B }));
+  await env.w.settle();
+  const since = (from) => b.calls.slice(from);
+  const named = (calls, name) => calls.filter((c) => c.name === name);
+  const readsBackup = (calls) => named(calls, 'storage.local.get').filter((c) => [c.args[0]].flat().includes('backup')).length;
+
+  // Alt+Tab zurück ins selbe Fenster: nichts gespeichert, kein Symbol gesetzt
+  let from = b.calls.length;
+  b.fire('windows.onFocusChanged', main);
+  await env.w.settle();
+  let calls = since(from);
+  assert.deepEqual([...named(calls, 'storage.local.set'), ...named(calls, 'storage.session.set')], []);
+  assert.equal(named(calls, 'action.setIcon').length, 0);
+  assert.equal(readsBackup(calls), 0);
+
+  // Fertig geladene Seite: Plakette wieder gesetzt, ohne die Sicherung zu lesen
+  const tab = b.findTab(b.tabsByUrl(url('b1'))[0].id).t;
+  const badge = (calls) => named(calls, 'action.setBadgeText').filter((c) => c.args[0].tabId === tab.id).at(-1)?.args[0].text;
+  from = b.calls.length;
+  b.loaded(tab);
+  await env.w.settle();
+  calls = since(from);
+  assert.equal(badge(calls), '1');
+  assert.equal(readsBackup(calls), 0);
+
+  // Nach dem Verwerfen gilt die neue Sicherung, auch für das nächste Laden
+  await ok(env.w.request({ type: 'dismiss', wsId: env.ids.B }));
+  from = b.calls.length;
+  b.loaded(tab);
+  await env.w.settle();
+  calls = since(from);
+  assert.equal(badge(calls), '');
+  assert.equal(readsBackup(calls), 0);
+});
+
+test('Fokuswechsel während eines Wechsels: lastWs steht danach auf dem neuen Workspace (#304)', async () => {
+  const env = await setup(SPEC);
+  const { b, win, ids } = env;
+  await env.w.settle();
+  const from = b.calls.length;
+  // Mitten im Wechsel, während windowWs noch den alten Workspace nennt
+  b.during('tabs.move', () => b.fire('windows.onFocusChanged', win));
+  await ok(env.w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await env.w.settle();
+  // Nicht zwischendurch auf den alten zurückgesetzt, auch nicht für das globale Symbol
+  assert.deepEqual(b.calls.slice(from).filter((c) => c.name === 'storage.local.set' && c.args[0].lastWs === ids.A), []);
+  assert.equal(b.local.data.lastWs, ids.B);
+  assert.equal(b.session.data.windowWs[win], ids.B);
 });
 
 // So meldet der Browser, dass gerade ein Tab gezogen wird

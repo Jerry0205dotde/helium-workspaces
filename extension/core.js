@@ -135,6 +135,34 @@ async function getMarks() {
   return { local, session };
 }
 
+// Zahl der gescheiterten Tabs je Workspace für die Plakette (icons.js). Jedes fertige Laden
+// einer Seite setzt das Symbol des Tabs neu, und die Sicherung kann mit vielen Tabs Hunderte
+// KB groß sein; sie wird deshalb nur nach dem Start des Service Workers gelesen (#304).
+// Danach übernimmt setLocal die Zahlen aus der Sicherung, die es schreibt. Das genügt, weil
+// nur dieser Service Worker sie schreibt, die Seiten schicken Nachrichten.
+let failedCache = null;
+let backupGen = 0;
+const countFailed = (backup) => new Map(Object.entries(backup || {}).map(([id, b]) => [id, b?.failed?.length || 0]));
+
+async function failedCounts() {
+  if (failedCache?.gen === backupGen) return failedCache.counts;
+  // Stand vor dem Lesen: Wird währenddessen gespeichert, gilt das Gelesene nicht mehr
+  const gen = backupGen;
+  const counts = countFailed((await getBackup()).backup);
+  if (gen === backupGen) failedCache = { gen, counts };
+  return counts;
+}
+
+// Jedes Speichern der Sicherung läuft hierüber. backupGen steigt davor und danach: So
+// verwirft failedCounts, was es um ein Speichern herum gelesen hat, und von zwei Speichern
+// zählt das spätere.
+async function setLocal(items) {
+  if (!('backup' in items)) return chrome.storage.local.set(items);
+  const gen = ++backupGen;
+  await chrome.storage.local.set(items);
+  if (gen === backupGen) failedCache = { gen: ++backupGen, counts: countFailed(items.backup) };
+}
+
 async function getBackup() {
   const { backup, backupPinned, pinnedLater } = await chrome.storage.local.get(['backup', 'backupPinned', 'pinnedLater']);
   return { backup: backup || {}, backupPinned: backupPinned || [], pinnedLater: pinnedLater || [] };
