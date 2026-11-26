@@ -246,10 +246,17 @@ async function reconcile() {
   // wiederhergestellte Ablage gelegt haben – diesen merken und gleich sichtbar machen.
   // Eine neue Tab-Seite dort stammt von der Starteinstellung „Neuer-Tab-Seite“ und wird
   // geschlossen, sonst sammelt sich bei jedem Start eine weitere im Workspace an.
+  // Nach einer gescheiterten Sicherung beim Schließen sichtbar gemacht (onWindowRemoved):
+  // Ohne Hauptfenster bleiben sie es, statt dass aus der veralteten Sicherung eins entsteht
+  // und die Ablagen wieder versteckt (#290). Erst ein neues Fenster oder eine gelungene
+  // Sicherung hebt das auf.
+  const { keepShown } = await chrome.storage.session.get('keepShown');
+  const shown = keepShown && !mains.length;
   const foreign = [];
   for (const [id, w] of stash) {
+    // Sichtbar gemachte Ablagen bleiben, wie sie sind, auch wenn man eine davon öffnet
+    if (shown) continue;
     const st = w.tabs.find(isStashTab);
-    // Nach einer gescheiterten Sicherung beim Schließen sichtbar gemacht (onWindowRemoved)
     if (urlOf(st).includes(`?${SHOWN}#`)) await chrome.tabs.update(st.id, { url: `${STASH_PAGE}#${id}` });
     const act = w.tabs.find((t) => t.active);
     if (!mains.length && act && !act.pinned && !isStashTab(act)) foreign.push(act);
@@ -261,7 +268,7 @@ async function reconcile() {
 
   // Kein Hauptfenster, aber Ablagen (z. B. nach Schließen per X und Neustart):
   // Hauptfenster neu aufbauen.
-  if (!mains.length && stash.size) {
+  if (!mains.length && stash.size && !shown) {
     await moving(async () => {
       const target = cfg.lastWs;
       const win = await chrome.windows.create({ focused: true });
@@ -304,6 +311,10 @@ async function reconcile() {
   if (fresh.length) {
     const pool = [...entries, ...closed];
     for (const [id, ws] of assignWindows(fresh, s, cfg, pool, guessed)) s.windowWs[id] = ws;
+    // Ein neues Fenster nach der gescheiterten Sicherung zeigt den Workspace des geschlossenen
+    // (keepShown), auch wenn lastWs mit dem Speichern nicht mehr nachkam. Sonst sicherte der
+    // Snapshot dessen leere Ablage über seine Tabs.
+    if (cfg.workspaces.some((w) => w.id === keepShown)) for (const id of guessed) s.windowWs[id] = keepShown;
     entries = pool.filter((e) => !e.closed);
     closed = pool.filter((e) => e.closed);
     changed = true;
@@ -319,20 +330,25 @@ async function reconcile() {
   // Nur beim ersten Abgleich mit Fenstern, nachdem storage.session leer war. Den Haken
   // setzt restoreStart erst, wenn der Aufbau abgeschlossen ist (#185).
   const { startChecked } = await chrome.storage.session.get('startChecked');
+  // Nach einer gescheiterten Sicherung beim Schließen sind die Ablagen noch offen; der
+  // Workspace des geschlossenen Fensters kommt dann ebenso ins neue Fenster.
   if (!startChecked && mains.length) {
-    if (!stash.size && mains.every((w) => guessed.has(w.id)) && (await restoreStart(mains, s.windowWs[mains[0].id]))) {
+    if ((!stash.size || keepShown) && mains.every((w) => guessed.has(w.id)) && (await restoreStart(mains, s.windowWs[mains[0].id]))) {
       ({ stash, mains } = await scan());
       changed = true;
     } else await chrome.storage.session.set({ startChecked: true });
   }
+  if (keepShown && mains.length) await chrome.storage.session.remove('keepShown');
   // Hat Chromium die Sitzung nachträglich wiederhergestellt, enthält die Sicherung womöglich
   // schon die doppelten Tabs. repairFromBackup würde die geschlossenen Kopien dann als
   // verloren ergänzen; der Snapshot am Ende bringt sie auf den Stand. Steht noch eine
   // Sicherung aus (snapshotDue), ist die alte veraltet: Ein verschobener Tab entstünde im
-  // alten Workspace neu. Der Snapshot am Ende holt sie nach (#268).
+  // alten Workspace neu. Der Snapshot am Ende holt sie nach (#268). Sind die Ablagen nach
+  // einer gescheiterten Sicherung sichtbar (shown), fehlen die Tabs des geschlossenen
+  // Fensters nur, bis ein neues Fenster sie bekommt; ergänzt kämen sie doppelt (#290).
   const { snapshotDue } = await chrome.storage.session.get('snapshotDue');
   if (await dropStartCopies(s, stash)) changed = true;
-  else if (starting && browserStart && !snapshotDue && (await moving(() => repairFromBackup(cfg, s, stash, mains)))) changed = true;
+  else if (starting && browserStart && !snapshotDue && !shown && (await moving(() => repairFromBackup(cfg, s, stash, mains)))) changed = true;
   s.tabOrigin = {};
   await saveSess(s);
   if (await resumeFeed()) changed = true;
@@ -594,13 +610,16 @@ async function onWindowRemoved(winId) {
     // Fenster als Start ohne Sitzungswiederherstellung: restoreStart baut es auf.
     await chrome.storage.session.remove('startChecked');
     if (changes > savedChanges && img) {
-      try {
-        await snapshot({ ...img, ws });
-      } catch (e) {
+      // Sichert snapshot() wegen eines unterbrochenen Ablaufs nichts, gilt das wie ein Fehler
+      const saved = await snapshot({ ...img, ws }).catch((e) => {
+        console.warn('[workspaces] Sicherung beim Schließen, Ablagen bleiben offen', e);
+        return false;
+      });
+      if (!saved) {
         // Ohne Sicherung gingen die Tabs der Ablagen verloren. Sie bleiben deshalb offen
         // und verlieren den Schlüssel im Titel, damit das KWin-Skript sie wieder in die
-        // Taskleiste bringt. Der nächste Abgleich versteckt sie wieder.
-        console.warn('[workspaces] Sicherung beim Schließen, Ablagen bleiben offen', e);
+        // Taskleiste bringt. Bis ein Fenster aufgeht, lässt reconcile sie so (keepShown).
+        await chrome.storage.session.set({ keepShown: ws }).catch(() => {});
         for (const [id, w] of stash) {
           const st = w.tabs.find(isStashTab);
           await chrome.tabs.update(st.id, { url: `${STASH_PAGE}?${SHOWN}#${id}` }).catch(() => {});
