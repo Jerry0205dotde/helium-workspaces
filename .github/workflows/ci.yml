@@ -30,8 +30,9 @@ jobs:
         id: chrome
         with:
           install-dependencies: true
-      # Quoting- und Portabilitätsfehler in install.sh, auch auf Wegen, die kein Test nimmt
-      - run: shellcheck install.sh
+      # Quoting- und Portabilitätsfehler in den Shell-Skripten, auch auf Wegen, die kein Test nimmt.
+      # native-host.sh rechnet Längenpräfixe in Bytes und arbeitet mit flock und temporären Dateien (#308)
+      - run: shellcheck install.sh native-host.sh
       # Undefinierte Namen in der Erweiterung und im KWin-Skript, auch in Zweigen, die kein Test nimmt.
       # Die Skripte einer Umgebung werden zusammen geprüft (eslint.config.js)
       - run: npx --yes eslint@10.14.0 extension kwin
