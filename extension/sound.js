@@ -12,6 +12,8 @@ const mutedByUs = (t) => !!t.mutedInfo?.muted && t.mutedInfo.reason === 'extensi
 async function syncMute() {
   try {
     const { muteStash, stashMuted = [] } = await chrome.storage.local.get(['muteStash', 'stashMuted']);
+    // Option aus und nichts mehr von ihr stumm: kein Fenster durchsuchen (#298)
+    if (!muteStash && !stashMuted.length) return;
     const { stash, mains } = await scan();
     const ours = new Set(stashMuted);
     const keep = new Set();
