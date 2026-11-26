@@ -16,6 +16,10 @@ async function moving(fn) {
     return await fn();
   } finally {
     switching--;
+    if (!switching && changedMoving) {
+      changedMoving = false;
+      snapshotSoon();
+    }
   }
 }
 
