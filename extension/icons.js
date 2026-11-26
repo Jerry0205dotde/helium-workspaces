@@ -33,6 +33,17 @@ async function iconSource() {
   return { workspaces, lastWs, backup };
 }
 
+// Was zuletzt je Tab gesetzt wurde (Schlüssel aus Workspace, Farbe, Name, Emoji, Titel und
+// Plakette), damit ein Wechsel nur Tabs neu setzt, die etwas anderes tragen. Chromium behält
+// die Werte, wenn ein Tab das Fenster wechselt, und setzt sie nur beim Laden einer Seite
+// zurück; dann verwirft forgetTabIcon den Eintrag. Nach einem Neustart des Service Workers
+// ist die Map leer, und alles wird neu gesetzt.
+const tabIconSet = new Map();
+
+function forgetTabIcon(tabId) {
+  tabIconSet.delete(tabId);
+}
+
 // Ohne tabId gilt die Einstellung für alle Tabs ohne eigene (siehe setGlobalIcon)
 async function setTabIcon(tabId, wsId, src) {
   src ??= await iconSource();
@@ -44,16 +55,25 @@ async function setTabIcon(tabId, wsId, src) {
   // Speicher fast voll (sessionUsage): „!“, wenn keine Zahl fehlender Tabs dasteht
   if (sessionFull) title += '\n' + tr('iconTitleStorageFull');
   const badge = missing ? String(missing) : sessionFull ? '!' : '';
+  const key = JSON.stringify([ws.id, ws.color, ws.emoji, ws.name, title, badge]);
+  if (tabIconSet.get(tabId) === key) return;
+  // Vor den Aufrufen eingetragen: Bei zwei Aufrufen kurz hintereinander gilt im Browser wie
+  // hier der spätere
+  tabIconSet.set(tabId, key);
   const tab = tabId === undefined ? {} : { tabId };
   // Mit Promise lehnt setIcon nicht ab, wenn der Tab inzwischen geschlossen ist, sondern
   // meldet „Unchecked runtime.lastError: No tab with id“ unter chrome://extensions. Mit
   // Callback, der lastError liest, bleibt der Fehler still.
-  await new Promise((done) =>
-    chrome.action.setIcon({ ...tab, imageData: iconFor(ws) }, () => done(chrome.runtime.lastError)),
-  );
-  await chrome.action.setTitle({ ...tab, title }).catch(() => {});
-  await chrome.action.setBadgeText({ ...tab, text: badge }).catch(() => {});
-  if (badge) await chrome.action.setBadgeBackgroundColor({ ...tab, color: '#dc2626' }).catch(() => {});
+  const ok = await Promise.all([
+    new Promise((done) =>
+      chrome.action.setIcon({ ...tab, imageData: iconFor(ws) }, () => done(!chrome.runtime.lastError)),
+    ),
+    chrome.action.setTitle({ ...tab, title }).then(() => true, () => false),
+    chrome.action.setBadgeText({ ...tab, text: badge }).then(() => true, () => false),
+    !badge || chrome.action.setBadgeBackgroundColor({ ...tab, color: '#dc2626' }).then(() => true, () => false),
+  ]);
+  // Nicht gesetzt: beim nächsten Mal erneut versuchen
+  if (ok.includes(false) && tabIconSet.get(tabId) === key) tabIconSet.delete(tabId);
 }
 
 // Chromium setzt Symbol, Titel und Plakette eines Tabs zurück, sobald er eine Seite

@@ -303,3 +303,95 @@ test('Tab in einer Ablage aktivieren (z. B. über die Tab-Suche) wechselt das Ha
   check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
   assert.deepEqual(tabIds(env), before, 'Tabs wurden neu angelegt statt verschoben');
 });
+
+// ---------------------------------------------------------------- Symbole (#296)
+
+// Die eigenen Werte des Tabs (fake-browser.js), ohne die für alle Tabs ohne eigene
+const ownIcon = (env, id) => env.b.findTab(id).t.action ?? {};
+const iconCalls = (env, from) => env.b.calls.slice(from).filter((c) => c.name.startsWith('action.'));
+
+function assertIcons(env, windowId, name) {
+  for (const t of env.b.windows.find((x) => x.id === windowId).tabs) {
+    const a = ownIcon(env, t.id);
+    assert.equal(a.title, `Workspace: ${name}`, `${t.url} trägt den falschen Titel`);
+    assert.equal(a.icon?.label, name, `${t.url} trägt das falsche Symbol`);
+    assert.equal(a.badge, '');
+  }
+}
+
+test('Wechsel setzt Symbol, Titel und Plakette nur bei Tabs, die etwas anderes tragen (#296)', async () => {
+  const env = await setup(SPEC);
+  const { w, win, ids } = env;
+  for (const name of ['B', 'A', 'B', 'C', 'A']) {
+    const from = env.b.calls.length;
+    await ok(w.request({ type: 'switch', windowId: win, wsId: ids[name] }));
+    await w.settle();
+    assertIcons(env, win, name);
+    // Die geholten Tabs tragen ihr Symbol noch aus der Zeit vor der Ablage: neu gesetzt
+    // werden nur die angehefteten Tabs, die beim Wechsel im Fenster bleiben
+    const set = new Set(iconCalls(env, from).filter((c) => c.args[0].tabId !== undefined).map((c) => c.args[0].tabId));
+    const pinned = env.b.windows.find((x) => x.id === win).tabs.filter((t) => t.pinned).map((t) => t.id);
+    assert.deepEqual([...set].sort(), pinned.sort(), `Wechsel nach ${name} setzt mehr als die angehefteten Tabs`);
+  }
+  // Nichts geändert: kein Aufruf
+  const from = env.b.calls.length;
+  await w.eval('updateAllIcons()');
+  assert.deepEqual(iconCalls(env, from), []);
+});
+
+test('Tab lädt in der Ablage eine Seite: nach dem Zurückwechseln trägt er wieder das Symbol (#296)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  // Chromium verwirft dabei die Werte des Tabs
+  await b.chrome.tabs.update(where(env, 'a1').tab.id, { url: url('a9') });
+  await w.settle();
+  assert.deepEqual(ownIcon(env, where(env, 'a9').tab.id), {});
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.A }));
+  await w.settle();
+  assertIcons(env, win, 'A');
+});
+
+test('Tab lädt im Hauptfenster eine Seite: Symbol wird danach neu gesetzt (#296)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win } = env;
+  await b.chrome.tabs.update(where(env, 'a2').tab.id, { url: url('a9') });
+  await w.settle();
+  assertIcons(env, win, 'A');
+});
+
+test('Umbenennen setzt alle Tabs neu, Neuladen der Erweiterung ebenso (#296)', async () => {
+  const env = await setup(SPEC);
+  const { b, win, ids } = env;
+  await ok(env.w.request({ type: 'update', wsId: ids.A, patch: { name: 'X' } }));
+  await env.w.settle();
+  assertIcons(env, win, 'X');
+  await b.reloadExtension().settle();
+  assertIcons(env, win, 'X');
+});
+
+test('Tab in einen versteckten Workspace verschieben setzt kein Symbol, der Wechsel dorthin schon (#296)', async () => {
+  const env = await setup(SPEC);
+  const { w, win, ids } = env;
+  const id = where(env, 'a1').tab.id;
+  const from = env.b.calls.length;
+  await ok(w.request({ type: 'moveTab', tabId: id, wsId: ids.B }));
+  await w.settle();
+  assert.deepEqual(iconCalls(env, from).filter((c) => c.args[0].tabId === id), []);
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await w.settle();
+  assertIcons(env, win, 'B');
+});
+
+test('Tab in einen Workspace in einem anderen Fenster verschieben: er trägt dessen Symbol (#296)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  const win2 = (await b.chrome.windows.create({ focused: true })).id;
+  await w.settle();
+  await ok(w.request({ type: 'switch', windowId: win2, wsId: ids.B }));
+  await ok(w.request({ type: 'moveTab', tabId: where(env, 'a1').tab.id, wsId: ids.B }));
+  await w.settle();
+  assert.equal(where(env, 'a1').win.id, win2);
+  assertIcons(env, win2, 'B');
+  assertIcons(env, win, 'A');
+});

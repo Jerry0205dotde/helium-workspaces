@@ -441,7 +441,11 @@ async function finishMove(focus = false) {
     const s2 = await sess();
     for (const id of ids) delete s2.tabOrigin[id];
     await saveSess(s2);
-    for (const id of ids) await setTabIcon(id, p.to);
+    // In einer Ablage trägt der Tab kein sichtbares Symbol; setzt ihn der nächste Wechsel dorthin
+    if (!p.isStash) {
+      const src = await iconSource();
+      await Promise.all([...ids].map((id) => setTabIcon(id, p.to, src)));
+    }
     await setPendingMove(null);
     return 'forward';
   });
