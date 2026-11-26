@@ -416,6 +416,9 @@ function editor(ws, index) {
     if (e.key === 'Enter') save({ name: nameIn.value }, () => (editing = null), [`ed:${ws.id}`]);
   });
   emojiIn.addEventListener('change', () => saveOnLeave(() => save({ emoji: firstChar(emojiIn.value) })));
+  emojiIn.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') save({ emoji: firstChar(emojiIn.value) }, () => (editing = null), [`ed:${ws.id}`]);
+  });
 
   const sw = el('div', 'swatches');
   sw.role = 'group';
@@ -540,6 +543,8 @@ keyCopy.addEventListener('click', () =>
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || !state) return;
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') return moveSelection(e);
+  // Strg+1 und Alt+1 sind Browserkürzel, keine Direktwahl
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
   const n = Number(e.key);
   if (n >= 1 && n <= 9 && state.workspaces[n - 1]) switchTo(state.workspaces[n - 1].id);
 });

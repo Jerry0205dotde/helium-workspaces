@@ -75,6 +75,15 @@ popupTest('Enter speichert den Namen und schließt den Editor', async ({ page, A
   assert.equal(await page.focused(), `ed:${A}`);
 });
 
+popupTest('Enter im Emoji-Feld speichert das Emoji und schließt den Editor (#293)', async ({ page, A, ws }) => {
+  await page.click(`[data-focus="emoji:${A}"]`);
+  await page.type('🎓 Uni');
+  await page.press('Enter');
+  assert.equal(ws('A').emoji, '🎓');
+  assert.equal(await page.eval(`!!document.getElementById('editor-${A}')`), false);
+  assert.equal(await page.focused(), `ed:${A}`);
+});
+
 // Chromium löst change aus, wenn das Neuzeichnen das geänderte Feld entfernt
 popupTest('Esc speichert den getippten Namen und schließt den Editor, der Fokus steht auf ✎', async ({ page, A, ws, types }) => {
   await page.type('Uni');
@@ -295,6 +304,23 @@ test('Der Tooltip eines Eintrags zeigt den vollen Namen, bei 1 bis 9 mit der Tas
     assert.equal(await title(long), `${long}\nTaste 1`);
     assert.equal(await title('I'), 'I\nTaste 9');
     assert.equal(await title('J'), 'J');
+  } finally {
+    await page.close();
+  }
+});
+
+test('Ziffern wechseln nur ohne Strg und Alt (#293)', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'] } });
+  const page = await browser.open('popup.html', env);
+  try {
+    const shows = () => page.sent.filter((m) => m.type === 'show').length;
+    await page.press('2', { ctrl: true });
+    await page.press('2', { alt: true });
+    assert.equal(shows(), 0);
+    assert.equal(await page.closed(), false);
+    await page.press('2');
+    assert.equal(shows(), 1);
+    assert.equal(env.b.session.data.windowWs[env.win], env.ids.B);
   } finally {
     await page.close();
   }
