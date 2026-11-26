@@ -285,7 +285,7 @@ test('Entladen einer großen Ablage zieht jede neue ID einmal nach und liest die
   // Je Gruppe von UNLOAD_BATCH Tabs ein Blick auf die Fenster und einer für die Sicherung
   assert.ok(count('windows.getAll') <= 10, `windows.getAll ${count('windows.getAll')}×`);
   assert.ok(count('storage.session.set') <= 10, `storage.session.set ${count('storage.session.set')}×`);
-  assert.ok(count('storage.session.get') <= 2 * 30 + 10, `storage.session.get ${count('storage.session.get')}×`);
+  assert.ok(count('storage.session.get') <= 30 + 20, `storage.session.get ${count('storage.session.get')}×`);
   check(env, { A: many, B: ['b1'] });
   const rec = Object.values(b.local.data.stashWins).find((x) => x.ws === ids.A);
   assert.deepEqual(rec.tabs.sort(), many.map((n) => where(env, n).tab.id).sort());
@@ -304,6 +304,20 @@ test('Ein Wechsel, während eine große Ablage entladen wird, wartet nur auf ein
   assert.equal(shows(env, win), 'A');
   assert.equal(discards(b), 10, 'der Wechsel wartete auf alle Tabs der Ablage');
   check(env, { A: many, B: ['b1'] });
+});
+
+test('Scheitert das Nachziehen der neuen ID beim Entladen, holt tabs.onReplaced es nach', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await ok(w.request({ type: 'unloadAfter', minutes: 5 }));
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  // Der erste Blick von replaceTabId in storage.session scheitert
+  b.fail('storage.session.get', { when: (keys) => Array.isArray(keys) && keys.includes('startFed') });
+  await w.advance(6 * MIN);
+  assert.deepEqual(discarded(env, ['a1', 'a2', 'a3', 'a4']), [true, true, true, true]);
+  const rec = Object.values(b.local.data.stashWins).find((x) => x.ws === ids.A);
+  assert.deepEqual(rec.tabs.sort(), ['a1', 'a2', 'a3', 'a4'].map((n) => where(env, n).tab.id).sort());
+  check(env, ALL);
 });
 
 test('Neue ID durch Entladen: ein unterbrochener Wechsel kennt den Tab weiterhin als alten Tab', async () => {

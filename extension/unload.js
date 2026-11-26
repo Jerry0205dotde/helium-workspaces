@@ -91,9 +91,10 @@ async function discard(t) {
   await chrome.storage.local.set({ discarding: t.id });
   ownDiscards.set(t.id, null);
   const d = await chrome.tabs.discard(t.id).catch((e) => console.warn('[workspaces] Tab nicht entladbar:', t.url, e));
+  // Erst danach eingetragen: Scheitert replaceTabId, zieht tabs.onReplaced die ID nach
   if (d && d.id !== t.id) {
-    ownDiscards.set(t.id, d.id);
     await replaceTabId(t.id, d.id);
+    ownDiscards.set(t.id, d.id);
   } else ownDiscards.delete(t.id);
   await chrome.storage.local.remove('discarding');
   if (!d) return null;
@@ -111,7 +112,9 @@ async function discard(t) {
 const ownDiscards = new Map();
 
 async function replacedWhileDiscarding(from, to) {
-  if (ownDiscards.get(from) === to) return void ownDiscards.delete(from);
+  const done = ownDiscards.get(from) === to;
+  ownDiscards.delete(from);
+  if (done) return;
   await replaceTabId(from, to);
   scheduleSnapshot();
 }
