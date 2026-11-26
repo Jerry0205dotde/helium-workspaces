@@ -1257,10 +1257,13 @@ test('Echter Chromium: Kontextmenüs von Profil und Inkognito bleiben nebeneinan
   });
   await b.launch({ incognito: true });
   const inc = (body, ...args) => b.incognitoSw(body, ...args);
-  // Die Einträge, die zu den eigenen Workspaces fehlen
+  // Die Einträge, die zu den eigenen Workspaces fehlen. Nur lesen: getConfig() legt bei leerem
+  // Speicher selbst einen Workspace an, an buildMenus vorbei.
   const MISSING = `
+    const { workspaces } = await chrome.storage.local.get('workspaces');
+    if (!workspaces?.length) return ['workspaces'];
     const missing = [];
-    for (const ws of [null, ...(await getConfig()).workspaces]) {
+    for (const ws of [null, ...workspaces]) {
       for (const kind of ['link', 'move', 'group']) {
         const id = ws ? kind + ':' + ws.id : kind;
         await chrome.contextMenus.update(id, {}).catch(() => missing.push(id));
