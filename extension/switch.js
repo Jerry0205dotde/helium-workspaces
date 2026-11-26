@@ -254,6 +254,20 @@ async function finishSwitch() {
     const blank = (t) => isNewTab(t) && (!t.pendingUrl || isNewTab({ url: t.pendingUrl }));
     const blanks = tabs.filter((t) => old.has(t.id) && blank(t));
     const oldLeft = tabs.filter((t) => old.has(t.id) && !blank(t));
+    if (
+      !oldLeft.length &&
+      (!p.oldTabs.length || blanks.length) &&
+      !stash.has(p.from) &&
+      // Ein noch nicht zugeordnetes Fenster (nach dem Neuladen der Erweiterung) kann ihn zeigen
+      !mains.some((w) => w.id !== p.windowId && (s.windowWs[w.id] ?? p.from) === p.from)
+    ) {
+      // Nichts bleibt, und nichts sonst hält den Workspace: snapshot() ließe sonst den alten
+      // Stand samt der leeren Seite stehen (#288). Vor dem Schließen, damit ein erneuter Lauf
+      // sie noch findet. Noch nicht angelegte Einträge bleiben.
+      await clearBackup(p.from, true);
+    }
+    // Vor dem Verschieben: Eine leere Seite in einer Gruppe ginge sonst mit in die Ablage
+    if (blanks.length) await chrome.tabs.remove(blanks.map((t) => t.id)).catch(() => {}); // schon geschlossen
     if (oldLeft.length) {
       const st = await ensureStash(p.from, false);
       await moveOrdered(oldLeft, st.windowId);
@@ -261,19 +275,7 @@ async function finishSwitch() {
       const { stashedAt = {} } = await chrome.storage.session.get('stashedAt');
       await chrome.storage.session.set({ stashedAt: { ...stashedAt, [p.from]: Date.now() } });
       if (st.created) await chrome.windows.update(p.windowId, { focused: true }).catch(() => {});
-    } else if (
-      (!p.oldTabs.length || blanks.length) &&
-      !stash.has(p.from) &&
-      // Ein noch nicht zugeordnetes Fenster (nach dem Neuladen der Erweiterung) kann ihn zeigen
-      !mains.some((w) => w.id !== p.windowId && (s.windowWs[w.id] ?? p.from) === p.from)
-    ) {
-      // Nichts mehr da, und nichts sonst hält den Workspace: snapshot() ließe sonst den
-      // alten Stand samt der gleich geschlossenen leeren Seite stehen (#288). Noch nicht
-      // angelegte Einträge bleiben, auch wenn bisher nur die leere Seite entstand.
-      await clearBackup(p.from, true);
     }
-    // Erst danach: Endet der Service Worker vorher, findet der erneute Lauf sie noch
-    if (blanks.length) await chrome.tabs.remove(blanks.map((t) => t.id)).catch(() => {}); // schon geschlossen
 
     s.windowWs[p.windowId] = p.to;
     s.prevWs[p.windowId] = p.from;
