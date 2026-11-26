@@ -342,6 +342,32 @@ test('--update bricht ohne eingetragenen Schlüssel vor git pull ab', () => {
   assert.deepEqual(r.calls, [PROBE, READ_TOKEN]);
 });
 
+test('--update gibt die Schlüssel bereinigt weiter, wenn kwinrc Leerzeichen oder leere Einträge hat (#294)', () => {
+  const r = run(['--update'], { token: `${TOKEN}, ,${OTHER} ,`, setup: (dir) => repos(dir) });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Neue Fassung von install\.sh\n/);
+  assert.ok(r.calls.includes(writeToken(`${TOKEN},${OTHER}`)), r.calls.join('\n'));
+});
+
+test('--update bricht vor git pull ab, wenn kwinrc nur Leerzeichen und Kommas enthält (#294)', () => {
+  let local;
+  let headBefore;
+  const r = run(['--update'], {
+    token: ' , ,',
+    setup: (dir) => {
+      const script = repos(dir);
+      local = path.dirname(script);
+      headBefore = git(local, 'rev-parse', 'HEAD');
+      return script;
+    },
+    check: () => git(local, 'rev-parse', 'HEAD'),
+  });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /Noch kein Schlüssel eingetragen/);
+  assert.deepEqual(r.calls, [PROBE, READ_TOKEN]);
+  assert.equal(r.checked, headBefore, 'git pull lief trotz fehlendem Schlüssel');
+});
+
 test('--update zieht keinen neuen Stand und ändert nichts, wenn KWin nicht erreichbar ist (#235)', () => {
   let local;
   let headBefore;

@@ -122,12 +122,14 @@ if [ -n "$UPDATE" ]; then
     || { t "--update nimmt keine weiteren Angaben, Schlüssel und Browserliste bleiben wie eingetragen." \
            "--update takes no further arguments, the key and the browser list stay as they are." >&2; exit 1; }
   check_kwin
-  OLD="$(kreadconfig6 --file kwinrc --group Script-helium-workspaces --key token)"
-  [ -n "$OLD" ] || { t "Noch kein Schlüssel eingetragen. Zuerst ./install.sh ohne --update ausführen." \
-                       "No key set up yet. Run ./install.sh without --update first." >&2; exit 1; }
+  # Bereinigt wie beim Eintragen: Leerzeichen oder leere Einträge, etwa von Hand in kwinrc,
+  # lehnte die geholte Fassung sonst erst nach git pull als ungültigen Schlüssel ab (#294)
+  read_keys
+  [ ${#KEYS[@]} -gt 0 ] || { t "Noch kein Schlüssel eingetragen. Zuerst ./install.sh ohne --update ausführen." \
+                               "No key set up yet. Run ./install.sh without --update first." >&2; exit 1; }
   git -C "$DIR" pull --ff-only
   # Die eben geholte Fassung von install.sh richtet das KWin-Skript ein, sie kann neuer sein als diese
-  bash "$DIR/install.sh" "$OLD"
+  bash "$DIR/install.sh" "$(join_keys)"
   VERSION="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$DIR/extension/manifest.json")"
   # Die deutschen Anführungszeichen sind gewollter Text, keine verirrten Shell-Quotes
   # shellcheck disable=SC1111
