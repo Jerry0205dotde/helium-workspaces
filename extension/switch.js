@@ -326,7 +326,8 @@ async function switchRelative(windowId, step) {
   const i = cfg.workspaces.findIndex((w) => w.id === cur);
   const n = cfg.workspaces.length;
   if (n < 2) return;
-  await switchTo(windowId, cfg.workspaces[(i + step + n) % n].id);
+  // Zusammengefasste Tastendrücke (#300) können mehr als eine Runde ergeben
+  await switchTo(windowId, cfg.workspaces[(((i + step) % n) + n) % n].id);
 }
 
 // Workspace an Stelle i der Liste (Tastenkürzel 1–9)

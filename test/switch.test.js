@@ -94,6 +94,44 @@ test('Tastenkürzel wechseln direkt zu Workspace 1–9 und zum zuletzt benutzten
   check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
 });
 
+test('Schnell wiederholte Tastenkürzel wechseln einmal gleich zum Ziel (#300)', async () => {
+  const env = await setup({ ...SPEC, workspaces: { ...SPEC.workspaces, D: ['d1'] } });
+  const { b, w, win } = env;
+  const tab = { id: b.windows.find((x) => x.id === win).tabs[0].id, windowId: win };
+  const press = async (...cmds) => {
+    const before = b.calls.length;
+    for (const cmd of cmds) b.fire('commands.onCommand', cmd, tab);
+    await w.settle();
+    return b.calls.slice(before).filter((c) => c.name === 'tabs.move').length;
+  };
+  // Drei Schritte vor: einmal von A nach D, „zuletzt benutzt“ führt zurück zu A
+  assert.ok((await press('next-workspace', 'next-workspace', 'next-workspace')) > 0);
+  assert.equal(shows(env, win), 'D');
+  await press('last-workspace');
+  assert.equal(shows(env, win), 'A');
+  // Mehr als eine Runde rückwärts: 5 Schritte zurück bei vier Workspaces ergeben D
+  await press(...Array(5).fill('prev-workspace'));
+  assert.equal(shows(env, win), 'D');
+  // Hin und zurück heben sich auf: kein Tab wird verschoben
+  assert.equal(await press('next-workspace', 'prev-workspace', 'next-workspace', 'prev-workspace'), 0);
+  assert.equal(shows(env, win), 'D');
+  // Bei 1–9 zählt der letzte Druck, der Weg dorthin geht direkt von D aus
+  await press('switch-1', 'switch-3', 'switch-2');
+  assert.equal(shows(env, win), 'B');
+  await press('last-workspace');
+  assert.equal(shows(env, win), 'D');
+  // Eine andere Aktion dazwischen: der Druck danach fällt nicht in den Wechsel davor
+  await press('next-workspace', 'last-workspace', 'next-workspace');
+  assert.equal(shows(env, win), 'A', 'D → A → D → A');
+  // Scheitert die Aktion vor dem Wechsel, wechseln spätere Drücke trotzdem
+  b.fail('storage.session.get', { when: (k) => k === 'entriesUntil' });
+  await press('next-workspace');
+  assert.equal(shows(env, win), 'A');
+  await press('next-workspace');
+  assert.equal(shows(env, win), 'B');
+  check(env, { ...SPEC.workspaces, D: ['d1'], pinned: SPEC.pinned });
+});
+
 test('Das Kontextmenü erscheint auch auf Links, Bildern, Videos und markiertem Text', async () => {
   const { b, ids } = await setup(SPEC);
   const sub = (kind) => Object.values(ids).map((id) => `${kind}:${id}`);
