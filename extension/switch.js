@@ -476,6 +476,12 @@ async function openLinkInWs(url, wsId, fromWindowId) {
   const tab = await moving(async () => {
     if (shownIn) return chrome.tabs.create({ windowId: shownIn.id, url, active: false });
     const st = await ensureStash(wsId, true);
+    // Lädt die Erweiterung neu, bevor snapshot() den Tab in stashWins einträgt, hätte eine
+    // leere Ablage keinen bekannten Tab und würde zum Hauptfenster. Der Vermerk lässt
+    // repairStashes sie trotzdem reparieren (#289).
+    const { stashWins = {} } = await chrome.storage.local.get('stashWins');
+    stashWins[st.windowId] = { ...stashWins[st.windowId], link: true };
+    await chrome.storage.local.set({ stashWins });
     const t = await chrome.tabs.create({ windowId: st.windowId, url, active: false });
     if (fromWindowId !== undefined) await chrome.windows.update(fromWindowId, { focused: true }).catch(() => {});
     return t;

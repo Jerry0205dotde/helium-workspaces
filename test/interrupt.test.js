@@ -133,6 +133,20 @@ everywhere('Link in Workspace öffnen', {
   done: (env) => check(env, LINKED),
 });
 
+// Ein neuer Workspace hat noch keine Ablage: Sie entsteht erst für den Link (#289)
+const EMPTY = { ...ALL, D: [] };
+const LINKED_EMPTY = { ...ALL, D: ['l1'] };
+everywhere('Link in leeren Workspace öffnen', {
+  make: async () => {
+    const env = await setup(SPEC);
+    env.ids.D = (await ok(env.w.request({ type: 'create', name: 'D' }))).id;
+    return env;
+  },
+  act: (env) => env.b.fire('contextMenus.onClicked', { menuItemId: `link:${env.ids.D}`, linkUrl: url('l1') }, where(env, 'a1').tab),
+  outcomes: { unverändert: EMPTY, geöffnet: LINKED_EMPTY },
+  done: (env) => check(env, LINKED_EMPTY),
+});
+
 // Der Wecker entlädt die Tabs der Ablagen. Sie bekommen dabei neue IDs (tabs.onReplaced).
 everywhere('Ablagen entladen', {
   make: async () => {
