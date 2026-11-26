@@ -154,6 +154,7 @@ const KEYS = {
   Tab: { code: 'Tab', windowsVirtualKeyCode: 9 },
   Enter: { code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' },
   Escape: { code: 'Escape', windowsVirtualKeyCode: 27 },
+  2: { code: 'Digit2', windowsVirtualKeyCode: 50, text: '2' },
 };
 
 class Page {
@@ -292,10 +293,14 @@ class Page {
     return this.click(selector, { count: 2, quick });
   }
 
-  async press(key, { shift = false } = {}) {
+  // modifiers wie im DevTools-Protokoll: Alt 1, Strg 2, Meta 4, Shift 8
+  async press(key, { shift = false, alt = false, ctrl = false } = {}) {
     const k = KEYS[key];
-    const base = { key, code: k.code, windowsVirtualKeyCode: k.windowsVirtualKeyCode, modifiers: shift ? 8 : 0 };
-    await this.send('Input.dispatchKeyEvent', { type: k.text ? 'keyDown' : 'rawKeyDown', text: k.text, ...base });
+    const modifiers = (alt ? 1 : 0) | (ctrl ? 2 : 0) | (shift ? 8 : 0);
+    const base = { key, code: k.code, windowsVirtualKeyCode: k.windowsVirtualKeyCode, modifiers };
+    // Mit Strg oder Alt entsteht kein Text, wie bei einer echten Taste
+    const text = alt || ctrl ? undefined : k.text;
+    await this.send('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', text, ...base });
     await this.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
     await this.idle();
   }
