@@ -268,6 +268,58 @@ test('Neustart des Service Workers zwischen Anlegen aus der Sicherung und Laden:
   check(env, ALL);
 });
 
+// Je entladenem Tab zog tabs.onReplaced die neue ID ein zweites Mal nach und baute das Abbild
+// der Fenster neu auf; mit 76 Tabs stand die Warteschlange über 300 ms (#302)
+test('Entladen einer großen Ablage zieht jede neue ID einmal nach und liest die Fenster nicht je Tab', async () => {
+  const many = Array.from({ length: 30 }, (_, i) => `m${i}`);
+  const env = await setup({ workspaces: { A: many, B: ['b1'] } });
+  const { b, w, win, ids } = env;
+  await ok(w.request({ type: 'unloadAfter', minutes: 5 }));
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await w.advance(4 * MIN);
+  const before = b.calls.length;
+  await w.advance(2 * MIN);
+  const calls = b.calls.slice(before);
+  const count = (name) => calls.filter((c) => c.name === name).length;
+  assert.equal(count('tabs.discard'), 30, 'nicht alle Tabs der Ablage entladen');
+  // Je Gruppe von UNLOAD_BATCH Tabs ein Blick auf die Fenster und einer für die Sicherung
+  assert.ok(count('windows.getAll') <= 10, `windows.getAll ${count('windows.getAll')}×`);
+  assert.ok(count('storage.session.set') <= 10, `storage.session.set ${count('storage.session.set')}×`);
+  assert.ok(count('storage.session.get') <= 30 + 20, `storage.session.get ${count('storage.session.get')}×`);
+  check(env, { A: many, B: ['b1'] });
+  const rec = Object.values(b.local.data.stashWins).find((x) => x.ws === ids.A);
+  assert.deepEqual(rec.tabs.sort(), many.map((n) => where(env, n).tab.id).sort());
+});
+
+test('Ein Wechsel, während eine große Ablage entladen wird, wartet nur auf eine Gruppe von Tabs (#302)', async () => {
+  const many = Array.from({ length: 30 }, (_, i) => `m${i}`);
+  const env = await setup({ workspaces: { A: many, B: ['b1'] } });
+  const { b, w, win, ids } = env;
+  await ok(w.request({ type: 'unloadAfter', minutes: 5 }));
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  let reply = null;
+  b.during('tabs.discard', () => w.send({ type: 'switch', windowId: win, wsId: ids.A }).then((r) => (reply = r)));
+  await w.advance(6 * MIN);
+  assert.equal(reply?.ok, true);
+  assert.equal(shows(env, win), 'A');
+  assert.equal(discards(b), 10, 'der Wechsel wartete auf alle Tabs der Ablage');
+  check(env, { A: many, B: ['b1'] });
+});
+
+test('Scheitert das Nachziehen der neuen ID beim Entladen, holt tabs.onReplaced es nach', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await ok(w.request({ type: 'unloadAfter', minutes: 5 }));
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  // Der erste Blick von replaceTabId in storage.session scheitert
+  b.fail('storage.session.get', { when: (keys) => Array.isArray(keys) && keys.includes('startFed') });
+  await w.advance(6 * MIN);
+  assert.deepEqual(discarded(env, ['a1', 'a2', 'a3', 'a4']), [true, true, true, true]);
+  const rec = Object.values(b.local.data.stashWins).find((x) => x.ws === ids.A);
+  assert.deepEqual(rec.tabs.sort(), ['a1', 'a2', 'a3', 'a4'].map((n) => where(env, n).tab.id).sort());
+  check(env, ALL);
+});
+
 test('Neue ID durch Entladen: ein unterbrochener Wechsel kennt den Tab weiterhin als alten Tab', async () => {
   const env = await setup(SPEC);
   const { b, w, win } = env;
