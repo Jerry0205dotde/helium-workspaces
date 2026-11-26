@@ -15,7 +15,7 @@ Die Tastenkürzel und die wichtigsten Aktionen stehen in der [README](../README.
 
 ## Ablagen entladen
 
-**Ablagen entladen nach** (Standard: nie) entlädt die Tabs in einer Ablage, sobald sie so lange dort liegen. Die Zeit läuft ab dem Wegwechseln vom Workspace. Entladene Tabs geben ihren Arbeitsspeicher frei und behalten Adresse, Titel, Gruppe und Zurück-Verlauf. Beim Zurückwechseln laden sie neu; laufende Videos, Scrollposition und ungespeicherte Eingaben sind dann weg. Tabs, deren Ton zu hören ist oder in dieser Zeit zu hören war, bleiben geladen, etwa ein Videocall, in dem gerade niemand spricht; stummgeschaltete werden mit entladen.
+**Ablagen entladen nach** (Standard: nie) entlädt die Tabs in einer Ablage, sobald sie so lange dort liegen. Die Zeit läuft ab dem Wegwechseln vom Workspace, für einen Tab, der erst danach per **Tab in Workspace verschieben** oder **Link in Workspace öffnen** dazukommt, ab seinem Ankommen. Entladene Tabs geben ihren Arbeitsspeicher frei und behalten Adresse, Titel, Gruppe und Zurück-Verlauf. Beim Zurückwechseln laden sie neu; laufende Videos, Scrollposition und ungespeicherte Eingaben sind dann weg. Tabs, deren Ton zu hören ist oder in dieser Zeit zu hören war, bleiben geladen, etwa ein Videocall, in dem gerade niemand spricht; stummgeschaltete werden mit entladen.
 
 ## Das letzte Fenster schließen
 

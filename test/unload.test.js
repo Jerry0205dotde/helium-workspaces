@@ -4,7 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { setup, check, ok, where, shows } = require('./harness');
+const { setup, check, ok, url, where, shows } = require('./harness');
 
 const SPEC = {
   pinned: ['p1'],
@@ -129,6 +129,67 @@ test('Wird ein Tab still, während der Wecker die Ablagen schon prüft, bleibt e
   await w.advance(1 * MIN);
   assert.deepEqual(discarded(env, ['a1', 'a4']), [true, false], 'gerade still gewordener Tab wurde entladen');
   check(env, ALL);
+});
+
+test('Ein Tab, der später in eine ältere Ablage kommt, zählt ab seinem Ankommen (#291)', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  await ok(w.request({ type: 'unloadAfter', minutes: 5 }));
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await w.advance(3 * MIN);
+  // Die Ablage von A liegt seit 3 Minuten: b2 dorthin verschieben, einen Link dort öffnen
+  await ok(w.request({ type: 'moveTab', tabId: where(env, 'b2').tab.id, wsId: ids.A }));
+  b.fire('contextMenus.onClicked', { menuItemId: `link:${ids.A}`, linkUrl: url('l1'), pageUrl: url('b1') }, where(env, 'b1').tab);
+  await w.settle();
+  assert.equal(where(env, 'b2').stash, true);
+  assert.equal(where(env, 'l1').stash, true);
+  const NEW = { ...ALL, A: [...ALL.A, 'b2', 'l1'], B: ['b1'] };
+  await w.advance(3 * MIN);
+  assert.deepEqual(discarded(env, ['a1', 'a4']), [true, true]);
+  assert.deepEqual(discarded(env, ['b2', 'l1']), [false, false], 'gerade dazugekommener Tab wurde entladen');
+  await w.advance(3 * MIN);
+  assert.deepEqual(discarded(env, ['b2', 'l1']), [true, true]);
+  await w.advance(1 * MIN);
+  assert.deepEqual(b.session.data.arrivedAt, {}, 'alte Zeitpunkte bleiben liegen');
+  check(env, NEW);
+});
+
+test('Vor dem Laden geschlossene Tabs aus der Sicherung bleiben nicht auf der Liste zum Entladen (#291)', async () => {
+  const env = await setup(SPEC);
+  const { b } = env;
+  b.restart({ restore: 'none' });
+  b.holdLoads = true;
+  let w = b.startWorker('startup');
+  await w.settle();
+  const closed = ['a1', 'a2', 'a3', 'a4'].map((n) => where(env, n).tab).find((t) => !t.active).id;
+  assert.ok(b.session.data.unloadLater.includes(closed));
+  await b.chrome.tabs.remove(closed);
+  await w.settle();
+  assert.equal(b.session.data.unloadLater.includes(closed), false, 'geschlossener Tab steht noch auf der Liste');
+  b.releaseLoads();
+  await w.settle();
+  assert.equal(b.session.data.unloadLater, undefined, 'die Liste ist nach dem Entladen nicht leer');
+});
+
+test('Ein Tab auf der Liste zum Entladen, den es nicht mehr gibt, zählt beim Nachlegen nicht mehr und fällt weg (#291)', async () => {
+  const many = Array.from({ length: 9 }, (_, i) => `m${i}`);
+  const env = await setup({ workspaces: { A: ['a1'], B: many } });
+  const { b } = env;
+  b.restart({ restore: 'none' });
+  let w = b.startWorker('startup');
+  await w.settle();
+  // Ein Eintrag, den onRemoved nicht streichen konnte (etwa eine von Chromium beim
+  // Entladen ersetzte ID), übersteht den Neustart des Service Workers
+  await b.chrome.storage.session.set({ unloadLater: [999] });
+  w = b.startWorker(null);
+  await w.settle();
+  // B entsteht aus der Sicherung und wird in Schüben angelegt
+  b.holdLoads = true;
+  await ok(w.request({ type: 'switch', windowId: b.mains()[0].id, wsId: env.ids.B }));
+  b.releaseLoads();
+  await w.settle();
+  check(env, { A: ['a1'], B: many });
+  assert.equal(b.session.data.unloadLater, undefined, 'die Liste ist nach dem Entladen nicht leer');
 });
 
 test('Ausschalten stoppt das Entladen, nur angebotene Zeiten werden angenommen', async () => {

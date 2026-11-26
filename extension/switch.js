@@ -447,6 +447,7 @@ async function finishMove(focus = false) {
       if (focus) await chrome.windows.update(p.fromWindowId, { focused: true }).catch(() => {});
       const tabs = await chrome.tabs.query({ windowId: target.id });
       await rememberStashWin(target.id, p.to, stashTabsOf({ tabs }).map((t) => t.id));
+      await noteArrived(p.tabs);
     }
 
     const s2 = await sess();
@@ -483,6 +484,7 @@ async function openLinkInWs(url, wsId, fromWindowId) {
     stashWins[st.windowId] = { ...stashWins[st.windowId], link: true };
     await chrome.storage.local.set({ stashWins });
     const t = await chrome.tabs.create({ windowId: st.windowId, url, active: false });
+    await noteArrived([t.id]);
     if (fromWindowId !== undefined) await chrome.windows.update(fromWindowId, { focused: true }).catch(() => {});
     return t;
   });

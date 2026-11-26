@@ -15,7 +15,7 @@ The keyboard shortcuts and the most important actions are in the [README](../REA
 
 ## Unloading stashes
 
-**Unload stashes after** (default: **never**) unloads the tabs in a stash once they have been there for that long. The time counts from switching away from the workspace. Unloaded tabs free their memory and keep their address, title, group and back history. When you switch back they reload; playing videos, scroll position and unsaved input are gone then. Tabs whose sound can be heard, or could be heard within that time, stay loaded, such as a video call in which nobody is talking right now; muted ones are unloaded too.
+**Unload stashes after** (default: **never**) unloads the tabs in a stash once they have been there for that long. The time counts from switching away from the workspace, and for a tab that only arrives later through **Move tab to workspace** or **Open link in workspace**, from its arrival. Unloaded tabs free their memory and keep their address, title, group and back history. When you switch back they reload; playing videos, scroll position and unsaved input are gone then. Tabs whose sound can be heard, or could be heard within that time, stay loaded, such as a video call in which nobody is talking right now; muted ones are unloaded too.
 
 ## Closing the last window
 
