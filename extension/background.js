@@ -212,7 +212,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       case 'switch':
         return userAction(() => switchTo(msg.windowId, msg.wsId));
       case 'show':
-        return userAction(() => showWs(msg.windowId, msg.wsId));
+        return userActionShown((shown) => showWs(msg.windowId, msg.wsId, shown));
       case 'create':
         return userAction(() => createWs(msg.name));
       case 'update':

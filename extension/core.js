@@ -151,6 +151,15 @@ function userAction(fn) {
   });
 }
 
+// Wie userAction, die Antwort kommt aber schon, wenn fn das übergebene shown() aufruft: Das
+// Popup schließt, sobald der Wechsel zu sehen ist. Der Rest (Symbole, Sicherung, Stummschalten)
+// läuft danach weiter in derselben serial()-Kette (#297).
+function userActionShown(fn) {
+  let shown;
+  const early = new Promise((resolve) => (shown = resolve));
+  return Promise.race([early, userAction(() => fn(shown))]);
+}
+
 // Zusammenfassen von Ereignissen, aber spätestens nach maxMs ausführen.
 const timers = {};
 const firstCall = {};
