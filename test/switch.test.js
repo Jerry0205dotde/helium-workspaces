@@ -97,11 +97,13 @@ test('Tastenkürzel wechseln direkt zu Workspace 1–9 und zum zuletzt benutzten
 test('Das Kontextmenü erscheint auch auf Links, Bildern, Videos und markiertem Text', async () => {
   const { b, ids } = await setup(SPEC);
   const sub = (kind) => Object.values(ids).map((id) => `${kind}:${id}`);
-  assert.deepEqual(b.menus.map((m) => m.id), ['link', ...sub('link'), 'move', ...sub('move'), 'group', ...sub('group')]);
+  assert.deepEqual(b.menus.map((m) => m.id), ['link', ...sub('link'), 'move', ...sub('move'), 'group', ...sub('group'), 'tabMove', ...sub('tabMove'), 'tabGroup', ...sub('tabGroup')]);
   // „Link in Workspace öffnen“ nur auf Links
   for (const m of b.menus.filter((x) => x.id.startsWith('link'))) assert.deepEqual(m.contexts, ['link']);
   assert.equal(b.menus[0].title, 'Link in Workspace öffnen');
-  for (const m of b.menus.filter((x) => !x.id.startsWith('link'))) {
+  // Die Einträge für die Tab-Leiste nur dort (#309)
+  for (const m of b.menus.filter((x) => x.id.startsWith('tab'))) assert.deepEqual(m.contexts, ['tab']);
+  for (const m of b.menus.filter((x) => !x.id.startsWith('link') && !x.id.startsWith('tab'))) {
     for (const c of ['page', 'link', 'image', 'video', 'audio', 'selection', 'frame', 'editable', 'action']) {
       assert.ok(m.contexts.includes(c), `${m.id} fehlt im Kontext ${c}`);
     }
@@ -203,6 +205,74 @@ test('„Gruppe in Workspace verschieben“ erscheint nur in einer Gruppe und ni
   await w.settle();
   assert.equal(where(env, 'a4').ws, ids.C);
   assert.equal(where(env, 'a1').ws, ids.A);
+});
+
+// Rechtsklick auf einen Tab in der Tab-Leiste: Chrome übergibt den rechtsgeklickten Tab, der
+// nicht der aktive sein muss (#309)
+test('Kontextmenü der Tab-Leiste verschiebt den rechtsgeklickten Tab, auch wenn er nicht aktiv ist', async () => {
+  const env = await setup(SPEC);
+  const { b, w, ids } = env;
+  await highlight(env, ['a1']);
+  // Titel ohne Anzahl und Gruppen-Eintrag immer da, auch wenn der aktive Tab in keiner Gruppe ist
+  assert.equal(menu(env, 'tabMove').title, 'In Workspace verschieben');
+  assert.equal(menu(env, 'tabGroup').title, 'Gruppe in Workspace verschieben');
+  assert.notEqual(menu(env, 'tabGroup').visible, false);
+  await highlight(env, ['a1', 'a4']);
+  assert.equal(menu(env, 'tabMove').title, 'In Workspace verschieben');
+
+  // Nicht markierter Tab: nur er geht, die markierten bleiben
+  b.fire('contextMenus.onClicked', { menuItemId: `tabMove:${ids.C}` }, where(env, 'a2').tab);
+  await w.settle();
+  check(env, {
+    ...SPEC.workspaces,
+    A: ['a1', { url: 'a3', group: 'Mathe', color: 'blue' }, 'a4'],
+    C: ['c1', 'a2'],
+    pinned: SPEC.pinned,
+  });
+  assert.equal(where(env, 'a1').tab.active, true);
+
+  // Markierter, nicht aktiver Tab: alle markierten gehen gemeinsam
+  b.fire('contextMenus.onClicked', { menuItemId: `tabMove:${ids.B}` }, where(env, 'a4').tab);
+  await w.settle();
+  check(env, {
+    ...SPEC.workspaces,
+    A: [{ url: 'a3', group: 'Mathe', color: 'blue' }],
+    B: [...SPEC.workspaces.B, 'a1', 'a4'],
+    C: ['c1', 'a2'],
+    pinned: SPEC.pinned,
+  });
+});
+
+test('„Gruppe in Workspace verschieben“ in der Tab-Leiste nimmt die Gruppe eines nicht aktiven Tabs mit, ohne Gruppe nichts', async () => {
+  const env = await setup(SPEC);
+  const { b, w, ids } = env;
+  await highlight(env, ['a1']);
+  // Ohne Gruppe tut der Eintrag nichts
+  b.fire('contextMenus.onClicked', { menuItemId: `tabGroup:${ids.C}` }, where(env, 'a4').tab);
+  await w.settle();
+  check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
+
+  b.fire('contextMenus.onClicked', { menuItemId: `tabGroup:${ids.C}` }, where(env, 'a3').tab);
+  await w.settle();
+  check(env, {
+    ...SPEC.workspaces,
+    A: ['a1', 'a4'],
+    C: ['c1', { url: 'a2', group: 'Mathe', color: 'blue' }, { url: 'a3', group: 'Mathe', color: 'blue' }],
+    pinned: SPEC.pinned,
+  });
+  assert.equal(where(env, 'a1').tab.active, true);
+});
+
+test('Ohne Kontext „tab“ (vor Chrome 150) entstehen die übrigen Menüs wie bisher', async () => {
+  const env = await setup(SPEC);
+  const { b, ids } = env;
+  // Wie ein älterer Browser nach dem Update der Erweiterung, das ihre Menüs entfernt
+  b.tabContext = false;
+  b.menus = [];
+  await b.startWorker('installed').settle();
+  const sub = (kind) => Object.values(ids).map((id) => `${kind}:${id}`);
+  assert.deepEqual(b.menus.map((m) => m.id), ['link', ...sub('link'), 'move', ...sub('move'), 'group', ...sub('group')]);
+  assert.deepEqual(b.errors, []);
 });
 
 test('Löschen eines angezeigten Workspace wechselt vorher weg und entfernt seine Tabs', async () => {

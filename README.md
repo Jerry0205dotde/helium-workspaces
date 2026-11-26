@@ -91,10 +91,10 @@ Do not remove and re-add the extension to update it. When it is removed, Helium 
 | Straight to workspace 1–9 | set your own shortcuts at `chrome://extensions/shortcuts` (Chromium suggests at most four), or <kbd>1</kbd>–<kbd>9</kbd> in the list |
 | Create a workspace, rename it, change its color or emoji, delete it | in the list |
 | Change the order | drag in the list |
-| Move a tab to another workspace | Right-click anywhere on the page, including a link, an image or selected text → **Move tab to workspace**, or click ↪ next to the target in the list |
+| Move a tab to another workspace | Right-click anywhere on the page, including a link, an image or selected text → **Move tab to workspace**, right-click the tab in the tab strip → **Move to workspace** (Helium 0.22 and later), or click ↪ next to the target in the list |
 | Open a link in another workspace | Right-click the link → **Open link in workspace**. The tab opens in the background in a window showing that workspace, otherwise in its stash |
 | Move several tabs at once | Select the tabs with <kbd>Ctrl</kbd> / <kbd>Shift</kbd>, then as above. Fully selected groups keep their title and color. |
-| Move a whole tab group | In a tab of the group, right-click the page → **Move group to workspace** |
+| Move a whole tab group | In a tab of the group, right-click the page, or right-click one of its tabs in the tab strip (Helium 0.22 and later) → **Move group to workspace** |
 | Export or import workspaces | in the list → **Export / import** |
 | Mute a workspace | in the list, click 🔊 next to the workspace (shown while something in it is audible) |
 | Unmute it again | in the list, click 🔇 next to the workspace (shown while something in it would be audible but is muted) |
