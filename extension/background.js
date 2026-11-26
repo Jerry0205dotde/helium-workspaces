@@ -304,4 +304,7 @@ serial(ensureToken).then(deliverKey);
 if (INCOGNITO) serial(buildMenus);
 serial(scheduleUnload);
 serial(scheduleAutoBackup);
-scheduleReconcile();
+reconcileDue().then(
+  (due) => due && scheduleReconcile(),
+  () => scheduleReconcile(),
+);

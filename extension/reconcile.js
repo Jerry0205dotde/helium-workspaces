@@ -150,6 +150,23 @@ async function unpinMarks(shared) {
   return todo.length > 0;
 }
 
+// Der Service Worker startet nicht nur nach Browserstart oder Neuladen der Erweiterung, sondern
+// bei jedem Ereignis nach etwa 30 s Ruhe, mit „Ablagen entladen nach“ jede Minute. Ein voller
+// Abgleich ist beim Start nur nötig, solange storage.session leer ist oder die ersten 20 s nach
+// dem Start laufen (entriesUntil), eine Aktion unterbrochen wurde (ein pending*-Vermerk,
+// snapshotDue, discarding), Kopien aus dem Aufbau nach dem Start noch offen sind, die Ablagen
+// nach einer gescheiterten Sicherung sichtbar sind oder zurückgestellte Tabs warten (#301).
+async function reconcileDue() {
+  const session = ['entriesUntil', 'snapshotDue', 'pendingSwitch', 'pendingStart', 'pendingRetry', 'startCopies', 'keepShown'];
+  const local = ['pendingSwitch', 'pendingStash', 'pendingMove', 'pendingFeed', 'pendingDelete', 'discarding', 'pinnedLater', 'backup'];
+  const { entriesUntil, ...ses } = await chrome.storage.session.get(session);
+  if (entriesUntil === undefined || Date.now() <= entriesUntil) return true;
+  if (Object.values(ses).some((v) => v !== undefined && v !== null)) return true;
+  const { backup, pinnedLater, ...loc } = await chrome.storage.local.get(local);
+  if (Object.values(loc).some((v) => v !== undefined && v !== null)) return true;
+  return !!pinnedLater?.length || Object.values(backup || {}).some((b) => b.later?.length);
+}
+
 let resumeTries = 0;
 
 async function reconcile() {
