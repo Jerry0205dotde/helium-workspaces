@@ -85,9 +85,9 @@ async function restoredLoading() {
 // in serial() wartet, liefe sonst noch mit der alten. Bis sie in stashWins steht, steht die
 // alte ID in 'discarding'. Lädt die Erweiterung in dieser Lücke neu, erkennt repairStashes
 // daran die Ablage, deren letzter gemerkter Tab gerade entladen wurde (#272).
-// true, wenn der Tab entladen wurde
+// Gibt den entladenen Tab zurück, sonst null
 async function discard(t) {
-  if (t.active || t.discarded || !t.url) return false;
+  if (t.active || t.discarded || !t.url) return null;
   await chrome.storage.local.set({ discarding: t.id });
   ownDiscards.set(t.id, null);
   const d = await chrome.tabs.discard(t.id).catch((e) => console.warn('[workspaces] Tab nicht entladbar:', t.url, e));
@@ -96,9 +96,9 @@ async function discard(t) {
     await replaceTabId(t.id, d.id);
   } else ownDiscards.delete(t.id);
   await chrome.storage.local.remove('discarding');
-  if (!d) return false;
+  if (!d) return null;
   if (t.mutedInfo?.muted) await chrome.tabs.update(d.id, { muted: true }).catch(() => {});
-  return true;
+  return d;
 }
 
 // Alte ID → neue ID der Tabs, die discard() entlädt (null, solange tabs.discard läuft).
@@ -106,7 +106,8 @@ async function discard(t) {
 // das tut der Aufrufer von discard() einmal mit scheduleSnapshot (#302). Ob das Ereignis zu
 // discard() gehört, steht erst fest, wenn tabs.discard fertig ist, deshalb entscheidet es
 // sich in der Warteschlange: Hat Chromium den Tab vorher selbst entladen, scheitert
-// tabs.discard, und die neue ID wird hier nachgezogen.
+// tabs.discard, und die neue ID wird hier nachgezogen. Chromium 151 behält die ID beim
+// Entladen; dann kommt kein tabs.onReplaced, und es gibt nichts zu sichern.
 const ownDiscards = new Map();
 
 async function replacedWhileDiscarding(from, to) {
@@ -125,7 +126,8 @@ async function loadIfDiscarded(tabId) {
 async function unloadRestored(tabId) {
   if (await getPending()) return;
   const t = await chrome.tabs.get(tabId).catch(() => null);
-  if (t && (await discard(t))) scheduleSnapshot();
+  const d = t && (await discard(t));
+  if (d && d.id !== t.id) scheduleSnapshot();
 }
 
 // Option „Ablagen entladen nach“: Minuten, 0 = nie
@@ -185,6 +187,11 @@ async function noteArrived(tabIds) {
 // (nach Start oder Neuladen der Erweiterung) zählt ab jetzt. Ein Tab, der erst später
 // dazukam, zählt ab seinem Ankommen (arrivedAt). Tabs, deren Ton zu hören ist oder in den
 // letzten unloadAfter Minuten zu hören war, bleiben geladen.
+// Ein Schritt entlädt höchstens UNLOAD_BATCH Tabs und reiht für den Rest einen neuen ein. Ein
+// Wechsel, der inzwischen wartet, kommt so dazwischen, statt hinter allen Tabs zu warten:
+// 76 Tabs hielten die Warteschlange in Chromium 151 über 300 ms auf (#302).
+const UNLOAD_BATCH = 10;
+
 async function unloadStashes() {
   const minutes = await getUnloadAfter();
   if (!minutes || (await getPending())) return;
@@ -195,16 +202,24 @@ async function unloadStashes() {
   // silentPending je Tab neu lesen: Es kann sich während des Entladens noch füllen
   const heard = (t) => !t.mutedInfo?.muted && (t.audible || recent(silentPending[t.id] ?? silentSince[t.id] ?? -Infinity));
   const next = {};
-  let unloaded = false;
+  let unloaded = 0;
+  let replaced = false;
   for (const [ws, w] of stash) {
     next[ws] = stashedAt[ws] ?? now;
     if (recent(next[ws])) continue;
-    for (const t of stashTabsOf(w)) if (!heard(t) && !recent(arrivedAt[t.id] ?? -Infinity) && (await discard(t))) unloaded = true;
+    for (const t of stashTabsOf(w)) {
+      if (unloaded >= UNLOAD_BATCH || heard(t) || recent(arrivedAt[t.id] ?? -Infinity)) continue;
+      const d = await discard(t);
+      if (!d) continue;
+      unloaded++;
+      if (d.id !== t.id) replaced = true;
+    }
   }
-  if (unloaded) scheduleSnapshot();
+  if (replaced) scheduleSnapshot();
   // Ältere Zeitpunkte verschonen niemanden mehr
   const fresh = (o) => Object.fromEntries(Object.entries(o).filter(([, at]) => recent(at)));
   await chrome.storage.session.set({ stashedAt: next, silentSince: fresh({ ...silentSince, ...silentPending }), arrivedAt: fresh(arrivedAt) });
+  if (unloaded >= UNLOAD_BATCH) serial(unloadStashes);
 }
 
 // Ein Tab hat durch Entladen eine neue ID bekommen: gemerkte IDs nachziehen. Gespeichert

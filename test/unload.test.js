@@ -282,12 +282,28 @@ test('Entladen einer großen Ablage zieht jede neue ID einmal nach und liest die
   const calls = b.calls.slice(before);
   const count = (name) => calls.filter((c) => c.name === name).length;
   assert.equal(count('tabs.discard'), 30, 'nicht alle Tabs der Ablage entladen');
-  assert.ok(count('windows.getAll') <= 5, `windows.getAll ${count('windows.getAll')}×`);
-  assert.ok(count('storage.session.set') <= 5, `storage.session.set ${count('storage.session.set')}×`);
+  // Je Gruppe von UNLOAD_BATCH Tabs ein Blick auf die Fenster und einer für die Sicherung
+  assert.ok(count('windows.getAll') <= 10, `windows.getAll ${count('windows.getAll')}×`);
+  assert.ok(count('storage.session.set') <= 10, `storage.session.set ${count('storage.session.set')}×`);
   assert.ok(count('storage.session.get') <= 2 * 30 + 10, `storage.session.get ${count('storage.session.get')}×`);
   check(env, { A: many, B: ['b1'] });
   const rec = Object.values(b.local.data.stashWins).find((x) => x.ws === ids.A);
   assert.deepEqual(rec.tabs.sort(), many.map((n) => where(env, n).tab.id).sort());
+});
+
+test('Ein Wechsel, während eine große Ablage entladen wird, wartet nur auf eine Gruppe von Tabs (#302)', async () => {
+  const many = Array.from({ length: 30 }, (_, i) => `m${i}`);
+  const env = await setup({ workspaces: { A: many, B: ['b1'] } });
+  const { b, w, win, ids } = env;
+  await ok(w.request({ type: 'unloadAfter', minutes: 5 }));
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  let reply = null;
+  b.during('tabs.discard', () => w.send({ type: 'switch', windowId: win, wsId: ids.A }).then((r) => (reply = r)));
+  await w.advance(6 * MIN);
+  assert.equal(reply?.ok, true);
+  assert.equal(shows(env, win), 'A');
+  assert.equal(discards(b), 10, 'der Wechsel wartete auf alle Tabs der Ablage');
+  check(env, { A: many, B: ['b1'] });
 });
 
 test('Neue ID durch Entladen: ein unterbrochener Wechsel kennt den Tab weiterhin als alten Tab', async () => {
