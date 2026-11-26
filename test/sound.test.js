@@ -34,6 +34,25 @@ test('Ohne die Option schaltet der Wechsel nichts stumm', async () => {
   assert.equal((await state(env)).muteStash, false);
 });
 
+test('Ohne die Option durchsucht syncMute keine Fenster, mit ihr und nach dem Ausschalten schon (#298)', async () => {
+  const env = await setup(SPEC);
+  const scans = async () => {
+    const from = env.b.calls.length;
+    await env.w.eval('syncMute()');
+    return env.b.calls.slice(from).filter((c) => c.name === 'windows.getAll').length;
+  };
+  assert.equal(await scans(), 0);
+  await option(env, true);
+  assert.ok((await scans()) > 0);
+  // Ausgeschaltet, aber noch Tabs von ihr stumm: die bekommen ihren Ton zurück
+  await env.b.local.set({ muteStash: false });
+  assert.ok(env.b.local.data.stashMuted.length > 0);
+  assert.ok((await scans()) > 0);
+  assert.equal(muted(env, 'b1'), false);
+  assert.deepEqual(env.b.local.data.stashMuted, []);
+  assert.equal(await scans(), 0);
+});
+
 test('Mit der Option sind Tabs in der Ablage stumm und bekommen beim Zurückholen ihren Ton wieder', async () => {
   const env = await setup(SPEC);
   await option(env, true);
