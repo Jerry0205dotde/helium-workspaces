@@ -103,6 +103,8 @@ chrome.tabs.onCreated.addListener(async (tab) => {
 
 chrome.tabs.onRemoved.addListener((tabId, info) => {
   forgetTabIcon(tabId);
+  // Ein aus der Sicherung angelegter Tab, der vor dem Laden geschlossen wird, lädt nie fertig
+  unloadLaterTake(tabId).catch(() => {});
   if (info.isWindowClosing) {
     if (!isClosing(info.windowId)) closing.set(info.windowId, Date.now());
     return;

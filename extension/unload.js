@@ -61,15 +61,22 @@ async function restoredLoading() {
   for (const id of loadingSince.keys()) if (!ids.has(id)) loadingSince.delete(id);
   let n = 0;
   let wait = Infinity;
+  const gone = [];
   for (const id of ids) {
+    const t = await chrome.tabs.get(id).catch(() => null);
+    // Geschlossen, solange der Service Worker nicht lief, oder von Chromium entladen und
+    // dabei mit neuer ID versehen: der Tab lädt nie mehr fertig
+    if (!t) {
+      gone.push(id);
+      continue;
+    }
     if (!loadingSince.has(id)) loadingSince.set(id, now);
     const left = loadingSince.get(id) + LOAD_TIMEOUT - now;
-    if (left <= 0) continue;
-    const t = await chrome.tabs.get(id).catch(() => null);
-    if (t?.status !== 'loading') continue;
+    if (left <= 0 || t.status !== 'loading') continue;
     n++;
     wait = Math.min(wait, left);
   }
+  for (const id of gone) await unloadLaterTake(id);
   return { n, wait };
 }
 
@@ -140,15 +147,29 @@ function noteSilent(tabId) {
   });
 }
 
+// Ein Tab kam in die Ablage, nachdem sein Workspace weggewechselt wurde (Tab in Workspace
+// verschieben, Link in Workspace öffnen). Für ihn läuft die Zeit ab jetzt, nicht ab
+// stashedAt, sonst entlüde ihn schon der nächste Wecker (#291). Der Zeitpunkt steht in
+// arrivedAt in storage.session; Einträge, die länger zurückliegen als die längste
+// angebotene Zeit, verschonen niemanden mehr und fallen weg.
+async function noteArrived(tabIds) {
+  const now = Date.now();
+  const { arrivedAt = {} } = await chrome.storage.session.get('arrivedAt');
+  const keep = Object.fromEntries(Object.entries(arrivedAt).filter(([, at]) => now - at < Math.max(...UNLOAD_CHOICES) * 60000));
+  for (const id of tabIds) keep[id] = now;
+  await chrome.storage.session.set({ arrivedAt: keep });
+}
+
 // Entlädt die Tabs der Ablagen, deren Workspace seit unloadAfter Minuten nicht mehr
 // gezeigt wird. Seit wann, steht in stashedAt (finishSwitch); eine Ablage ohne Eintrag
-// (nach Start oder Neuladen der Erweiterung) zählt ab jetzt. Tabs, deren Ton zu hören
-// ist oder in den letzten unloadAfter Minuten zu hören war, bleiben geladen.
+// (nach Start oder Neuladen der Erweiterung) zählt ab jetzt. Ein Tab, der erst später
+// dazukam, zählt ab seinem Ankommen (arrivedAt). Tabs, deren Ton zu hören ist oder in den
+// letzten unloadAfter Minuten zu hören war, bleiben geladen.
 async function unloadStashes() {
   const minutes = await getUnloadAfter();
   if (!minutes || (await getPending())) return;
   const { stash } = await scan();
-  const { stashedAt = {}, silentSince = {} } = await chrome.storage.session.get(['stashedAt', 'silentSince']);
+  const { stashedAt = {}, silentSince = {}, arrivedAt = {} } = await chrome.storage.session.get(['stashedAt', 'silentSince', 'arrivedAt']);
   const now = Date.now();
   const recent = (at) => now - at < minutes * 60000;
   // silentPending je Tab neu lesen: Es kann sich während des Entladens noch füllen
@@ -157,11 +178,11 @@ async function unloadStashes() {
   for (const [ws, w] of stash) {
     next[ws] = stashedAt[ws] ?? now;
     if (recent(next[ws])) continue;
-    for (const t of stashTabsOf(w)) if (!heard(t)) await discard(t);
+    for (const t of stashTabsOf(w)) if (!heard(t) && !recent(arrivedAt[t.id] ?? -Infinity)) await discard(t);
   }
   // Ältere Zeitpunkte verschonen niemanden mehr
-  const keep = Object.fromEntries(Object.entries({ ...silentSince, ...silentPending }).filter(([, at]) => recent(at)));
-  await chrome.storage.session.set({ stashedAt: next, silentSince: keep });
+  const fresh = (o) => Object.fromEntries(Object.entries(o).filter(([, at]) => recent(at)));
+  await chrome.storage.session.set({ stashedAt: next, silentSince: fresh({ ...silentSince, ...silentPending }), arrivedAt: fresh(arrivedAt) });
 }
 
 // Ein Tab hat durch Entladen eine neue ID bekommen: gemerkte IDs nachziehen. Ein zweiter
