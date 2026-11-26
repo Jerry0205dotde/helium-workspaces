@@ -401,3 +401,52 @@ test('Bei 500 Workspaces meldet ＋ Neuer Workspace die Grenze verständlich und
     await page.close();
   }
 });
+
+// Echte Ziehereignisse über das DevTools-Protokoll: Ziel ist das Kind unter dem Zeiger,
+// dragleave kennt relatedTarget wie beim Ziehen mit der Maus
+test('Ziehen setzt die Marke nach der Hälfte des Eintrags, auch über dem Namen, ohne zu flackern (#292)', { skip }, async () => {
+  const env = await setup({ workspaces: { A: ['a1'], B: ['b1'], C: ['c1'] } });
+  const { A, B, C } = env.ids;
+  const page = await browser.open('popup.html', env);
+  const li = (id) => `#list li[data-id="${id}"]`;
+  // dy Pixel unter der Mitte des Eintrags, waagerecht über dem Kind sel
+  const point = (id, sel, dy) => page.eval(`(() => {
+    const l = document.querySelector('${li(id)}').getBoundingClientRect();
+    const k = document.querySelector('${li(id)} ${sel}').getBoundingClientRect();
+    const y = l.top + l.height / 2 + ${dy};
+    if (y <= k.top || y >= k.bottom) throw new Error('Punkt liegt nicht über ${sel}');
+    return [k.x + k.width / 2, y];
+  })()`);
+  const below = (id, sel) => point(id, sel, 3);
+  const data = { items: [{ mimeType: 'text/plain', data: A }], dragOperationsMask: 1 };
+  // Wechselt das Ziel, löst Chromium nur dragenter und dragleave aus, dragover erst bei der
+  // nächsten Bewegung. Die Maus bewegt sich dauernd, hier ein zweites dragOver an derselben Stelle
+  const drag = async (type, [x, y]) => {
+    for (let n = type === 'dragOver' ? 2 : 1; n; n--) await page.send('Input.dispatchDragEvent', { type, x, y, data });
+    await page.idle();
+  };
+  const marks = (id) => page.eval(`[...document.querySelector('${li(id)}').classList].filter((c) => c.startsWith('drop-'))`);
+  try {
+    await drag('dragEnter', await point(B, '.name', -3));
+    await drag('dragOver', await point(B, '.name', -3));
+    assert.deepEqual(await marks(B), ['drop-before']);
+    await drag('dragOver', await below(B, '.name'));
+    assert.deepEqual(await marks(B), ['drop-after']);
+    // Jede Änderung der Klassen von B mitschreiben, um ein Wegnehmen und Neusetzen zu sehen
+    await page.eval(`window.__marks = [];
+      new MutationObserver(() => window.__marks.push(document.querySelector('${li(B)}').className))
+        .observe(document.querySelector('${li(B)}'), { attributes: true })`);
+    await drag('dragOver', await below(B, '.meta'));
+    assert.deepEqual(await page.eval('window.__marks'), [], 'Marke bleibt beim Wechsel zu einem anderen Kind');
+    assert.deepEqual(await marks(B), ['drop-after']);
+    // Verlässt der Zeiger den Eintrag, verschwindet seine Marke
+    await drag('dragOver', await below(C, '.name'));
+    assert.deepEqual(await marks(B), []);
+    assert.deepEqual(await marks(C), ['drop-after']);
+    await drag('dragOver', await below(B, '.name'));
+    await drag('drop', await below(B, '.name'));
+    assert.deepEqual(env.b.local.data.workspaces.map((w) => w.id), [B, A, C]);
+  } finally {
+    await page.close();
+  }
+});
