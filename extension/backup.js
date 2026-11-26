@@ -61,10 +61,20 @@ async function markSnapshotDue() {
   await chrome.storage.session.set({ snapshotDue: true });
 }
 
+// Während eigener Verschiebungen zählt ein Tab-Ereignis nur: moving() stößt danach einmal
+// snapshotSoon() an, statt dass jedes Ereignis das Abbild auffrischt (#299)
+let changedMoving = false;
 function scheduleSnapshot() {
   changes++;
+  if (switching) changedMoving = true;
+  else snapshotSoon();
+}
+
+// Hat die Aktion den Stand inzwischen selbst gesichert, schreibt die verzögerte Sicherung
+// ihn nicht noch einmal
+function snapshotSoon() {
   refreshImage();
-  debounce('snapshot', 300, () => snapshot().finally(checkSession), 2000);
+  debounce('snapshot', 300, () => changes > savedChanges && snapshot().finally(checkSession), 2000);
 }
 
 function noteClosed(tabId, windowId) {

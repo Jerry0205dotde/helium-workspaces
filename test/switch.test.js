@@ -515,6 +515,61 @@ test('Popup: Endet der Service Worker nach der Antwort, holt der Abgleich die Si
   check(env, { ...SPEC.workspaces, pinned: SPEC.pinned });
 });
 
+test('Wechsel mit vielen Tabs: Menüs einmal danach angepasst, Sicherung nur einmal geschrieben (#299)', async () => {
+  const many = (p) => Array.from({ length: 40 }, (_, i) => `${p}${i}`);
+  const env = await setup({ workspaces: { A: many('a'), B: [...many('b'), { url: 'bg', group: 'Lesen' }] } });
+  const { w, win, ids } = env;
+  const count = (from, name, pred = () => true) => env.b.calls.slice(from).filter((c) => c.name === name && pred(c.args)).length;
+  const backups = (from) => count(from, 'storage.local.set', ([items]) => 'backup' in items);
+  // Wie Chromium: je verschobenem Tab ein Markieren und ein Verschieben im Fenster
+  const perTab = env.b.during(
+    'tabs.move',
+    (tabIds, { windowId }) => {
+      for (const id of [].concat(tabIds)) {
+        env.b.fire('tabs.onHighlighted', { windowId, tabIds: [id] });
+        env.b.fire('tabs.onMoved', id, { windowId, fromIndex: 0, toIndex: 0 });
+      }
+    },
+    { times: Infinity },
+  );
+  for (const name of ['B', 'A']) {
+    const from = env.b.calls.length;
+    await ok(w.request({ type: 'switch', windowId: win, wsId: ids[name] }));
+    await w.advance(5000);
+    assert.equal(shows(env, win), name);
+    assert.ok(count(from, 'tabs.query', ([q]) => q.highlighted) <= 1, 'Menüs je Tab abgefragt');
+    assert.ok(count(from, 'contextMenus.update') <= 2, 'Menüs je Tab gesetzt');
+    assert.ok(count(from, 'windows.getAll') < 10, 'Abbild je Tab aufgefrischt');
+    assert.equal(backups(from), 1, 'Sicherung mehr als einmal geschrieben');
+  }
+  perTab.left = 0;
+  // Mehrere Tab-Ereignisse über eine eigene Verschiebung verteilt frischen das Abbild erst an
+  // ihrem Ende einmal auf. Endet sie ohne snapshot(), sichert die verzögerte Sicherung sie
+  let from = env.b.calls.length;
+  await w.eval('moving(async () => { for (let i = 0; i < 3; i++) { scheduleSnapshot(); await chrome.storage.session.get(); } })');
+  assert.equal(count(from, 'windows.getAll'), 1);
+  await w.advance(5000);
+  assert.equal(backups(from), 1);
+  // Der gesetzte Stand folgt dem aktiven Tab: in der Gruppe ist „Gruppe verschieben“ sichtbar
+  const menus = () => env.b.calls.filter((c) => c.name === 'contextMenus.update' && c.args[0] === 'group').at(-1)?.args[1].visible;
+  await env.b.chrome.tabs.update(where(env, 'a0').tab.id, { active: true });
+  await w.advance(1000);
+  assert.notEqual(menus(), true);
+  await ok(w.request({ type: 'switch', windowId: win, wsId: ids.B }));
+  await env.b.chrome.tabs.update(where(env, 'bg').tab.id, { active: true });
+  await w.advance(1000);
+  assert.equal(menus(), true);
+  // Ändert sich nichts, wird nichts gesetzt
+  from = env.b.calls.length;
+  await w.eval('updateMenus()');
+  assert.equal(count(from, 'contextMenus.update'), 0);
+  // Ein Tab-Ereignis ohne eigene Verschiebung sichert weiterhin
+  const before = env.b.calls.length;
+  await env.b.chrome.tabs.move(where(env, 'b0').tab.id, { index: -1 });
+  await w.advance(5000);
+  assert.equal(backups(before), 1);
+});
+
 // Vermerke begonnener Aktionen: snapshot() und resumeSwitch() lesen sie in einem Zugriff je
 // Speicher, nicht einzeln nacheinander (#305)
 const MARKS = new Set(['pendingSwitch', 'pendingStash', 'pendingMove', 'pendingDelete', 'pendingFeed', 'discarding', 'pendingStart', 'pendingRetry']);

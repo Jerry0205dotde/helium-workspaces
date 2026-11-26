@@ -33,26 +33,45 @@ async function buildMenus() {
       });
     }
   }
+  shownMenus = { title: MENUS.move, visible: false };
   await updateMenus();
 }
 
-// Passt die Menüs an den aktiven Tab an: Anzahl der markierten Tabs, Gruppe ja oder nein
+// Zuletzt gesetzter Stand der Menüs; nach einem Neustart des Service Workers unbekannt
+let shownMenus = {};
+
+// Passt die Menüs an den aktiven Tab an: Anzahl der markierten Tabs, Gruppe ja oder nein.
+// Geändert wird nur, was sich vom zuletzt gesetzten Stand unterscheidet.
 async function updateMenus() {
   try {
     const tabs = await chrome.tabs.query({ lastFocusedWindow: true, highlighted: true });
     const active = tabs.find((t) => t.active);
     const n = active ? tabs.length : 1;
-    await chrome.contextMenus.update('move', { title: n > 1 ? tr('menuMoveMarked', n) : MENUS.move });
-    await chrome.contextMenus.update('group', { visible: !!active && active.groupId >= 0 });
+    const title = n > 1 ? tr('menuMoveMarked', n) : MENUS.move;
+    const visible = !!active && active.groupId >= 0;
+    if (shownMenus.title !== title) {
+      await chrome.contextMenus.update('move', { title });
+      shownMenus.title = title;
+    }
+    if (shownMenus.visible !== visible) {
+      await chrome.contextMenus.update('group', { visible });
+      shownMenus.visible = visible;
+    }
   } catch {
     // Das Menü wird gerade neu gebaut, buildMenus ruft das danach selbst auf
   }
 }
 
-chrome.tabs.onHighlighted.addListener(() => updateMenus());
-chrome.windows.onFocusChanged.addListener(() => updateMenus());
+// Gebündelt und nach der laufenden Aktion: Verschiebt die Erweiterung selbst Tabs, käme
+// sonst je Tab eine Abfrage (#299)
+const scheduleMenus = () => debounce('menus', 100, updateMenus);
+
+chrome.tabs.onHighlighted.addListener(() => scheduleMenus());
+chrome.windows.onFocusChanged.addListener((winId) => {
+  if (winId !== chrome.windows.WINDOW_ID_NONE) scheduleMenus();
+});
 chrome.tabs.onUpdated.addListener((tabId, info) => {
-  if (info.groupId !== undefined) updateMenus();
+  if (info.groupId !== undefined) scheduleMenus();
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
