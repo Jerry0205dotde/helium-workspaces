@@ -14,7 +14,7 @@ To keep your workspaces, the extension stores in the browser's extension storage
 
 - your workspaces with name, colour and emoji, and their tabs (address and title), tab groups (name, colour, collapsed) and pinned tabs
 - the IDs of windows, tabs and tab groups, so it finds them again after a restart
-- your settings, such as **Mute stashes**, **Unload stashes after** and **Back up automatically**
+- your settings, such as **Mute stashes**, **Unload stashes after** and **Automatic backup**
 - a random key for the KWin script (24 hex digits), created by the extension on first start
 
 Web pages cannot read this storage. It is removed when you remove the extension. Incognito tabs are not stored beyond the incognito session.
@@ -22,7 +22,7 @@ Web pages cannot read this storage. It is removed when you remove the extension.
 ## Files on your computer
 
 - **Export** saves a file with your workspaces, their tabs and settings where you choose, through the browser's download function.
-- **Back up automatically** passes the same export to `native-host.sh` on your computer via native messaging. It writes it to `~/.local/share/helium-workspaces/backups/`, at most ten files per browser profile. This only works if you set it up with `install.sh`.
+- **Automatic backup** passes the same export to `native-host.sh` on your computer via native messaging. It writes it to `~/.local/share/helium-workspaces/backups/`, at most ten files per browser profile. This only works if you set it up with `install.sh`.
 - The extension sends its key to `native-host.sh`, which writes it to `~/.config/kwinrc`. The KWin script uses it to recognise the stash windows of this profile and hide them.
 
 None of this leaves your computer. Only programs running under your user account can read these files, as with any other file of yours.

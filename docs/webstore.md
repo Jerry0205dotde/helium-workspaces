@@ -46,7 +46,7 @@ Still open before the first upload:
 | `storage` | Stores the workspaces, their tabs, the settings and the key for the KWin script locally in the profile. |
 | `unlimitedStorage` | The backup of all workspaces can grow beyond 10 MB with many tabs. Without this permission saving would fail and tabs could be lost after a restart. |
 | `contextMenus` | Context menu entries "Move tab to workspace", "Move group to workspace" and "Open link in workspace". |
-| `alarms` | Runs the automatic backup every hour and unloads the tabs of stashes after the time the user chose, also after the service worker has been ended. |
+| `alarms` | Checks every hour whether a daily or weekly automatic backup is due, and unloads the tabs of stashes after the time the user chose, also after the service worker has been ended. |
 | `nativeMessaging` | Talks to `native-host.sh` on the user's computer, which the user sets up with `install.sh` from the GitHub repository. It hands over the key for the KWin script, which hides the stash windows, and writes the automatic backups to a folder. Nothing leaves the computer. Without the script the extension works too. |
 | `downloads` | **Export** saves the workspaces as a file and waits until the file is written before reporting success. |
 
