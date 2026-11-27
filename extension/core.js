@@ -154,7 +154,11 @@ function serial(fn) {
 // Erweiterung ist storage.session leer, bis der erste Abgleich gelaufen ist. Bis dahin
 // gälte jedes Fenster als lastWs, deshalb den Abgleich vorziehen. Er läuft nicht schon
 // beim Laden des Skripts, damit onStartup vorher die veralteten Fenster-IDs verwirft.
+// userActions zählt die eingereihten Aktionen, damit keySwitch() erkennt, ob seit seinem
+// Wechsel eine andere Aktion dazugekommen ist (#300).
+let userActions = 0;
 function userAction(fn) {
+  userActions++;
   return serial(async () => {
     const { entriesUntil } = await chrome.storage.session.get('entriesUntil');
     if (entriesUntil === undefined) await reconcile();

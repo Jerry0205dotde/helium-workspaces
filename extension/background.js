@@ -147,14 +147,37 @@ chrome.alarms.onAlarm.addListener((a) => {
 });
 chrome.tabGroups.onUpdated.addListener(() => scheduleSnapshot());
 
+// Schnell wiederholte Tastenkürzel (#300): Ist die zuletzt eingereihte Aktion ein noch
+// wartender Wechsel derselben Art im selben Fenster, ändert ein weiterer Druck nur dessen
+// Ziel, statt einen eigenen Wechsel einzureihen. Relative Schritte addieren sich, bei 1–9
+// zählt der letzte Druck.
+let keyJob = null;
+function keySwitch(windowId, kind, n) {
+  if (keyJob?.windowId === windowId && keyJob.kind === kind && keyJob.seq === userActions) {
+    keyJob.n = kind === 'rel' ? keyJob.n + n : n;
+    return;
+  }
+  const job = { windowId, kind, n };
+  // Ab dem Start zählt ein weiterer Druck wieder vom Ergebnis dieses Wechsels aus; scheitert
+  // userAction() schon vorher, darf kein Druck mehr in diesen Wechsel fallen
+  const done = () => keyJob === job && (keyJob = null);
+  userAction(async () => {
+    done();
+    if (kind === 'idx') await switchToIndex(windowId, job.n);
+    else if (job.n) await switchRelative(windowId, job.n);
+  }).catch(done);
+  job.seq = userActions;
+  keyJob = job;
+}
+
 chrome.commands.onCommand.addListener(async (cmd, tab) => {
   let windowId = tab?.windowId;
   if (!windowId) windowId = (await chrome.windows.getLastFocused({ windowTypes: ['normal'] })).id;
-  if (cmd === 'next-workspace') userAction(() => switchRelative(windowId, 1));
-  if (cmd === 'prev-workspace') userAction(() => switchRelative(windowId, -1));
+  if (cmd === 'next-workspace') keySwitch(windowId, 'rel', 1);
+  if (cmd === 'prev-workspace') keySwitch(windowId, 'rel', -1);
   if (cmd === 'last-workspace') userAction(() => switchToLast(windowId));
   const nr = /^switch-([1-9])$/.exec(cmd);
-  if (nr) userAction(() => switchToIndex(windowId, nr[1] - 1));
+  if (nr) keySwitch(windowId, 'idx', nr[1] - 1);
 });
 
 // ---------------------------------------------------------------- Nachrichten (Popup, Export und Import)
