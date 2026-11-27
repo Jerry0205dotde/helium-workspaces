@@ -123,7 +123,7 @@ everywhere('Wechsel über das Popup', {
     assert.equal(shows(env, env.win), 'B');
     check(env, ALL);
   },
-}, { reload: 'Neuladen mitten im Verschieben (#322)' });
+});
 
 const DELETED = { A: SPEC.workspaces.A, C: SPEC.workspaces.C, pinned: SPEC.pinned };
 // B hat eine Gruppe, die beim Löschen vor dem Schließen der Ablage aufgelöst wird
