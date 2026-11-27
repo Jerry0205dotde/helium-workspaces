@@ -168,11 +168,13 @@ async function switchTo(windowId, targetWs, shown = () => {}, read = null) {
   if (active && !active.pinned) s.lastTab[cur] = active.id;
   await saveSess(s);
   const p = { windowId, from: cur, to: targetWs, oldTabs: oldTabs.map((t) => t.id) };
-  await setPending(p);
 
   // 1. Tabs des Ziel-Workspace holen (zuerst, damit das Fenster nie leer wird)
   let failed = null;
   try {
+    // Im try: Scheitert nur das Schreiben in storage.local, räumt finishSwitch() den Vermerk
+    // in storage.session wieder ab
+    await setPending(p);
     await moving(async () => {
       let brought = [];
       const tStash = stash.get(targetWs);
