@@ -6,7 +6,7 @@
     "message": "Workspaces"
   },
   "extDescription": {
-    "message": "Arbeitsbereiche wie in Opera: mehrere Tab-Sätze im selben Fenster, ohne Neuladen."
+    "message": "Workspaces für deine Tabs: mehrere Tab-Sätze im selben Fenster, gewechselt ohne Neuladen."
   },
   "cmdOpen": {
     "message": "Workspace-Liste öffnen"

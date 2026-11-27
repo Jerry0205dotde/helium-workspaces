@@ -109,6 +109,8 @@ Undo, unloading, export and import, automatic backup and what survives a restart
 - [Updating and uninstalling](./docs/updating.md): switching to the fixed extension ID and removing everything without tabs running on invisibly
 - [How it works](./docs/how-it-works.md): stash windows, the key, Google Chrome, Chromium and other browsers
 - [Contributing](./CONTRIBUTING.md): tests, versions and the structure of the code
+- [Privacy policy](./PRIVACY.md): what the extension stores, all of it only on your computer
+- [Chrome Web Store](./docs/webstore.md): the package for the store and what goes into the developer dashboard
 
 This is a private hobby project. Expect bugs.
 
