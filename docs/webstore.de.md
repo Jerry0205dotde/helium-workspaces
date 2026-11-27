@@ -2,15 +2,15 @@
 
 [English](./webstore.md) · **Deutsch** · [Zurück zur README](../README.de.md)
 
-Was die Erweiterung für den [Chrome Web Store](https://developer.chrome.com/docs/webstore/program-policies) braucht und was ins Entwickler-Dashboard kommt ([#51](https://github.com/Jerry0205dotde/helium-workspaces/issues/51)). Im Store ist sie noch nicht.
+Was die Erweiterung für den [Chrome Web Store](https://developer.chrome.com/docs/webstore/program-policies) braucht und was ins Entwickler-Dashboard kommt ([#51](https://github.com/Jerry0205dotde/helium-workspaces/issues/51)). Die Store-ID ist `lgbjnmadobikjaclledhpooneefdojao`.
 
 ## Das Paket
 
 An jedem [Release](https://github.com/Jerry0205dotde/helium-workspaces/releases) ab 0.3.49 hängt `helium-workspaces-v<Version>-webstore.zip`. Das ist `extension/` ohne das Feld `key` aus `manifest.json`, denn der Store nimmt kein Manifest mit `key` an und vergibt eine eigene ID. Gebaut wird es in [`tag.yml`](../.github/workflows/tag.yml).
 
-Vor dem ersten Upload noch offen:
+Zu beachten:
 
-- Die Store-Version bekommt eine andere ID als `jchklfejnmfphkbcpnhdejmeoncejjbe`. `install.sh` und die `allowed_origins` von `native-host.sh` kennen bisher nur die feste ID. Dort muss die Store-ID dazu, sonst gehen Schlüssel und automatische Sicherung in der Store-Version nicht.
+- Die Store-Version hat eine andere ID als die entpackte (`jchklfejnmfphkbcpnhdejmeoncejjbe`). `install.sh` meldet `native-host.sh` für beide an, Schlüssel und automatische Sicherung gehen also in beiden.
 - Der Umstieg von der entpackten Erweiterung geht wie beim [Umstieg auf die feste Erweiterungs-ID](./updating.de.md): in der alten Version exportieren, in der Store-Version mit **Ersetzen** importieren, erst dann die entpackte entfernen.
 - Mit automatischen Updates haben Erweiterung und KWin-Skript nicht mehr immer dieselbe Version. Das Titelformat der Ablage-Fenster (`HWS-Ablage <Schlüssel> · …`) wird damit zur Schnittstelle zwischen beiden.
 
@@ -19,7 +19,7 @@ Vor dem ersten Upload noch offen:
 - **Name** und **Kurzbeschreibung**: kommen aus `extName` und `extDescription` in `_locales/*/messages.json`.
 - **Kategorie**: Produktivität → Workflow & Planung
 - **Symbol**: `extension/icons/128.png`
-- **Screenshots**: mindestens einer, 1280×800 oder 640×400. Die Bilder in `docs/` sind zu klein.
+- **Screenshots**: mindestens einer, 1280×800 oder 640×400: [`docs/webstore/`](./webstore), gebaut aus den Aufnahmen in `docs/`.
 - **Kleine Werbekachel** (440×280): freiwillig, aber ohne sie steht die Erweiterung hinter denen, die eine haben.
 - **Beschreibung**:
 

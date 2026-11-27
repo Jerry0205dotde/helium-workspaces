@@ -13,7 +13,7 @@
 #   halbe Datei. Die Antwort nennt den Pfad. Die Sicherungen bleiben auch nach
 #   install.sh --uninstall liegen.
 # install.sh meldet den Host bei Helium, Google Chrome und Chromium an, nur für die Erweiterung
-# mit der festen ID (allowed_origins), und --uninstall meldet ihn wieder ab.
+# mit der festen ID und der aus dem Chrome Web Store (allowed_origins), und --uninstall meldet ihn wieder ab.
 # Jede Nachricht beginnt mit ihrer Länge als 32-Bit-Zahl in der Bytereihenfolge des Rechners.
 # stdout ist der Weg zurück zur Erweiterung, deshalb landet jede andere Ausgabe in /dev/null.
 set -uo pipefail
