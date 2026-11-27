@@ -25,12 +25,11 @@ function iconFor(ws) {
   return iconCache.get(key);
 }
 
-// Workspaces und Sicherung, aus denen die Symbole entstehen. Bei Aktualisierungen
+// Workspaces und gescheiterte Tabs, aus denen die Symbole entstehen. Bei Aktualisierungen
 // mehrerer Tabs einmal geladen und an setTabIcon übergeben.
 async function iconSource() {
   const { workspaces, lastWs } = await getConfig();
-  const { backup } = await getBackup();
-  return { workspaces, lastWs, backup };
+  return { workspaces, lastWs, failed: await failedCounts() };
 }
 
 // Was zuletzt je Tab gesetzt wurde (Schlüssel aus Workspace, Farbe, Name, Emoji, Titel und
@@ -50,7 +49,7 @@ async function setTabIcon(tabId, wsId, src) {
   const ws = src.workspaces.find((w) => w.id === wsId);
   if (!ws) return;
   // Unvollständig wiederhergestellt: Zahl der fehlenden Tabs als Plakette
-  const missing = src.backup[wsId]?.failed?.length || 0;
+  const missing = src.failed.get(wsId) || 0;
   let title = missing ? tr('iconTitleMissing', ws.name, plural(missing, 'tabsNotRestored')) : tr('iconTitle', ws.name);
   // Speicher fast voll (sessionUsage): „!“, wenn keine Zahl fehlender Tabs dasteht
   if (sessionFull) title += '\n' + tr('iconTitleStorageFull');

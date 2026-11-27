@@ -189,7 +189,7 @@ async function snapshot(gone) {
   }));
 
   try {
-    await chrome.storage.local.set({ backup, stashWins, backupWindows, backupPinned: pinnedOf(mains, groups) });
+    await setLocal({ backup, stashWins, backupWindows, backupPinned: pinnedOf(mains, groups) });
   } catch (e) {
     // Etwa wegen voller Speichergrenze. Die Sicherung bleibt auf dem alten Stand, das
     // Popup weist darauf hin, bis wieder eine gelingt.

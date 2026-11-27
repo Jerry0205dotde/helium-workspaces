@@ -139,7 +139,7 @@ async function keepFailed(wsId, failed) {
     }
   }
   b.failed = [...(b.failed || []), ...failed];
-  await chrome.storage.local.set({ backup, backupPinned });
+  await setLocal({ backup, backupPinned });
 }
 
 // Bewahrt die von recreate zurückgestellten Einträge (later) in der Sicherung von wsId auf.
@@ -155,7 +155,7 @@ async function keepLater(wsId, later, from = null) {
   // Nichts zu ändern: nicht speichern, auch wenn die Speichergrenze voll ist (#290)
   if (!later.length && !backup[wsId]?.later?.length) return;
   const more = addLater(backup, wsId, later, from);
-  await chrome.storage.local.set({ backup });
+  await setLocal({ backup });
   if (more) feedSoon();
 }
 
@@ -264,7 +264,7 @@ async function feedInto(ws, windowId, have = [], gone = []) {
     if (r.later.length) b.later = r.later;
     else delete b.later;
     if (r.failed.length) b.failed = [...(b.failed || []), ...r.failed];
-    await chrome.storage.local.set({ backup, pendingFeed: null });
+    await setLocal({ backup, pendingFeed: null });
   }
   await chrome.storage.local.remove('pendingFeed');
   await noteStartFed(ws, r.ids);
@@ -284,7 +284,7 @@ async function feedPinned(windowId, have = [], gone = []) {
     const ws = (await sess()).windowWs[windowId] || (await getConfig()).lastWs;
     const b = (backup[ws] ??= { stash: [], shown: [] });
     b.failed = [...(b.failed || []), ...asPinned(r.failed)];
-    await chrome.storage.local.set({ backup, pinnedLater: null, pendingFeed: null });
+    await setLocal({ backup, pinnedLater: null, pendingFeed: null });
   }
   await chrome.storage.local.remove(['pinnedLater', 'pendingFeed']);
   return { failed: r.failed.length };
@@ -388,7 +388,7 @@ async function retryInto(ws, windowId, have = new Map(), gone = new Set()) {
   const { backup } = await getBackup();
   if (backup[ws]) backup[ws].failed = still;
   const more = later.length > 0 && addLater(backup, ws, later);
-  await chrome.storage.local.set({ backup });
+  await setLocal({ backup });
   await chrome.storage.session.remove('pendingRetry');
   if (more) feedSoon();
 }
@@ -421,7 +421,7 @@ async function dismissFailed(wsId) {
   const { backup } = await getBackup();
   if (!backup[wsId]?.failed) return;
   delete backup[wsId].failed;
-  await chrome.storage.local.set({ backup });
+  await setLocal({ backup });
   await updateAllIcons();
 }
 

@@ -497,7 +497,7 @@ async function importExchange(text, mode, confirmed) {
     const oldIds = cfg.workspaces.map((w) => w.id);
     const ids = data.workspaces.map(addWs);
     adoptedIds = [...adopt.keys()].map((i) => ids[i]);
-    await chrome.storage.local.set({ backup, workspaces: cfg.workspaces, ...(plan.pinnedAdd.length ? { pinnedLater: nextPinned } : {}) });
+    await setLocal({ backup, workspaces: cfg.workspaces, ...(plan.pinnedAdd.length ? { pinnedLater: nextPinned } : {}) });
     await buildMenus();
     await adoptWindows(data, ids, adopt, stamp);
     // Erst die übrigen Fenster zu einem neuen Workspace wechseln, den noch kein übernommenes
@@ -551,7 +551,7 @@ async function importExchange(text, mode, confirmed) {
       }
       res.added += m.add.length;
     }
-    await chrome.storage.local.set({ backup, workspaces: cfg.workspaces, ...(plan.pinnedAdd.length ? { pinnedLater: nextPinned } : {}) });
+    await setLocal({ backup, workspaces: cfg.workspaces, ...(plan.pinnedAdd.length ? { pinnedLater: nextPinned } : {}) });
     await buildMenus();
   }
   res.settings = await applySettings(data.settings);
