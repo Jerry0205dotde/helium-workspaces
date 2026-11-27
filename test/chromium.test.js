@@ -1074,6 +1074,89 @@ test('Echter Chromium: Neuladen während eines Tab-Transfers erhält die Zielabl
   assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
 });
 
+// #322: Ein Wechsel zu einem Workspace aus seiner Ablage hat die Tabs des Ziels schon ins
+// Fenster geholt, die alten liegen noch daneben. Lädt die Erweiterung jetzt neu, schließt der
+// Abgleich den Wechsel ab, statt das Fenster samt den Tabs des Ziels dem alten Workspace zu geben.
+test('Echter Chromium: Neuladen mitten im Wechsel aus einer Ablage schließt ihn ab (#322)', { skip: !bin && 'CHROME ist nicht gesetzt', timeout: 120000 }, async (t) => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hws-switch-reload-'));
+  const b = new Chromium(bin, profile, EXT);
+  t.after(async () => {
+    await b.kill();
+    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  });
+  await b.launch();
+  await waitFor(async () => {
+    const s = await b.sw('return (await chrome.storage.session.get("windowWs")).windowWs;');
+    assert.ok(s && Object.keys(s).length, 'noch kein Hauptfenster zugeordnet');
+  });
+  // A zeigt a0 und a1, B liegt mit b0 und b1 in seiner Ablage
+  await b.sw(`
+    const cfg = await getConfig();
+    await userAction(() => updateWs(cfg.workspaces[0].id, { name: 'A' }));
+    const win = (await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] }))[0];
+    const oldIds = win.tabs.map((t) => t.id);
+    await chrome.tabs.create({ windowId: win.id, url: 'about:blank#switch-a0', active: true });
+    await chrome.tabs.create({ windowId: win.id, url: 'about:blank#switch-a1', active: false });
+    for (const id of oldIds) await chrome.tabs.remove(id).catch(() => {});
+    const exp = await userAction(exportAll);
+    exp.workspaces.push({ name: 'B', color: '#ef4444', emoji: '', tabs: ['b0', 'b1'].map((n) => ({ url: 'about:blank#switch-' + n, title: n })) });
+    await userAction(() => importExchange(JSON.stringify(exp), 'merge', false));
+    const ws = Object.fromEntries((await getConfig()).workspaces.map((w) => [w.name, w.id]));
+    await userAction(() => switchTo(win.id, ws.B));
+    await userAction(() => switchTo(win.id, ws.A));
+  `);
+  const before = await b.sw(`
+    const { stash } = await scan();
+    const ws = Object.fromEntries((await getConfig()).workspaces.map((w) => [w.name, w.id]));
+    return stashTabsOf(stash.get(ws.B)).map((t) => t.url);
+  `);
+  assert.deepEqual(before, ['about:blank#switch-b0', 'about:blank#switch-b1']);
+  // Abbruchpunkt nach tabs.move der Ziel-Tabs, vor tabs.update({ active: true }) auf b0
+  await b.sw(`
+    const ws = Object.fromEntries((await getConfig()).workspaces.map((w) => [w.name, w.id]));
+    const win = (await scan()).mains[0];
+    const update = chrome.tabs.update.bind(chrome.tabs);
+    let hitResolve;
+    const hit = new Promise((r) => (hitResolve = r));
+    chrome.tabs.update = (id, patch) => {
+      if (patch?.active) {
+        hitResolve();
+        return new Promise(() => {});
+      }
+      return update(id, patch);
+    };
+    void userAction(() => switchTo(win.id, ws.B));
+    await hit;
+  `);
+  const mid = await b.sw('const w = (await scan()).mains[0]; return movableTabsOf(w).map((t) => t.url);');
+  assert.deepEqual(mid, ['about:blank#switch-a0', 'about:blank#switch-a1', 'about:blank#switch-b0', 'about:blank#switch-b1'], 'Testfehler: nicht mitten im Wechsel');
+  b.sw('chrome.runtime.reload();').catch(() => {});
+  await b.attachWorker();
+  const res = await waitFor(async () => {
+    const r = await b.sw(`
+      const pending = (await chrome.storage.local.get('pendingSwitch')).pendingSwitch || (await chrome.storage.session.get('pendingSwitch')).pendingSwitch;
+      const { windowWs = {} } = await chrome.storage.session.get('windowWs');
+      const { stash, mains } = await scan();
+      const ws = Object.fromEntries((await getConfig()).workspaces.map((w) => [w.name, w.id]));
+      const name = (id) => Object.keys(ws).find((n) => ws[n] === id);
+      const exp = await userAction(exportAll);
+      return {
+        pending: !!pending,
+        mains: mains.map((w) => ({ ws: name(windowWs[w.id]), tabs: movableTabsOf(w).map((t) => t.url) })),
+        stashes: Object.fromEntries([...stash].map(([id, w]) => [name(id), stashTabsOf(w).map((t) => t.url)])),
+        exp: Object.fromEntries(exp.workspaces.map((w) => [w.name, w.tabs.map((t) => t.url)])),
+      };
+    `);
+    assert.equal(r.pending, false, 'Wechsel noch vermerkt');
+    assert.ok(r.mains.every((w) => w.ws), 'Hauptfenster noch nicht zugeordnet');
+    return r;
+  });
+  assert.deepEqual(res.mains, [{ ws: 'B', tabs: ['about:blank#switch-b0', 'about:blank#switch-b1'] }]);
+  assert.deepEqual(res.stashes, { A: ['about:blank#switch-a0', 'about:blank#switch-a1'], B: [] });
+  assert.deepEqual(res.exp, { A: ['about:blank#switch-a0', 'about:blank#switch-a1'], B: ['about:blank#switch-b0', 'about:blank#switch-b1'] });
+  assert.deepEqual(b.errors, [], 'unbehandelte Fehler im Service Worker');
+});
+
 // #245: Die Sicherung geht als Base64 über Native Messaging an native-host.sh, und Chromium
 // nimmt Nachrichten nur bis 64 MiB an. Ein Export von einigen MB kommt vollständig an, und auch
 // einer knapp unter der Importgrenze (50 MiB), den Base64 allein auf über 64 MiB brächte.

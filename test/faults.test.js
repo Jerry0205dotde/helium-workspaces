@@ -112,6 +112,23 @@ test('Fehler beim allerersten Schritt: nichts bewegt, Fehler wird gemeldet, spä
   check(env, ALL);
 });
 
+// Der Vermerk steht dann nur in storage.session. Bliebe er, hielte der nächste Abgleich einen
+// danach geöffneten Tab für einen angekommenen des Ziels (#322)
+test('Vermerk des Wechsels lässt sich nicht in storage.local schreiben: nichts bewegt, kein Vermerk bleibt', async () => {
+  const env = await setup(SPEC);
+  const { b, w, win, ids } = env;
+  b.fail('storage.local.set', { when: (o) => 'pendingSwitch' in o });
+  const r = await w.request({ type: 'switch', windowId: win, wsId: ids.B });
+  assert.equal(r.ok, false);
+  assert.equal(shows(env, win), 'A');
+  assert.equal(b.session.data.pendingSwitch, undefined);
+  assert.equal(b.local.data.pendingSwitch, undefined);
+  await b.chrome.tabs.create({ windowId: win, url: url('x1'), active: false });
+  await w.settle();
+  assert.equal(shows(env, win), 'A');
+  check(env, { ...ALL, A: [...SPEC.workspaces.A, 'x1'] });
+});
+
 test('Wiederholt scheiternder Abschluss wird im Hintergrund erneut versucht', async () => {
   const env = await setup(SPEC);
   const { b, w, win, ids } = env;

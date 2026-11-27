@@ -96,22 +96,21 @@ async function resumeMove() {
 // neuer Workspace, IDs der alten Tabs). Solange er dort steht, ist der Tab-Bestand im
 // Übergang: snapshot() sichert dann nichts, und finishSwitch() schließt ihn ab – nach
 // einem Fehler, beim nächsten Wechsel oder nach einem Neustart des Service Workers.
-// Entsteht das Ziel aus der Sicherung (local), steht er bis zum Abschluss zusätzlich in
-// storage.local, damit er auch ein Neuladen der Erweiterung übersteht (onStartup verwirft
-// ihn). Sonst ordnete der Abgleich die schon angelegten Tabs dem alten Workspace zu (#269).
+// Bis zum Abschluss steht er zusätzlich in storage.local, damit er auch ein Neuladen der
+// Erweiterung übersteht (onStartup verwirft ihn). Sonst ordnete der Abgleich die schon
+// angelegten oder aus der Ablage geholten Tabs dem alten Workspace zu (#269, #322).
 async function getPending() {
   const { pendingSwitch } = await chrome.storage.session.get('pendingSwitch');
   return pendingSwitch || (await chrome.storage.local.get('pendingSwitch')).pendingSwitch || null;
 }
 
-// was: der Wechsel, den setPending(null) abschließt. Der Vermerk in storage.local geht
-// zuerst und kommt zuletzt: Was ein Abbruch dazwischen übrig lässt, ist nie älter als der
-// in storage.session.
-async function setPending(p, was = null) {
-  if (!p && was?.local) await chrome.storage.local.remove('pendingSwitch');
+// Der Vermerk in storage.local geht zuerst und kommt zuletzt: Was ein Abbruch dazwischen
+// übrig lässt, ist nie älter als der in storage.session.
+async function setPending(p) {
+  if (!p) await chrome.storage.local.remove('pendingSwitch');
   if (p) await chrome.storage.session.set({ pendingSwitch: p });
   else await chrome.storage.session.remove('pendingSwitch');
-  if (p?.local) await chrome.storage.local.set({ pendingSwitch: p });
+  if (p) await chrome.storage.local.set({ pendingSwitch: p });
 }
 
 // Merkt im begonnenen Wechsel, dass Eintrag i (e) der Sicherung nicht angelegt werden
@@ -169,11 +168,13 @@ async function switchTo(windowId, targetWs, shown = () => {}, read = null) {
   if (active && !active.pinned) s.lastTab[cur] = active.id;
   await saveSess(s);
   const p = { windowId, from: cur, to: targetWs, oldTabs: oldTabs.map((t) => t.id) };
-  await setPending(p);
 
   // 1. Tabs des Ziel-Workspace holen (zuerst, damit das Fenster nie leer wird)
   let failed = null;
   try {
+    // Im try: Scheitert nur das Schreiben in storage.local, räumt finishSwitch() den Vermerk
+    // in storage.session wieder ab
+    await setPending(p);
     await moving(async () => {
       let brought = [];
       const tStash = stash.get(targetWs);
@@ -184,12 +185,12 @@ async function switchTo(windowId, targetWs, shown = () => {}, read = null) {
         const { backup } = await getBackup();
         const b = backup[targetWs];
         if (b) {
-          await setPending({ ...p, restoring: true, local: true });
+          await setPending({ ...p, restoring: true });
           const r = await recreate(savedOf(b), windowId, false, false, [], [], noteFailed);
           brought = r.ids;
           await keepFailed(targetWs, r.failed);
           await keepLater(targetWs, r.later, 'saved');
-          await setPending({ ...p, local: true });
+          await setPending(p);
         }
       }
       if (!brought.length) {
@@ -239,7 +240,7 @@ async function finishSwitch() {
     const tabs = main ? movableTabsOf(main) : [];
     const arrived = tabs.filter((t) => !old.has(t.id));
     if (!main || !arrived.length) {
-      await setPending(null, p);
+      await setPending(null);
       return main ? 'back' : 'gone';
     }
 
@@ -301,7 +302,7 @@ async function finishSwitch() {
     const wins = backupWindows.filter((e) => e.id !== p.windowId);
     if (entry) wins.push(entry);
     await chrome.storage.local.set({ lastWs: p.to, stashWins, backupWindows: wins });
-    await setPending(null, p);
+    await setPending(null);
     return 'forward';
   });
 }

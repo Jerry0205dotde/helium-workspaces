@@ -95,11 +95,14 @@ async function repairStashes() {
     // Ablage-Seite wie in älteren Versionen angeheftet und der einzige Tab, ist sie es auch.
     // In Helium ab 0.22 bleiben daneben die angehefteten Tabs übrig, die jede Ablage hat (#265).
     const ids = new Set(rec.tabs);
-    // Tabs, die ein unterbrochener Transfer oder Wechsel (aus der Sicherung, #269) gerade
+    // Tabs, die ein unterbrochener Transfer oder Wechsel (#269, #322) gerade
     // in die Ablage bringt; stashWins kennt sie noch nicht
     const incoming = [...(fromMove ? pendingMove.tabs : []), ...(pendingSwitch?.from === rec.ws ? pendingSwitch.oldTabs : [])];
     const own = movableTabsOf(w);
-    const blank = !ids.size && own.every((t) => isNewTab(t) && !incoming.includes(t.id));
+    // Ein unterbrochener Wechsel hat die Ablage des Ziels geleert, ihre gemerkten Tabs liegen
+    // schon im Hauptfenster (#322)
+    const taken = pendingSwitch?.to === rec.ws && !w.tabs.some((t) => ids.has(t.id));
+    const blank = (!ids.size || taken) && own.every((t) => isNewTab(t) && !incoming.includes(t.id));
     const pinnedBlank = blank && w.tabs.length === 1 && w.tabs[0].pinned && isNewTab(w.tabs[0]) ? w.tabs : [];
     const fed = feeding?.windowId === w.id && feeding.ws === rec.ws;
     // Ein gemerkter Tab wurde gerade entladen und hat eine neue ID, die stashWins noch nicht kennt
