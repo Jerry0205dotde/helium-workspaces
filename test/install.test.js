@@ -451,10 +451,12 @@ test('--help zeigt den Kopfkommentar und ändert nichts, auch ohne KDE-Programme
 // Erweiterung unter extensions.settings, ohne kommt ihre ID nur als Wert vor, wie in
 // extensions.commands nach dem Entfernen.
 const EXT_ID = 'jchklfejnmfphkbcpnhdejmeoncejjbe';
-const prefs = (restore, { extension = true } = {}) =>
+// ID der Erweiterung aus dem Chrome Web Store (#51)
+const STORE_ID = 'lgbjnmadobikjaclledhpooneefdojao';
+const prefs = (restore, { extension = true, id = EXT_ID } = {}) =>
   JSON.stringify({
     extensions: extension
-      ? { settings: { [EXT_ID]: { location: 4 } } }
+      ? { settings: { [id]: { location: id === EXT_ID ? 4 : 1 } } }
       : { commands: { 'linux:Alt+W': { command_name: '_execute_action', extension: EXT_ID } } },
     protection: { macs: { session: { restore_on_startup: '81940185F7F78D0317AB3741FA4A2839' } } },
     session: restore === undefined ? {} : { restore_on_startup: restore },
@@ -482,6 +484,15 @@ test('Installation weist auf Profile hin, die nicht dort weitermachen, wo man au
   assert.ok(r.stdout.endsWith(`Option wählen.\n\n${DONE_DE}`), r.stdout);
   // Nur ein Hinweis, die Einstellungen bleiben unverändert
   assert.deepEqual(r.profiles, profiles);
+});
+
+test('Installation weist auch auf Profile mit der Erweiterung aus dem Chrome Web Store hin', () => {
+  const r = run([TOKEN], { profiles: { 'net.imput.helium/Default': prefs(5, { id: STORE_ID }) } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(
+    r.stdout.split('\n').filter((l) => l.startsWith('  ')),
+    ['  Helium: ~/.config/net.imput.helium/Default'],
+  );
 });
 
 test('Installation gibt keinen Hinweis, wenn alle Profile dort weitermachen', () => {
@@ -885,7 +896,7 @@ test('install.sh meldet native-host.sh bei den Browsern an, die es auf dem Gerä
       description: 'Workspaces: key for the KWin script and automatic backups',
       path: path.join(ROOT, 'native-host.sh'),
       type: 'stdio',
-      allowed_origins: [`chrome-extension://${EXT_ID}/`],
+      allowed_origins: [`chrome-extension://${EXT_ID}/`, `chrome-extension://${STORE_ID}/`],
     });
   }
   // Die Erweiterung ruft den Host unter diesem Namen, er liegt ausführbar daneben

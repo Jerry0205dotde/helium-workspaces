@@ -2,15 +2,15 @@
 
 **English** · [Deutsch](./webstore.de.md) · [Back to the README](../README.md)
 
-What the extension needs for the [Chrome Web Store](https://developer.chrome.com/docs/webstore/program-policies) and what goes into the developer dashboard ([#51](https://github.com/Jerry0205dotde/helium-workspaces/issues/51)). It is not in the store yet.
+What the extension needs for the [Chrome Web Store](https://developer.chrome.com/docs/webstore/program-policies) and what goes into the developer dashboard ([#51](https://github.com/Jerry0205dotde/helium-workspaces/issues/51)). The store ID is `lgbjnmadobikjaclledhpooneefdojao`.
 
 ## The package
 
 Every [release](https://github.com/Jerry0205dotde/helium-workspaces/releases) from 0.3.49 on comes with `helium-workspaces-v<version>-webstore.zip`. That is `extension/` without the `key` field from `manifest.json`, because the store does not accept a manifest with `key` and assigns its own ID. [`tag.yml`](../.github/workflows/tag.yml) builds it.
 
-Still open before the first upload:
+To keep in mind:
 
-- The store version gets a different ID than `jchklfejnmfphkbcpnhdejmeoncejjbe`. `install.sh` and the `allowed_origins` of `native-host.sh` only know the fixed ID so far. The store ID must be added there, otherwise the key and the automatic backup do not work in the store version.
+- The store version has a different ID than the unpacked one (`jchklfejnmfphkbcpnhdejmeoncejjbe`). `install.sh` registers `native-host.sh` for both, so the key and the automatic backup work in either.
 - Switching from the unpacked extension works as described in [Switching to the fixed extension ID](./updating.md): export in the old version, import in the store version with **Replace**, only then remove the unpacked one.
 - With automatic updates, the extension and the KWin script no longer always have the same version. The title format of the stash windows (`HWS-Ablage <key> · …`) thereby becomes the interface between the two.
 
@@ -19,7 +19,7 @@ Still open before the first upload:
 - **Name** and **summary**: come from `extName` and `extDescription` in `_locales/*/messages.json`.
 - **Category**: Productivity → Workflow & Planning
 - **Icon**: `extension/icons/128.png`
-- **Screenshots**: at least one, 1280×800 or 640×400. The pictures in `docs/` are too small.
+- **Screenshots**: at least one, 1280×800 or 640×400: [`docs/webstore/`](./webstore), built from the recordings in `docs/`.
 - **Small promo tile** (440×280): optional, but without it the extension is listed after those that have one.
 - **Description**:
 

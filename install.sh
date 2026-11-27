@@ -46,10 +46,12 @@ done
 t() { if [ -n "$DE" ]; then printf '%s\n' "$1"; else printf '%s\n' "$2"; fi; }
 
 # Browser, deren Profile install.sh kennt: Ordner unter ~/.config und Name. Die Erweiterung
-# hat dort die feste ID aus dem Schlüssel in manifest.json.
+# hat dort entpackt die feste ID aus dem Schlüssel in manifest.json, aus dem Chrome Web Store
+# dessen eigene ID (#51).
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
 BROWSER_DIRS=("net.imput.helium:Helium" "google-chrome:Google Chrome" "chromium:Chromium")
 EXT_ID=jchklfejnmfphkbcpnhdejmeoncejjbe
+STORE_ID=lgbjnmadobikjaclledhpooneefdojao
 # Name des Native-Messaging-Hosts, unter dem die Erweiterung native-host.sh aufruft (core.js)
 HOST_NAME=helium_workspaces
 host_manifest() { printf '%s/%s/NativeMessagingHosts/%s.json' "$CONFIG" "${1%%:*}" "$HOST_NAME"; }
@@ -302,8 +304,8 @@ for entry in "${BROWSER_DIRS[@]}"; do
   [ -d "$CONFIG/${entry%%:*}" ] || continue
   manifest="$(host_manifest "$entry")"
   mkdir -p "${manifest%/*}"
-  printf '{\n  "name": "%s",\n  "description": "Workspaces: key for the KWin script and automatic backups",\n  "path": "%s",\n  "type": "stdio",\n  "allowed_origins": ["chrome-extension://%s/"]\n}\n' \
-    "$HOST_NAME" "$HOST_PATH" "$EXT_ID" > "$manifest"
+  printf '{\n  "name": "%s",\n  "description": "Workspaces: key for the KWin script and automatic backups",\n  "path": "%s",\n  "type": "stdio",\n  "allowed_origins": ["chrome-extension://%s/", "chrome-extension://%s/"]\n}\n' \
+    "$HOST_NAME" "$HOST_PATH" "$EXT_ID" "$STORE_ID" > "$manifest"
 done
 
 # Alte Einträge der Erweiterung: Wer vor 0.3.0 (ohne key im Manifest) über „Entpackte Erweiterung
@@ -442,7 +444,7 @@ fi
 # Wert, gilt der Standard „Neuer Tab“ (5). Die gleichnamigen Prüfsummen unter protection.macs
 # sind Zeichenketten und passen deshalb nicht auf das Muster. Profile ohne die Erweiterung
 # zählen nicht: Ihre Einstellungen unter extensions.settings stehen je nach Browser in
-# Preferences oder Secure Preferences, unter der festen ID aus dem Schlüssel in manifest.json.
+# Preferences oder Secure Preferences, unter der festen ID oder der ID aus dem Store.
 RESTORE_RE='"restore_on_startup":([0-9]+)'
 NOT_RESTORING=()
 for entry in "${BROWSER_DIRS[@]}"; do
@@ -453,7 +455,7 @@ for entry in "${BROWSER_DIRS[@]}"; do
     content="$(<"$prefs")"
     secure=""
     [ ! -f "$profile/Secure Preferences" ] || secure="$(<"$profile/Secure Preferences")"
-    [[ "$content$secure" == *"\"$EXT_ID\":{"* ]] || continue
+    [[ "$content$secure" == *"\"$EXT_ID\":{"* || "$content$secure" == *"\"$STORE_ID\":{"* ]] || continue
     [[ "$content" =~ $RESTORE_RE && "${BASH_REMATCH[1]}" = 1 ]] && continue
     NOT_RESTORING+=("${entry#*:}: ${profile/#"$HOME"/\~}")
   done
