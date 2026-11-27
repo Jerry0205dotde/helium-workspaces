@@ -109,6 +109,8 @@ Rückgängig, Entladen, Export und Import, automatische Sicherung und was einen 
 - [Aktualisieren und deinstallieren](./docs/updating.de.md): Umstieg auf die feste Erweiterungs-ID und alles entfernen, ohne dass Tabs unsichtbar weiterlaufen
 - [So funktioniert's](./docs/how-it-works.de.md): Ablage-Fenster, der Schlüssel, Google Chrome, Chromium und andere Browser
 - [Mitmachen](./CONTRIBUTING.de.md): Tests, Versionen und der Aufbau des Codes
+- [Datenschutzerklärung](./PRIVACY.de.md): was die Erweiterung speichert, alles nur auf deinem Rechner
+- [Chrome Web Store](./docs/webstore.de.md): das Paket für den Store und was ins Entwickler-Dashboard kommt
 
 Das ist ein privates Bastelprojekt. Rechne mit Fehlern.
 

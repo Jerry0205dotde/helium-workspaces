@@ -2,7 +2,7 @@ name: Tag
 
 # Steigt die Version in extension/manifest.json, bekommt der Commit auf main das Tag
 # v<Version> samt GitHub-Release, dessen Notizen die PR-Titel seit dem vorigen Tag auflisten.
-# Gibt es das Tag schon, passiert nichts.
+# Am Release hängt das Paket für den Chrome Web Store. Gibt es das Tag schon, passiert nichts.
 on:
   push:
     branches: [main]
@@ -25,4 +25,12 @@ jobs:
             echo "$tag gibt es schon"
           else
             gh release create "$tag" --target "$GITHUB_SHA" --generate-notes
+            # Paket für den Chrome Web Store (#51): extension/ ohne das Feld key, denn der Store
+            # nimmt kein Manifest mit key an und vergibt eine eigene ID
+            pkg="$RUNNER_TEMP/webstore"
+            cp -r extension "$pkg"
+            node -e 'const fs = require("fs"), f = process.argv[1], m = JSON.parse(fs.readFileSync(f, "utf8"));
+              delete m.key; fs.writeFileSync(f, JSON.stringify(m, null, 2) + "\n")' "$pkg/manifest.json"
+            (cd "$pkg" && zip -qrX "$RUNNER_TEMP/helium-workspaces-$tag-webstore.zip" .)
+            gh release upload "$tag" "$RUNNER_TEMP/helium-workspaces-$tag-webstore.zip"
           fi
